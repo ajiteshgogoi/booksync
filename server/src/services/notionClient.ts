@@ -44,7 +44,6 @@ export interface Highlight {
   highlight: string[];
   location: string;
   date: Date;
-  userId?: string;
 }
 
 export interface NotionBookPage {

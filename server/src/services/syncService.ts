@@ -15,11 +15,11 @@ const BATCH_SIZE = 25; // Number of highlights per batch
 const BATCH_DELAY = 500; // 500ms delay between batches
 
 export async function queueSyncJob(
-  userId: string,
+  databaseId: string,
   fileContent: string
 ): Promise<string> {
-  console.debug('Starting sync job for user:', userId);
-  const jobId = `sync:${userId}:${Date.now()}`;
+  console.debug('Starting sync job for database:', databaseId);
+  const jobId = `sync:${databaseId}:${Date.now()}`;
   const highlights = parseClippings(fileContent);
   console.debug('Parsed highlights count:', highlights.length);
   const redis = await getRedis();
@@ -28,13 +28,13 @@ export async function queueSyncJob(
   // Store highlights in Redis in chunks
   for (let i = 0; i < highlights.length; i++) {
     const highlight = highlights[i];
-    // Add userId by creating a new object that includes all highlight properties plus userId
-    const highlightWithUser = {
+    // Add databaseId to the highlight
+    const highlightWithDb = {
       ...highlight,
-      userId
+      databaseId
     };
     const key = `highlights:${jobId}:${i}`;
-    const value = JSON.stringify(highlightWithUser);
+    const value = JSON.stringify(highlightWithDb);
     console.debug(`Storing highlight ${i + 1}/${highlights.length}:`, { key, value });
     await redis.set(key, value, 'EX', JOB_TTL);
     
@@ -77,12 +77,12 @@ export async function processSyncJob(
     let processed = 0;
 
     for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
-      if (!highlights[i]?.userId) {
-        console.error('Missing userId in highlight:', highlights[i]);
+      if (!highlights[i]?.databaseId) {
+        console.error('Missing databaseId in highlight:', highlights[i]);
         continue;
       }
 
-      if (!await checkRateLimit(highlights[i].userId)) {
+      if (!await checkRateLimit(highlights[i].databaseId)) {
         throw new Error('Rate limit exceeded');
       }
 
@@ -95,7 +95,7 @@ export async function processSyncJob(
           
           // Verify all highlights have required fields
           const invalidHighlights = batch.filter(h =>
-            !h.userId || !h.bookTitle || !h.highlight || !h.location || !h.date
+            !h.databaseId || !h.bookTitle || !h.highlight || !h.location || !h.date
           );
           
           if (invalidHighlights.length > 0) {
@@ -103,10 +103,10 @@ export async function processSyncJob(
             throw new Error('Some highlights are missing required fields');
           }
 
-          // Verify all highlights have the same userId
-          const userId = batch[0].userId;
-          if (!batch.every(h => h.userId === userId)) {
-            throw new Error('Batch contains highlights from multiple users');
+          // Verify all highlights have the same databaseId
+          const dbId = batch[0].databaseId;
+          if (!batch.every(h => h.databaseId === dbId)) {
+            throw new Error('Batch contains highlights from multiple databases');
           }
 
           console.debug(`Updating Notion database with ${batch.length} highlights`);
@@ -182,7 +182,7 @@ async function getHighlightsFromQueue(jobId: string) {
           try {
             // Handle both string and object responses from Redis
             const highlight = typeof item === 'string' ? JSON.parse(item) : item;
-            if (typeof highlight === 'object' && highlight.bookTitle && highlight.userId) {
+            if (typeof highlight === 'object' && highlight.bookTitle && highlight.databaseId) {
               console.debug(`Valid highlight at index ${index}`);
               highlights.push(highlight);
             } else {

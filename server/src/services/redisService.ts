@@ -179,11 +179,11 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
 }
 
 // Rate limiting
-export async function checkRateLimit(userId: string): Promise<boolean> {
+export async function checkRateLimit(databaseId: string): Promise<boolean> {
   try {
     const redis = await getRedis();
     const currentTime = Math.floor(Date.now() / 1000);
-    const key = `rate_limit:${userId}:${currentTime}`;
+    const key = `rate_limit:${databaseId}:${currentTime}`;
     
     const requests = await redis.incr(key);
     if (requests === 1) {
@@ -191,174 +191,174 @@ export async function checkRateLimit(userId: string): Promise<boolean> {
     }
     
     if (requests > RATE_LIMIT_MAX) {
-      logger.warn('Rate limit exceeded', { userId });
+      logger.warn('Rate limit exceeded', { databaseId });
       return false;
     }
     
     return true;
   } catch (error) {
-    logger.error('Rate limit check failed', { userId, error });
+    logger.error('Rate limit check failed', { databaseId, error });
     return true; // Fail open to avoid blocking requests
   }
 }
 
 // Highlight caching
-export async function isHighlightCached(userId: string, title: string, highlight: any): Promise<boolean> {
+export async function isHighlightCached(databaseId: string, title: string, highlight: any): Promise<boolean> {
   try {
     const redis = await getRedis();
-    const key = `highlight:${userId}:${title}:${highlight.location}`;
+    const key = `highlight:${databaseId}:${title}:${highlight.location}`;
     const exists = await redis.exists(key);
-    logger.debug('Highlight cache check', { 
-      userId, 
-      title, 
+    logger.debug('Highlight cache check', {
+      databaseId,
+      title,
       location: highlight.location,
       cached: exists === 1
     });
     return exists === 1;
   } catch (error) {
-    logger.error('Highlight cache check failed', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Highlight cache check failed', {
+      databaseId,
+      title,
+      error
     });
     return false;
   }
 }
 
-export async function cacheHighlight(userId: string, title: string, highlight: any): Promise<void> {
+export async function cacheHighlight(databaseId: string, title: string, highlight: any): Promise<void> {
   try {
     const redis = await getRedis();
-    const key = `highlight:${userId}:${title}:${highlight.location}`;
+    const key = `highlight:${databaseId}:${title}:${highlight.location}`;
     await redis.set(key, JSON.stringify(highlight), 'EX', HIGHLIGHT_TTL);
-    logger.debug('Highlight cached', { 
-      userId, 
-      title, 
-      location: highlight.location 
+    logger.debug('Highlight cached', {
+      databaseId,
+      title,
+      location: highlight.location
     });
   } catch (error) {
-    logger.error('Failed to cache highlight', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Failed to cache highlight', {
+      databaseId,
+      title,
+      error
     });
     throw error;
   }
 }
 
 // Book page caching
-export async function getCachedBookPageId(userId: string, title: string): Promise<string | null> {
+export async function getCachedBookPageId(databaseId: string, title: string): Promise<string | null> {
   try {
     const redis = await getRedis();
-    const pageId = await redis.get(`page_id:${userId}:${title}`);
-    logger.debug('Retrieved cached book page ID', { 
-      userId, 
+    const pageId = await redis.get(`page_id:${databaseId}:${title}`);
+    logger.debug('Retrieved cached book page ID', {
+      databaseId,
       title,
       cached: !!pageId
     });
     return pageId;
   } catch (error) {
-    logger.error('Failed to get cached book page ID', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Failed to get cached book page ID', {
+      databaseId,
+      title,
+      error
     });
     throw error;
   }
 }
 
-export async function cacheBookPageId(userId: string, title: string, pageId: string): Promise<void> {
+export async function cacheBookPageId(databaseId: string, title: string, pageId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`page_id:${userId}:${title}`, pageId, 'EX', PAGE_ID_TTL);
-    logger.debug('Book page ID cached', { 
-      userId, 
-      title 
+    await redis.set(`page_id:${databaseId}:${title}`, pageId, 'EX', PAGE_ID_TTL);
+    logger.debug('Book page ID cached', {
+      databaseId,
+      title
     });
   } catch (error) {
-    logger.error('Failed to cache book page ID', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Failed to cache book page ID', {
+      databaseId,
+      title,
+      error
     });
     throw error;
   }
 }
 
 // Book caching
-export async function getCachedBook(userId: string, title: string): Promise<any> {
+export async function getCachedBook(databaseId: string, title: string): Promise<any> {
   try {
     const redis = await getRedis();
-    const cached = await redis.get(`book:${userId}:${title}`);
+    const cached = await redis.get(`book:${databaseId}:${title}`);
     if (cached) {
-      logger.debug('Retrieved cached book', { 
-        userId, 
-        title 
+      logger.debug('Retrieved cached book', {
+        databaseId,
+        title
       });
       return JSON.parse(cached);
     }
     return null;
   } catch (error) {
-    logger.error('Failed to get cached book', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Failed to get cached book', {
+      databaseId,
+      title,
+      error
     });
     throw error;
   }
 }
 
-export async function cacheBook(userId: string, book: any): Promise<void> {
+export async function cacheBook(databaseId: string, book: any): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`book:${userId}:${book.title}`, JSON.stringify(book), 'EX', BOOK_TTL);
-    logger.debug('Book cached', { 
-      userId, 
-      title: book.title 
+    await redis.set(`book:${databaseId}:${book.title}`, JSON.stringify(book), 'EX', BOOK_TTL);
+    logger.debug('Book cached', {
+      databaseId,
+      title: book.title
     });
   } catch (error) {
-    logger.error('Failed to cache book', { 
-      userId, 
-      title: book.title, 
-      error 
+    logger.error('Failed to cache book', {
+      databaseId,
+      title: book.title,
+      error
     });
     throw error;
   }
 }
 
-export async function invalidateBookCache(userId: string, title: string): Promise<void> {
+export async function invalidateBookCache(databaseId: string, title: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.del(`book:${userId}:${title}`);
-    logger.debug('Book cache invalidated', { 
-      userId, 
-      title 
+    await redis.del(`book:${databaseId}:${title}`);
+    logger.debug('Book cache invalidated', {
+      databaseId,
+      title
     });
   } catch (error) {
-    logger.error('Failed to invalidate book cache', { 
-      userId, 
-      title, 
-      error 
+    logger.error('Failed to invalidate book cache', {
+      databaseId,
+      title,
+      error
     });
     throw error;
   }
 }
 
 // Cache clearing
-export async function clearUserCaches(userId: string): Promise<void> {
+export async function clearDatabaseCaches(databaseId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    const keys = await redis.keys(`*:${userId}:*`);
+    const keys = await redis.keys(`*:${databaseId}:*`);
     if (keys.length > 0) {
       await redis.del(...keys);
-      logger.debug('Cleared user caches', { 
-        userId, 
-        keysCleared: keys.length 
+      logger.debug('Cleared database caches', {
+        databaseId,
+        keysCleared: keys.length
       });
     }
   } catch (error) {
-    logger.error('Failed to clear user caches', { 
-      userId, 
-      error 
+    logger.error('Failed to clear database caches', {
+      databaseId,
+      error
     });
     throw error;
   }
