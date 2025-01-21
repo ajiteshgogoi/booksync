@@ -139,26 +139,24 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search);
     const authStatus = searchParams.get('auth');
     
-    if (authStatus) {
-      if (authStatus === 'success') {
-        setAuthStatus('success');
-        setAuthError(false);
-        checkAuth();
-      } else if (authStatus === 'error') {
-        setAuthStatus('error');
-        setAuthError(true);
-        setErrorMessage('Failed to connect to Notion. Please try again.');
-      } else if (authStatus === 'cancelled') {
-        setAuthStatus('cancelled');
-        setAuthError(true);
-        setErrorMessage('Connection to Notion was cancelled. Please try again if you want to connect.');
-      }
-      
-      // Clear URL params after a longer delay to allow message display
-      setTimeout(() => {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }, 30000); // 30 second delay
+    if (authStatus === 'success') {
+      setAuthStatus('success');
+      setAuthError(false);
+      checkAuth();
+    } else if (authStatus === 'error') {
+      setAuthStatus('error');
+      setAuthError(true);
+      setErrorMessage('Failed to connect to Notion. Please try again.');
+    } else if (authStatus === 'cancelled') {
+      setAuthStatus('cancelled');
+      setAuthError(true);
+      setErrorMessage('Connection to Notion was cancelled. Please try again if you want to connect.');
     }
+    
+    // Clear URL params after a longer delay to allow message display
+    setTimeout(() => {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }, 30000); // 30 second delay
     
     // Only do initial auth check if we're not showing an auth error
     if (!authError) {
