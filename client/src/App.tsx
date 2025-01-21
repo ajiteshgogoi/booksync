@@ -119,17 +119,27 @@ function App() {
         const response = await fetch(`${apiBase}/auth/check`, {
           credentials: 'include'
         });
-        if (response.ok) setIsAuthenticated(true);
+        
+        // Only set authenticated if we get a valid token
+        const data = await response.json();
+        if (response.ok && data.authenticated) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
       } catch (error) {
         console.error('Auth check failed:', error);
+        setIsAuthenticated(false);
       }
     };
 
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('auth') === 'success') {
-      setIsAuthenticated(true);
+      // After successful auth, check the actual auth state
+      checkAuth();
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
+      // Initial load - check auth state
       checkAuth();
     }
   }, []);
