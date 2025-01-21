@@ -101,13 +101,8 @@ app.get(`${apiBasePath}/auth/notion`, (req, res) => {
 });
 
 app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
-  const { code, state, error } = req.query;
+  const { code, state } = req.query;
   const storedState = req.cookies.oauth_state;
-
-  if (error === 'access_denied') {
-    // User cancelled the OAuth flow
-    return res.redirect(`${process.env.CLIENT_URL}`);
-  }
 
   if (!code || !state || state !== storedState) {
     return res.redirect(`${process.env.CLIENT_URL}?auth=error`);
