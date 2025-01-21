@@ -177,9 +177,14 @@ function App() {
             if (status.state === 'processing') {
               setSyncStatus('syncing');
               setIsTimeout(true);
+              setFile(new File([], 'My Clippings.txt')); // Restore file state
               // Sync is still running
-            } else {
-              // Clear jobId if sync is completed or failed
+            } else if (status.state === 'completed') {
+              setSyncStatus('success');
+              localStorage.removeItem('syncJobId');
+            } else if (status.state === 'failed') {
+              setSyncStatus('error');
+              setErrorMessage(status.error || 'Sync failed');
               localStorage.removeItem('syncJobId');
             }
           }
@@ -237,12 +242,16 @@ function App() {
               <p className="mt-2 text-[#5a463a] font-serif text-center">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
               <div className="mt-4">
-                <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">
+                <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif ${
+                  syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'
+                    ? 'opacity-50 cursor-not-allowed'
+                    : ''
+                }`}>
                   <input
                     type="file"
                     accept=".txt"
                     onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'}
                     className="hidden"
                   />
                   Upload My Clippings.txt
@@ -269,7 +278,7 @@ function App() {
                   {syncStatus === 'syncing' && (
                     <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                       <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                        <div className="text-[#5a463a] font-medium">
+                        <div className="text-[#5a463a] font-semibold text-lg">
                           ⏳ Sync is running in the background
                         </div>
                         <div className="text-sm text-[#5a463a] mt-2 space-y-1">
@@ -282,7 +291,7 @@ function App() {
                   )}
 
                   {syncStatus === 'success' && (
-                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
+                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif text-center">
                       ✅ Sync completed successfully
                     </div>
                   )}
@@ -298,7 +307,7 @@ function App() {
               {syncStatus !== 'syncing' && syncStatus !== 'success' && (
                 <button
                   onClick={handleDisconnect}
-                  className="mt-4 w-full bg-[#8d6e63] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
+                  className="mt-4 mx-auto w-55 bg-[#9c4a3c] hover:bg-[#7c3a2c] text-white font-medium px-4 py-1.5 rounded-md transition-colors font-serif flex justify-center"
                 >
                   Disconnect Notion
                 </button>
