@@ -297,8 +297,13 @@ function App() {
                           )}
                         </div>
                         {isTimeout && (
-                          <div className="text-[#8b7355]">
-                            ⏳ Sync is still running in the background. You can safely close this page.
+                          <div className="text-[#8b7355] space-y-1">
+                            <div>⏳ Sync is still running in the background.</div>
+                            <div className="text-sm">
+                              • You can safely close this page - sync will continue server-side
+                              • Return anytime to check progress
+                              • You'll see results in Notion when complete
+                            </div>
                           </div>
                         )}
                       </div>
