@@ -13,8 +13,8 @@ import {
 } from './redisService';
 
 // Configuration
-const BATCH_SIZE = 10; // Number of highlights per batch
-const BATCH_DELAY = 1000; // 1 second delay between batches
+const BATCH_SIZE = 25; // Number of highlights per batch
+const BATCH_DELAY = 500; // 500ms delay between batches
 
 export async function queueSyncJob(
   userId: string,
