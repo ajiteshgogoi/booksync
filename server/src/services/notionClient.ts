@@ -2,14 +2,6 @@ import { Client } from '@notionhq/client';
 import axios from 'axios';
 import {
   getRedis,
-  checkRateLimit,
-  getCachedBookPageId,
-  cacheBookPageId,
-  isHighlightCached,
-  cacheHighlight,
-  getCachedBook,
-  cacheBook,
-  invalidateBookCache,
   storeOAuthToken,
   getOAuthToken as getRedisOAuthToken,
   refreshOAuthToken as refreshRedisOAuthToken,
@@ -349,18 +341,11 @@ async function updateOrCreateBookPage(
   if (!databaseId) throw new Error('Database ID not found');
   
   try {
-    // Check cache first
-    const cachedBook = await getCachedBook(userId, book.title);
-    if (cachedBook) {
-      return cachedBook;
-    }
+    // Check if page already exists and get last highlight date
+    let existingPageId: string | undefined;
+    let lastSyncDate = new Date(0);
 
-    // Check rate limit before making API calls
-    if (!(await checkRateLimit(userId))) {
-      throw new Error('Rate limit exceeded');
-    }
-
-    // Check if page already exists
+    // Check if page exists and get last highlight date
     const { results } = await notion.databases.query({
       database_id: databaseId,
       filter: {
@@ -371,10 +356,32 @@ async function updateOrCreateBookPage(
       }
     });
 
-    const existingPageId = results[0]?.id;
-    let pageId: string;
+    if (results.length > 0) {
+      existingPageId = results[0].id;
+      const pageData = await notion.pages.retrieve({ page_id: existingPageId });
+      const lastSyncDateStr = (pageData as any).properties?.['Last Synced']?.date?.start;
+      if (lastSyncDateStr) {
+        lastSyncDate = new Date(lastSyncDateStr);
+      }
+    }
+
+    // Filter highlights that are newer than the last sync
+    const newHighlights = book.highlights.filter(highlight => {
+      const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
+      return highlightDate > lastSyncDate;
+    });
+
+    // If no new highlights, skip updating the page
+    if (newHighlights.length === 0) {
+      console.log(`No new highlights for "${book.title}" since ${lastSyncDate.toLocaleString()}`);
+      return;
+    }
+
+    // Update book object with filtered highlights
+    book.highlights = newHighlights;
 
     // Create or update the page
+    let pageId: string;
     if (existingPageId) {
       const coverUrl = await getBookCoverUrl(book.title, book.author);
       
@@ -437,53 +444,13 @@ async function updateOrCreateBookPage(
       pageId = newPage.id;
     }
 
-    // Get existing highlights to check for duplicates
-    const { results: existingBlocks } = await notion.blocks.children.list({
-      block_id: pageId,
-      page_size: 100
-    });
-
-    // Add all highlights, checking for duplicates
-    const processedHighlights = new Set();
     let addedCount = 0;
     
     try {
-      const redis = await getRedis();
-      // Try to get cached highlights if Redis is available
-      let cachedHighlights: Record<string, string> | null = null;
-      try {
-        cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`);
-      } catch (redisError) {
-        console.warn('Redis cache unavailable, proceeding without caching:', redisError);
-      }
-      
       for (const highlight of book.highlights) {
         try {
           // Update progress for every highlight processed
           onProgress?.();
-          
-          // Skip if we've already processed this location
-          if (processedHighlights.has(highlight.location)) {
-            continue;
-          }
-          
-          // Check if highlight exists in cache (if Redis is available)
-          if (cachedHighlights) {
-            const cachedHighlight = cachedHighlights[highlight.location];
-            if (cachedHighlight) {
-              try {
-                const cachedData = JSON.parse(cachedHighlight);
-                if (cachedData.highlight === highlight.highlight.join('\n\n')) {
-                  processedHighlights.add(highlight.location);
-                  continue;
-                }
-              } catch (parseError) {
-                console.warn('Failed to parse cached highlight:', parseError);
-              }
-            }
-          }
-          
-          processedHighlights.add(highlight.location);
 
           // Helper function to split text at sentence boundaries
           const splitAtSentences = (text: string, maxLength: number): string[] => {
@@ -543,9 +510,7 @@ async function updateOrCreateBookPage(
             continue;
           }
 
-          // Only cache if we actually added the highlight
           if (result && result.results && result.results.length > 0) {
-            await cacheHighlight(userId, book.title, highlight);
             addedCount++;
           }
         } catch (error) {
@@ -553,10 +518,7 @@ async function updateOrCreateBookPage(
         }
       }
 
-      console.log(`Added ${addedCount} new highlights for "${book.title}"`);
-
-      // Cache the entire book after all highlights are processed
-      await cacheBook(userId, book);
+      console.log(`Added ${addedCount} new highlights for "${book.title}" since last sync at ${lastSyncDate.toLocaleString()}`);
     } catch (error) {
       console.error('Error processing highlights:', error);
       throw error;
