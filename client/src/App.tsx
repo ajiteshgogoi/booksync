@@ -89,6 +89,7 @@ function App() {
       if (!response.ok) throw new Error(await response.text());
 
       const { jobId } = await response.json();
+      localStorage.setItem('syncJobId', jobId);
       
       // Start polling for job status
       const pollStatus = async () => {
@@ -191,15 +192,36 @@ function App() {
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuthAndSync = async () => {
       try {
         const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-        const response = await fetch(`${apiBase}/auth/check`, {
+        
+        // Check authentication
+        const authResponse = await fetch(`${apiBase}/auth/check`, {
           credentials: 'include'
         });
-        if (response.ok) setIsAuthenticated(true);
+        if (authResponse.ok) setIsAuthenticated(true);
+
+        // Check sync status if jobId exists
+        const jobId = localStorage.getItem('syncJobId');
+        if (jobId) {
+          const syncResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
+            credentials: 'include'
+          });
+          if (syncResponse.ok) {
+            const status = await syncResponse.json();
+            if (status.state === 'processing') {
+              setSyncStatus('syncing');
+              setIsTimeout(true);
+              setCurrentStep('Sync is still running in the background');
+            } else {
+              // Clear jobId if sync is completed or failed
+              localStorage.removeItem('syncJobId');
+            }
+          }
+        }
       } catch (error) {
-        console.error('Auth check failed:', error);
+        console.error('Initialization check failed:', error);
       }
     };
 
@@ -208,7 +230,7 @@ function App() {
       setIsAuthenticated(true);
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
-      checkAuth();
+      checkAuthAndSync();
     }
   }, []);
 
@@ -256,7 +278,7 @@ function App() {
                     type="file"
                     accept=".txt"
                     onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success'}
                     className="hidden"
                   />
                   Upload My Clippings.txt
@@ -281,71 +303,41 @@ function App() {
                   </button>
 
                   {syncStatus === 'syncing' && (
-                    <div className="mt-4">
-                      <div className="w-full bg-[#e0d6c2] rounded-full h-2 overflow-hidden">
-                        <div
-                          className="bg-[#8b7355] h-full transition-all duration-300"
-                          style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
-                        />
-                      </div>
-                      <div className="mt-2 text-sm text-[#5a463a] font-serif space-y-1">
-                        <div className="font-medium">{currentStep}</div>
-                        <div>
-                          Synced {syncedCount} of {highlightCount} highlights
-                          {timeRemaining && (
-                            <span className="ml-2">• {timeRemaining}</span>
-                          )}
-                        </div>
-                        {isTimeout && (
-                          <div className="text-[#8b7355] space-y-1">
-                            <div>⏳ Sync is still running in the background.</div>
-                            <div className="text-sm">
-                              • You can safely close this page - sync will continue server-side
-                              • Return anytime to check progress
-                              • You'll see results in Notion when complete
-                            </div>
+                    <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
+                      {isTimeout && (
+                        <div className="text-[#5a463a]">
+                          ⏳ Sync is still running in the background.
+                          <div className="text-sm">
+                            • You can safely close this page - sync will continue server-side
+                            • You'll see results in Notion when complete
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {syncStatus === 'success' && (
-                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif space-y-2">
-                      <div>✅ Successfully synced {highlightCount} highlights!</div>
-                      <div className="text-sm">
-                        Next steps:
-                        <ul className="list-disc list-inside mt-1">
-                          <li>Check your Notion database</li>
-                          <li>Organize your highlights</li>
-                          <li>Create new highlights and sync again</li>
-                        </ul>
-                      </div>
+                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
+                      ✅ Sync completed successfully
                     </div>
                   )}
 
-                  {errorMessage && (
-                    <div className="mt-4">
-                      <div className="p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
-                        ❌ {errorMessage}
-                      </div>
-                      <button
-                        onClick={handleRetry}
-                        className="mt-2 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
-                      >
-                        Retry Sync
-                      </button>
+                  {errorMessage && !isTimeout && (
+                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
+                      ❌ {errorMessage}
                     </div>
                   )}
                 </>
               )}
 
-              <button
-                onClick={handleDisconnect}
-                className="mt-4 w-full bg-[#8d6e63] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
-              >
-                Disconnect Notion
-              </button>
+              {syncStatus !== 'syncing' && syncStatus !== 'success' && (
+                <button
+                  onClick={handleDisconnect}
+                  className="mt-4 w-full bg-[#8d6e63] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
+                >
+                  Disconnect Notion
+                </button>
+              )}
             </div>
             
             <div className="mt-8 text-center">
