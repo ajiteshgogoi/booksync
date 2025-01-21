@@ -42,7 +42,13 @@ export function parseClippings(fileContent: string): Highlight[] {
       const author = titleAuthorMatch[2].trim();
 
       // Extract highlight metadata
-      const metadataMatch = lines[1].match(/- Your Highlight (?:at|on page \d+) \| location (\d+-\d+) \| Added on (.+)$/);
+      // Skip bookmarks
+      if (lines[1].includes('Your Bookmark')) {
+        console.log('Skipping entry: bookmark');
+        continue;
+      }
+      
+      const metadataMatch = lines[1].match(/^- Your (?:Highlight|Note) (?:at|on page \d+)?\s*(?:\|?\s*(?:location(?:s)? (\d+(?:-\d+)?)|page \d+)?)?\s*(?:\|?\s*Added on (.+))?$/);
       if (!metadataMatch) {
         console.log('Skipping entry: invalid metadata format', { line: lines[1] });
         continue;
