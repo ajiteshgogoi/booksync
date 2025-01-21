@@ -149,10 +149,8 @@ function App() {
       setErrorMessage('Connection to Notion was cancelled.');
     }
     
-    // Clear URL params after a short delay to allow message display
-    setTimeout(() => {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }, 3000); // 3 second delay
+    // Clear URL params after handling auth status
+    window.history.replaceState({}, document.title, window.location.pathname);
     
     // Only do initial auth check if we're not showing an auth error
     if (!authError) {
