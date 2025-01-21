@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
+type SyncStatus = 'idle' | 'parsing' | 'syncing' | 'success' | 'error';
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'parsing' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [highlightCount, setHighlightCount] = useState<number>(0);
-  const [syncedCount, setSyncedCount] = useState<number>(0);
+  const [highlightCount, setHighlightCount] = useState(0);
+  const [syncedCount, setSyncedCount] = useState(0);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -16,37 +18,23 @@ function App() {
       setErrorMessage(null);
       setSyncStatus('parsing');
 
-      // Parse file to get highlight count
       const formData = new FormData();
       formData.append('file', selectedFile);
 
       try {
-        console.log('Uploading file for parsing:', selectedFile);
         const response = await fetch(`${import.meta.env.VITE_API_URL}/parse`, {
           method: 'POST',
           body: formData,
         });
 
-        const responseText = await response.text();
-        console.log('Parse response:', responseText);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message);
 
-        if (!response.ok) {
-          throw new Error(responseText);
-        }
-
-        try {
-          const data = JSON.parse(responseText);
-          console.log('Parsed response data:', data);
-          setHighlightCount(data.count);
-          setSyncStatus('idle');
-        } catch (e) {
-          console.error('Failed to parse JSON response:', e);
-          throw new Error('Invalid response from server');
-        }
+        setHighlightCount(data.count);
+        setSyncStatus('idle');
       } catch (error) {
-        console.error('Parse error:', error);
         setSyncStatus('error');
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights file');
+        setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
       }
     } else {
       setErrorMessage('Please select "My Clippings.txt" from your Kindle');
@@ -70,14 +58,11 @@ function App() {
         credentials: 'include'
       });
 
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+      if (!response.ok) throw new Error(await response.text());
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
-      // Read progress stream
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -104,103 +89,127 @@ function App() {
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/notion`;
   };
 
-  // Check authentication status on load and after redirect
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/check`, {
           credentials: 'include'
         });
-        
-        if (response.ok) {
-          setIsAuthenticated(true);
-        }
+        if (response.ok) setIsAuthenticated(true);
       } catch (error) {
         console.error('Auth check failed:', error);
       }
     };
 
-    // Check if we're returning from OAuth
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('auth') === 'success') {
       setIsAuthenticated(true);
-      // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
       checkAuth();
     }
   }, []);
 
+  useEffect(() => {
+    if (window.kofiWidgetOverlay) {
+      window.kofiWidgetOverlay.draw('gogoi', {
+        type: 'floating-chat',
+        'floating-chat.donateButton.text': 'Support Me',
+        'floating-chat.donateButton.background-color': '#6366f1',
+        'floating-chat.donateButton.text-color': '#fff'
+      });
+    }
+  }, []);
+
   return (
     <div className="container">
-      <h1>BookSync</h1>
-      <p className="subtitle">Kindle Highlights → Notion</p>
-      
-      {!isAuthenticated ? (
-        <div className="auth-section">
-          <h2>Connect your Notion account</h2>
-          <p>First, copy the Kindle Highlights template to your Notion workspace.</p>
-          <button onClick={handleLogin} className="login-button">
-            Connect to Notion
-          </button>
-        </div>
-      ) : (
-        <div className="sync-section">
-          <h2>Upload your Kindle highlights</h2>
-          <p>Connect your Kindle to your computer and find "My Clippings.txt" in the documents folder.</p>
-          
-          <input
-            type="file"
-            accept=".txt"
-            onChange={handleFileChange}
-            className="file-input"
-            disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
-          />
-          
-          {file && (
-            <div className="sync-container">
-              {highlightCount > 0 && (
-                <div className="highlight-count">
-                  Found {highlightCount} highlights in your Kindle file
-                </div>
-              )}
+      <header className="header">
+        <h1>BookSync</h1>
+        <p className="subtitle">Sync your Kindle highlights to Notion</p>
+      </header>
 
-              <button
-                onClick={handleSync}
-                disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
-                className="sync-button"
-              >
-                {syncStatus === 'parsing' ? 'Parsing...' :
-                 syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
-              </button>
+      <main className="main-content">
+        {!isAuthenticated ? (
+          <div className="card auth-card">
+            <h2>Connect to Notion</h2>
+            <p>First, copy the Kindle Highlights template to your Notion workspace.</p>
+            <button 
+              onClick={handleLogin}
+              className="primary-button"
+            >
+              Connect to Notion
+            </button>
+          </div>
+        ) : (
+          <div className="card sync-card">
+            <h2>Sync Your Highlights</h2>
+            <p>Connect your Kindle and upload "My Clippings.txt" to get started.</p>
 
-              {syncStatus === 'syncing' && (
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
-                  />
-                  <span className="progress-text">
-                    {syncedCount} / {highlightCount} highlights synced
-                  </span>
-                </div>
-              )}
-
-              {syncStatus === 'success' && (
-                <div className="success-message">
-                  ✅ {highlightCount} highlights synced successfully!
-                </div>
-              )}
-
-              {errorMessage && (
-                <div className="error-message">
-                  ❌ {errorMessage}
-                </div>
-              )}
+            <div className="file-upload">
+              <input
+                type="file"
+                accept=".txt"
+                onChange={handleFileChange}
+                disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
+              />
             </div>
-          )}
-        </div>
-      )}
+
+            {file && (
+              <>
+                {highlightCount > 0 && (
+                  <div className="highlight-count">
+                    Found {highlightCount} highlights
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSync}
+                  disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
+                  className="primary-button"
+                >
+                  {syncStatus === 'parsing' ? 'Parsing...' :
+                   syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
+                </button>
+
+                {syncStatus === 'syncing' && (
+                  <div className="progress-container">
+                    <div className="progress-bar">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
+                      />
+                    </div>
+                    <div className="progress-text">
+                      Synced {syncedCount} of {highlightCount} highlights
+                    </div>
+                  </div>
+                )}
+
+                {syncStatus === 'success' && (
+                  <div className="success-message">
+                    ✅ Successfully synced {highlightCount} highlights!
+                  </div>
+                )}
+
+                {errorMessage && (
+                  <div className="error-message">
+                    ❌ {errorMessage}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </main>
+
+      <div className="support-container">
+        <script src="https://storage.ko-fi.com/cdn/scripts/overlay-widget.js"></script>
+        <div id="kofi-widget-container"></div>
+      </div>
+
+      <footer className="footer">
+        <p>Made with ❤️ by Gogoi</p>
+      </footer>
     </div>
   );
 }
