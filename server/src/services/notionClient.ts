@@ -34,7 +34,7 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
 export interface Highlight {
   bookTitle: string;
   author: string;
-  highlight: string;
+  highlight: string[];
   location: string;
   date: Date;
 }
@@ -334,33 +334,57 @@ async function updateOrCreateBookPage(
       const isNewHighlight = existingPageId && 
         !existingHighlightLocations.has(highlight.location);
 
+      // Helper function to split text at sentence boundaries
+      const splitAtSentences = (text: string, maxLength: number): string[] => {
+        const sentences = text.split(/(?<=[.!?])\s+/);
+        const chunks: string[] = [];
+        let currentChunk = '';
+        
+        for (const sentence of sentences) {
+          if ((currentChunk + sentence).length <= maxLength) {
+            currentChunk += (currentChunk ? ' ' : '') + sentence;
+          } else {
+            if (currentChunk) chunks.push(currentChunk);
+            currentChunk = sentence;
+          }
+        }
+        
+        if (currentChunk) chunks.push(currentChunk);
+        return chunks;
+      };
+
+      // Split highlight into chunks of <= 2000 characters at sentence boundaries
+      const highlightText = highlight.highlight.join('\n\n');
+      const chunks = splitAtSentences(highlightText, 2000);
+      
+      // Create blocks for each chunk
+      const blocks = chunks.map((chunk, index) => ({
+        object: 'block' as const,
+        type: 'paragraph' as const,
+        paragraph: {
+          rich_text: [
+            {
+              type: 'text' as const,
+              text: {
+                content: chunk
+              }
+            },
+            ...(index === chunks.length - 1 ? [{
+              type: 'text' as const,
+              text: {
+                content: `\n📍 Location: ${highlight.location} | 📅 Added: ${highlight.date.toLocaleString()}`
+              },
+              annotations: {
+                color: 'gray' as const
+              }
+            }] : [])
+          ]
+        }
+      }));
+
       await notion.blocks.children.append({
         block_id: pageId,
-        children: [
-          {
-            object: 'block',
-            type: 'paragraph',
-            paragraph: {
-              rich_text: [
-                {
-                  type: 'text',
-                  text: {
-                    content: highlight.highlight
-                  }
-                },
-                {
-                  type: 'text',
-                  text: {
-                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${highlight.date.toLocaleString()}`
-                  },
-                  annotations: {
-                    color: 'gray'
-                  }
-                }
-              ]
-            }
-          }
-        ]
+        children: blocks
       });
     }
   } catch (error) {

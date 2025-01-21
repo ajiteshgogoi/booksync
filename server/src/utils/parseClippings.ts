@@ -1,14 +1,60 @@
 export interface Highlight {
   bookTitle: string;
   author: string;
-  highlight: string;
+  highlight: string[];
   location: string;
   date: Date;
 }
 
+// Split text into chunks of maxLength, ensuring chunks end at sentence boundaries
+function splitText(text: string, maxLength = 2000): string[] {
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  // Split text into sentences using common punctuation
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  
+  for (const sentence of sentences) {
+    // If adding this sentence would exceed maxLength, finalize current chunk
+    if (currentChunk.length + sentence.length + 1 > maxLength) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // If a single sentence is too long, split it at spaces
+      if (sentence.length > maxLength) {
+        let words = sentence.split(' ');
+        let currentLine = '';
+        
+        for (const word of words) {
+          if (currentLine.length + word.length + 1 > maxLength) {
+            chunks.push(currentLine.trim());
+            currentLine = '';
+          }
+          currentLine += (currentLine ? ' ' : '') + word;
+        }
+        
+        if (currentLine) {
+          chunks.push(currentLine.trim());
+        }
+      } else {
+        currentChunk = sentence;
+      }
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentence;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
+}
+
 export function parseClippings(fileContent: string): Highlight[] {
   console.log('Starting to parse clippings file');
-  // Split and filter entries
   const entries = fileContent
     .split('==========')
     .map(entry => entry.trim())
@@ -19,26 +65,15 @@ export function parseClippings(fileContent: string): Highlight[] {
   const highlights: Highlight[] = [];
   const highlightGroups = new Map<string, Highlight[]>();
 
-  // First pass: group highlights by book and page
   for (const entry of entries) {
     try {
-      // Handle both Windows (\r\n) and Unix (\n) line endings
       const lines = entry.split(/\r?\n/).map(line => line.trim());
       
-      // Skip entries that don't have at least 3 lines (title, metadata, content)
       if (lines.length < 3) {
         console.log('Skipping entry: insufficient lines', { lineCount: lines.length });
         continue;
       }
 
-      // Log the entry being processed
-      console.log('Processing entry:', {
-        titleLine: lines[0],
-        metadataLine: lines[1],
-        contentPreview: lines.slice(2).join('\n').substring(0, 50) + '...'
-      });
-
-      // Extract book title and author
       const titleAuthorMatch = lines[0].match(/^(.*?)\s*\((.*?)\)$/);
       if (!titleAuthorMatch) {
         console.log('Skipping entry: invalid title/author format', { line: lines[0] });
@@ -48,8 +83,6 @@ export function parseClippings(fileContent: string): Highlight[] {
       const bookTitle = titleAuthorMatch[1].trim();
       const author = titleAuthorMatch[2].trim();
 
-      // Extract highlight metadata
-      // Skip bookmarks
       if (lines[1].includes('Your Bookmark')) {
         console.log('Skipping entry: bookmark');
         continue;
@@ -70,23 +103,15 @@ export function parseClippings(fileContent: string): Highlight[] {
         continue;
       }
 
-      // Extract highlight content
-      const highlight = lines.slice(2).join('\n').trim();
-      if (!highlight) {
+      const highlightContent = lines.slice(2).join('\n').trim();
+      if (!highlightContent) {
         console.log('Skipping entry: empty highlight content');
         continue;
       }
 
-      // Log successful parse
-      console.log('Successfully parsed highlight:', {
-        bookTitle,
-        author,
-        location,
-        date: date.toISOString(),
-        contentPreview: highlight.substring(0, 50) + '...'
-      });
+      // Split highlight into chunks at sentence boundaries
+      const highlightChunks = splitText(highlightContent);
 
-      // Group highlights by book and page
       const groupKey = `${bookTitle}|${location.split('-')[0]}`;
       if (!highlightGroups.has(groupKey)) {
         highlightGroups.set(groupKey, []);
@@ -94,7 +119,7 @@ export function parseClippings(fileContent: string): Highlight[] {
       highlightGroups.get(groupKey)!.push({
         bookTitle,
         author,
-        highlight,
+        highlight: highlightChunks,
         location,
         date
       });
@@ -104,21 +129,16 @@ export function parseClippings(fileContent: string): Highlight[] {
     }
   }
 
-  // Second pass: process groups to find most complete highlights
   for (const group of highlightGroups.values()) {
-    // Sort by date (newest first)
     group.sort((a, b) => b.date.getTime() - a.date.getTime());
     
-    // Keep track of unique highlights
     const uniqueHighlights = new Set<string>();
     
     for (const highlight of group) {
-      // Only check for duplicates within the same sync session
-      // (highlights with identical content and location)
-      const isDuplicate = uniqueHighlights.has(`${highlight.highlight}|${highlight.location}`);
+      const isDuplicate = uniqueHighlights.has(`${highlight.highlight.join(' ')}|${highlight.location}`);
       
       if (!isDuplicate) {
-        uniqueHighlights.add(`${highlight.highlight}|${highlight.location}`);
+        uniqueHighlights.add(`${highlight.highlight.join(' ')}|${highlight.location}`);
         highlights.push(highlight);
       }
     }
