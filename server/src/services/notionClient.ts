@@ -1,6 +1,36 @@
 import { Client } from '@notionhq/client';
 import axios from 'axios';
 
+async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
+  try {
+    // First try OpenLibrary
+    const openLibraryResponse = await axios.get(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(title)}+${encodeURIComponent(author)}&limit=1`
+    );
+    
+    if (openLibraryResponse.data?.docs?.[0]?.cover_i) {
+      return `https://covers.openlibrary.org/b/id/${openLibraryResponse.data.docs[0].cover_i}-L.jpg`;
+    }
+
+    // Fallback to Google Books
+    const googleResponse = await axios.get(
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&maxResults=1`
+    );
+    
+    if (googleResponse.data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail) {
+      return googleResponse.data.items[0].volumeInfo.imageLinks.thumbnail.replace(
+        'zoom=1',
+        'zoom=2'
+      );
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error fetching book cover:', error);
+    return null;
+  }
+}
+
 export interface Highlight {
   bookTitle: string;
   author: string;
@@ -190,8 +220,16 @@ async function updateOrCreateBookPage(
 
     // Create or update the page
     if (existingPageId) {
+      const coverUrl = await getBookCoverUrl(book.title, book.author);
+      
       const updatedPage = await notion.pages.update({
         page_id: existingPageId,
+        icon: coverUrl ? {
+          type: 'external',
+          external: {
+            url: coverUrl
+          }
+        } : undefined,
         properties: {
           Title: {
             title: [{ text: { content: book.title } }]
@@ -212,8 +250,16 @@ async function updateOrCreateBookPage(
       });
       pageId = updatedPage.id;
     } else {
+      const coverUrl = await getBookCoverUrl(book.title, book.author);
+      
       const newPage = await notion.pages.create({
         parent: { database_id: databaseId },
+        icon: coverUrl ? {
+          type: 'external',
+          external: {
+            url: coverUrl
+          }
+        } : undefined,
         properties: {
           Title: {
             title: [{ text: { content: book.title } }]
@@ -241,27 +287,40 @@ async function updateOrCreateBookPage(
       page_size: 100
     });
 
-    // Create a set of existing highlight texts for duplicate checking
-    const existingHighlightLocations = new Set(
-      existingBlocks
-        .filter(block => 'type' in block && block.type === 'paragraph' && 'paragraph' in block)
-        .map(block => {
-          const text = (block as any).paragraph?.rich_text?.[0]?.text?.content || '';
-          const locationMatch = text.match(/📍 Location: ([\d-]+)/);
-          return locationMatch ? locationMatch[1] : '';
-        })
-        .filter(Boolean)
-    );
+      // Create a set of existing highlight texts for duplicate checking
+      const existingHighlightLocations = new Set(
+        existingBlocks
+          .filter(block => 'type' in block && block.type === 'paragraph' && 'paragraph' in block)
+          .map(block => {
+            const text = (block as any).paragraph?.rich_text?.[0]?.text?.content || '';
+            const locationMatch = text.match(/📍 Location: ([\d-]+)/);
+            return locationMatch ? locationMatch[1] : '';
+          })
+          .filter(Boolean)
+      );
 
-    // Add only new highlights, preserving existing ones
-    const processedHighlights = new Set();
-    for (const highlight of book.highlights) {
-      // Skip if this highlight already exists
-      if (processedHighlights.has(highlight.location) || 
-          existingHighlightLocations.has(highlight.location)) {
+      // Create a set of existing highlight texts for content comparison
+      const existingHighlightContents = new Set(
+        existingBlocks
+          .filter(block => 'type' in block && block.type === 'paragraph' && 'paragraph' in block)
+          .map(block => {
+            const text = (block as any).paragraph?.rich_text?.[0]?.text?.content || '';
+            return text.split('\n📍 Location:')[0]; // Get just the highlight text
+          })
+      );
+
+      // Add only new highlights, preserving existing ones
+      const processedHighlights = new Set();
+      for (const highlight of book.highlights) {
+        // Update progress for every highlight processed
         onProgress?.();
-        continue;
-      }
+        
+        // Skip if this highlight already exists by location or content
+        if (processedHighlights.has(highlight.location) || 
+            existingHighlightLocations.has(highlight.location) ||
+            existingHighlightContents.has(highlight.highlight)) {
+          continue;
+        }
       
       processedHighlights.add(highlight.location);
       
