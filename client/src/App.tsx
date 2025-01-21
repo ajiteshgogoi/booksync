@@ -130,7 +130,7 @@ function App() {
       <main className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold bg-gradient-to-r from-[#8b7355] to-[#3d2b1f] bg-clip-text text-transparent font-serif tracking-wide [text-shadow:0_2px_4px_rgba(0,0,0,0.3)] relative after:content-[''] after:absolute after:left-0 after:right-0 after:-bottom-2 after:h-[2px] after:bg-gradient-to-r after:from-[#8b7355] after:to-[#3d2b1f]">
-            📚 BookSync
+            <img src="/book.svg" alt="Books" className="inline-block w-14 h-14 mr-2 align-text-bottom" /> BookSync
           </h1>
           <p className="mt-2 text-lg text-[#5a463a] font-serif">Sync your Kindle highlights to Notion</p>
         </div>
