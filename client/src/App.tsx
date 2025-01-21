@@ -16,10 +16,22 @@ function App() {
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
-    if (selectedFile && selectedFile.name === 'My Clippings.txt') {
-      setFile(selectedFile);
-      setErrorMessage(null);
-      setSyncStatus('parsing');
+    if (!selectedFile) return;
+    
+    if (selectedFile.name !== 'My Clippings.txt') {
+      setFile(null);
+      setErrorMessage("Please upload 'My Clippings.txt' only.");
+      setSyncStatus('error');
+      return;
+    }
+    
+    // Clear any existing error state
+    setErrorMessage(null);
+    setSyncStatus('idle');
+    
+    setFile(selectedFile);
+    setErrorMessage(null);
+    setSyncStatus('parsing');
 
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -39,9 +51,6 @@ function App() {
         setSyncStatus('error');
         setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
       }
-    } else {
-      setErrorMessage('Please select "My Clippings.txt" from your Kindle');
-    }
   };
 
   const handleSync = async () => {
@@ -64,7 +73,14 @@ function App() {
       if (!response.ok) throw new Error(await response.text());
 
       const { jobId } = await response.json();
-      localStorage.setItem('syncJobId', jobId);
+      // Store file content as base64 string
+      const reader = new FileReader();
+      reader.onload = () => {
+        localStorage.setItem('syncJobId', jobId);
+        localStorage.setItem('syncFileData', reader.result as string);
+        localStorage.setItem('syncFileName', file.name);
+      };
+      reader.readAsDataURL(file);
       
       // Start polling for job status
       const pollStatus = async () => {
@@ -160,13 +176,7 @@ function App() {
       try {
         const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
         
-        // Check authentication
-        const authResponse = await fetch(`${apiBase}/auth/check`, {
-          credentials: 'include'
-        });
-        if (authResponse.ok) setIsAuthenticated(true);
-
-        // Check sync status if jobId exists
+        // First check sync status if jobId exists
         const jobId = localStorage.getItem('syncJobId');
         if (jobId) {
           const syncResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
@@ -178,10 +188,13 @@ function App() {
               setSyncStatus('syncing');
               setIsTimeout(true);
               setFile(new File([], 'My Clippings.txt')); // Restore file state
-              // Sync is still running
+              setIsAuthenticated(true); // Assume authenticated if sync is in progress
+              return; // Skip auth check since we're already syncing
             } else if (status.state === 'completed') {
               setSyncStatus('success');
               localStorage.removeItem('syncJobId');
+              localStorage.removeItem('syncFileData');
+              localStorage.removeItem('syncFileName');
             } else if (status.state === 'failed') {
               setSyncStatus('error');
               setErrorMessage(status.error || 'Sync failed');
@@ -189,6 +202,12 @@ function App() {
             }
           }
         }
+
+        // Check authentication only if no sync in progress
+        const authResponse = await fetch(`${apiBase}/auth/check`, {
+          credentials: 'include'
+        });
+        if (authResponse.ok) setIsAuthenticated(true);
       } catch (error) {
         console.error('Initialization check failed:', error);
       }
@@ -198,9 +217,8 @@ function App() {
     if (searchParams.get('auth') === 'success') {
       setIsAuthenticated(true);
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else {
-      checkAuthAndSync();
     }
+    checkAuthAndSync();
   }, []);
 
   useEffect(() => {

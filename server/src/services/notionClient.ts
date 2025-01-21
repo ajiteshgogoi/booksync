@@ -434,18 +434,23 @@ async function updateOrCreateBookPage(
         } : undefined,
         properties: {
           Title: {
-            title: [{ text: { content: book.title } }]
+            type: 'title',
+            title: [{ type: 'text', text: { content: book.title } }]
           },
           Author: {
-            rich_text: [{ text: { content: book.author } }]
+            type: 'rich_text',
+            rich_text: [{ type: 'text', text: { content: book.author } }]
           },
           Highlights: {
+            type: 'number',
             number: book.highlights.length
           },
           'Last Highlighted': {
+            type: 'date',
             date: { start: book.lastHighlighted.toISOString() }
           },
           'Last Synced': {
+            type: 'date',
             date: { start: new Date().toISOString() }
           }
         }
