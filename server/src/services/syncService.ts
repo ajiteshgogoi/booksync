@@ -76,25 +76,39 @@ export async function processSyncJob(
 
       // Sync highlights to Notion
       if (highlightsToSync.length > 0) {
-        await updateNotionDatabase(highlightsToSync[0].userId, highlightsToSync);
-        
-        // Cache processed highlights
-        for (const highlight of highlightsToSync) {
-          await cacheHighlight(highlight.userId, highlight.bookTitle, highlight);
-          processed++;
-          
-          // Update progress
-          const progress = Math.round((processed / total) * 100);
-          await setJobStatus(jobId, {
-            state: 'processing',
-            progress,
-            message: `Processing ${processed}/${total} highlights`
-          });
-          
-          // Call progress callback if provided
-          if (onProgress) {
-            await onProgress(progress, `Processing ${processed}/${total} highlights`);
+        try {
+          // Verify all highlights have the same userId
+          const userId = highlightsToSync[0].userId;
+          if (!highlightsToSync.every(h => h.userId === userId)) {
+            throw new Error('Batch contains highlights from multiple users');
           }
+          await updateNotionDatabase(userId, highlightsToSync);
+          
+          // Only cache highlights after successful Notion update
+          for (const highlight of highlightsToSync) {
+            await cacheHighlight(highlight.userId, highlight.bookTitle, highlight);
+            processed++;
+            
+            // Update progress
+            const progress = Math.round((processed / total) * 100);
+            await setJobStatus(jobId, {
+              state: 'processing',
+              progress,
+              message: `Processing ${processed}/${total} highlights`
+            });
+            
+            // Call progress callback if provided
+            if (onProgress) {
+              await onProgress(progress, `Processing ${processed}/${total} highlights`);
+            }
+          }
+        } catch (error) {
+          console.error('Error syncing highlights to Notion:', error);
+          await setJobStatus(jobId, {
+            state: 'failed',
+            message: 'Failed to sync highlights to Notion'
+          });
+          throw error;
         }
       }
 
