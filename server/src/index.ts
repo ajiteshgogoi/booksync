@@ -10,7 +10,7 @@ interface User {
 interface CustomRequest extends Request {
   user?: User;
 }
-import { processSyncJob, queueSyncJob } from './services/syncService';
+import { processSyncJob, queueSyncJob, getSyncStatus } from './services/syncService';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
 import { parseClippings } from './utils/parseClippings';
 import axios from 'axios';
@@ -147,6 +147,23 @@ app.post(`${apiBasePath}/auth/refresh`, async (req, res) => {
   }
 });
 
+// Job status endpoint
+app.get(`${apiBasePath}/sync/status/:jobId`, async (req, res) => {
+  try {
+    const jobId = req.params.jobId;
+    const status = await getSyncStatus(jobId);
+    
+    if (!status) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    
+    res.json(status);
+  } catch (error) {
+    console.error('Status check error:', error);
+    res.status(500).json({ error: 'Failed to check job status' });
+  }
+});
+
 app.post(`${apiBasePath}/auth/disconnect`, (req, res) => {
   try {
     clearAuth();
@@ -185,8 +202,12 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     const userId = req.user?.id || 'default-user-id';
     const jobId = await queueSyncJob(userId, fileContent);
-    await processSyncJob(jobId);
     
+    // Return job ID immediately
+    res.write(JSON.stringify({ 
+      type: 'job_started',
+      jobId
+    }));
     res.end();
   } catch (error) {
     console.error('Sync error:', error);
