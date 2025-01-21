@@ -133,7 +133,8 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Kindle → Notion Sync</h1>
+      <h1>BookSync</h1>
+      <p className="subtitle">Kindle Highlights → Notion</p>
       
       {!isAuthenticated ? (
         <div className="auth-section">

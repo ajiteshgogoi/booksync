@@ -1,6 +1,6 @@
-# Libsync
+# BookSync
 
-A web application to sync your Kindle highlights to Notion. It automatically organizes your highlights by book, preserves metadata like locations and dates, and prevents duplicates.
+A clean, simple web application to sync your Kindle highlights to Notion. BookSync automatically organizes your highlights by book, preserves metadata like locations and dates, and prevents duplicates.
 
 ## Features
 
