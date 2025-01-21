@@ -105,7 +105,7 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
   const storedState = req.cookies.oauth_state;
 
   if (!code || !state || state !== storedState) {
-    return res.redirect(`${process.env.CLIENT_URL}?auth=error`);
+    return res.status(400).json({ error: 'Invalid OAuth state' });
   }
 
   try {
