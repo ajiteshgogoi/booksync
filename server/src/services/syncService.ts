@@ -74,10 +74,16 @@ export async function processSyncJob(
     console.debug(`Retrieving highlights from queue for ${jobId}`);
     const highlights = await getHighlightsFromQueue(jobId);
     console.debug(`Retrieved ${highlights.length} highlights for processing`);
+
     const total = highlights.length;
     let processed = 0;
 
     for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
+      if (!highlights[i]?.userId) {
+        console.error('Missing userId in highlight:', highlights[i]);
+        continue;
+      }
+
       if (!await checkRateLimit(highlights[i].userId)) {
         throw new Error('Rate limit exceeded');
       }
@@ -98,7 +104,7 @@ export async function processSyncJob(
           console.debug(`Processing batch of ${highlightsToSync.length} highlights`);
           
           // Verify all highlights have required fields
-          const invalidHighlights = highlightsToSync.filter(h =>
+          const invalidHighlights = highlightsToSync.filter(h => 
             !h.userId || !h.bookTitle || !h.highlight || !h.location || !h.date
           );
           
@@ -173,7 +179,7 @@ export async function getSyncStatus(jobId: string): Promise<JobStatus | null> {
 
 async function getHighlightsFromQueue(jobId: string) {
   const redis = await getRedis();
-  const highlights: string[] = [];
+  const highlights = [];
   let cursor = 0;
   
   try {
@@ -184,53 +190,35 @@ async function getHighlightsFromQueue(jobId: string) {
     const allKeys = await redis.keys(pattern);
     console.debug(`Found ${allKeys.length} keys matching pattern:`, allKeys);
     
-    do {
-      const [newCursor, chunk] = await redis.scan(
-        cursor,
-        { match: pattern, count: 100 }
-      );
+    // Get all values at once instead of using scan
+    if (allKeys.length > 0) {
+      const batch = await redis.mget<(string | Record<string, any> | null)[]>(...allKeys);
+      console.debug('Raw batch values:', batch);
       
-      console.debug(`Found ${chunk.length} highlight keys for job ${jobId}`);
-      
-      if (chunk.length > 0) {
-        console.debug('Processing chunk keys:', chunk);
-        const batch = await redis.mget<(string | null)[]>(...chunk);
-        console.debug('Raw batch values:', batch);
-        
-        for (const [index, item] of batch.entries()) {
-          if (item !== null) {
-            try {
-              // Try parsing to validate JSON before adding
-              const parsed = JSON.parse(item);
-              console.debug(`Valid JSON at index ${index}:`, parsed);
-              highlights.push(item);
-            } catch (error) {
-              console.error(`Invalid JSON at index ${index}:`, item);
+      for (const [index, item] of batch.entries()) {
+        if (item !== null) {
+          try {
+            // Handle both string and object responses from Redis
+            const highlight = typeof item === 'string' ? JSON.parse(item) : item;
+            if (typeof highlight === 'object' && highlight.bookTitle && highlight.userId) {
+              console.debug(`Valid highlight at index ${index}`);
+              highlights.push(highlight);
+            } else {
+              console.error(`Invalid highlight structure at index ${index}:`, highlight);
             }
-          } else {
-            console.debug(`Null value at index ${index}`);
+          } catch (error) {
+            console.error(`Error processing highlight at index ${index}:`, error, item);
           }
+        } else {
+          console.debug(`Null value at index ${index}`);
         }
       }
-      
-      cursor = parseInt(newCursor);
-    } while (cursor !== 0);
+    }
 
-    console.debug(`Total highlights retrieved: ${highlights.length}`);
-
-    // Convert highlights back to objects, with error handling for each item
-    return highlights.map((h, index) => {
-      try {
-        const parsed = JSON.parse(h);
-        console.debug(`Successfully parsed highlight ${index + 1}/${highlights.length}`);
-        return parsed;
-      } catch (error) {
-        console.error('Failed to parse highlight:', h);
-        throw new Error(`Failed to parse highlight data at index ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    });
+    console.debug(`Total valid highlights retrieved: ${highlights.length}`);
+    return highlights;
   } catch (error) {
     console.error('Error retrieving highlights from queue:', error);
-    throw new Error(`Failed to retrieve highlights: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw error;
   }
 }

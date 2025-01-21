@@ -181,17 +181,12 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req, res) => {
   }
 });
 
-// Sync endpoint for uploading MyClippings.txt with progress streaming
+// Sync endpoint for uploading MyClippings.txt
 app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-
-    // Set headers for streaming response
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
 
     if (!Buffer.isBuffer(req.file.buffer)) {
       throw new Error('Invalid file format');
@@ -210,19 +205,18 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     const userId = req.user?.id || 'default-user-id';
     const jobId = await queueSyncJob(userId, fileContent);
     
-    // Return job ID immediately
-    res.write(JSON.stringify({ 
-      type: 'job_started',
+    // Return success with job ID
+    res.json({
+      success: true,
+      message: 'Sync job started. Your highlights will be processed in the background.',
       jobId
-    }));
-    res.end();
+    });
   } catch (error) {
     console.error('Sync error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to sync highlights' });
-    } else {
-      res.end(JSON.stringify({ type: 'error', message: 'Failed to sync highlights' }));
-    }
+    res.status(500).json({
+      error: 'Failed to start sync job',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

@@ -303,20 +303,29 @@ export async function updateNotionDatabase(
 
     // Group highlights by book
     const books = highlights.reduce<Record<string, NotionBookPage>>((acc, highlight) => {
+      // Ensure highlight.date is a Date object
+      const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
+      
       if (!acc[highlight.bookTitle]) {
         acc[highlight.bookTitle] = {
           title: highlight.bookTitle,
           author: highlight.author,
           highlights: [],
-          lastHighlighted: highlight.date,
+          lastHighlighted: highlightDate,
           lastSynced: new Date()
         };
       }
-      acc[highlight.bookTitle].highlights.push(highlight);
+
+      // Create a new highlight object with the proper Date
+      const processedHighlight = {
+        ...highlight,
+        date: highlightDate
+      };
+      acc[highlight.bookTitle].highlights.push(processedHighlight);
       
       // Update lastHighlighted if this highlight is newer
-      if (highlight.date > acc[highlight.bookTitle].lastHighlighted) {
-        acc[highlight.bookTitle].lastHighlighted = highlight.date;
+      if (highlightDate > acc[highlight.bookTitle].lastHighlighted) {
+        acc[highlight.bookTitle].lastHighlighted = highlightDate;
       }
       
       return acc;
@@ -514,7 +523,7 @@ async function updateOrCreateBookPage(
                 ...(index === chunks.length - 1 ? [{
                   type: 'text' as const,
                   text: {
-                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${highlight.date.toLocaleString()}`
+                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${(highlight.date instanceof Date ? highlight.date : new Date(highlight.date)).toLocaleString()}`
                   },
                   annotations: {
                     color: 'gray' as const
