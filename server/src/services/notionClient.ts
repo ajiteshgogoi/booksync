@@ -193,8 +193,14 @@ export async function createOAuthToken(code: string) {
 }
 
 export async function setOAuthToken(token: typeof oauthToken) {
-  if (!token) return;
-  
+  if (!token || 
+      !token.access_token || 
+      !token.refresh_token || 
+      !token.workspace_id || 
+      !token.expires_in) {
+    throw new Error('Invalid OAuth token provided');
+  }
+
   // Store token in Redis with 1 hour less than expiry to allow for refresh
   await redis.set(
     `notion:oauth:${token.workspace_id}`,
