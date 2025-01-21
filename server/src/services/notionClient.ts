@@ -253,23 +253,21 @@ async function updateOrCreateBookPage(
         .filter(Boolean)
     );
 
-    // Clear existing content if this is an update
-    if (existingPageId) {
-      for (const block of existingBlocks) {
-        await notion.blocks.delete({
-          block_id: block.id
-        });
-      }
-    }
-
-    // Add highlights, skipping duplicates and reporting progress
+    // Add only new highlights, preserving existing ones
     const processedHighlights = new Set();
     for (const highlight of book.highlights) {
-      if (processedHighlights.has(highlight.location) || existingHighlightLocations.has(highlight.location)) {
-        onProgress?.(); // Call progress even for skipped duplicates
+      // Skip if this highlight already exists
+      if (processedHighlights.has(highlight.location) || 
+          existingHighlightLocations.has(highlight.location)) {
+        onProgress?.();
         continue;
       }
+      
       processedHighlights.add(highlight.location);
+      
+      // Check if this is a new highlight for an existing book
+      const isNewHighlight = existingPageId && 
+        !existingHighlightLocations.has(highlight.location);
 
       await notion.blocks.children.append({
         block_id: pageId,

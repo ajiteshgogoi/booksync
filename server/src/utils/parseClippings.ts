@@ -113,18 +113,12 @@ export function parseClippings(fileContent: string): Highlight[] {
     const uniqueHighlights = new Set<string>();
     
     for (const highlight of group) {
-      // Check if this highlight is a subset of any existing highlight
-      let isSubset = false;
-      for (const existing of uniqueHighlights) {
-        if (existing.includes(highlight.highlight)) {
-          isSubset = true;
-          break;
-        }
-      }
+      // Only check for duplicates within the same sync session
+      // (highlights with identical content and location)
+      const isDuplicate = uniqueHighlights.has(`${highlight.highlight}|${highlight.location}`);
       
-      // If not a subset, add to unique highlights
-      if (!isSubset) {
-        uniqueHighlights.add(highlight.highlight);
+      if (!isDuplicate) {
+        uniqueHighlights.add(`${highlight.highlight}|${highlight.location}`);
         highlights.push(highlight);
       }
     }
