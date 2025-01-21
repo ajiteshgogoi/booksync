@@ -106,7 +106,9 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
 
   if (error === 'access_denied') {
     // User cancelled the OAuth flow
-    return res.redirect(`${process.env.CLIENT_URL}?auth=cancelled`);
+    const redirectUrl = new URL(process.env.CLIENT_URL || 'http://localhost:5173');
+    redirectUrl.searchParams.set('auth', 'cancelled');
+    return res.redirect(redirectUrl.toString());
   }
 
   if (!code || !state || state !== storedState) {
