@@ -169,8 +169,8 @@ function App() {
         ) : (
           <>
             <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2] mb-4">
-              <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
-              <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
+              <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif text-center">Sync Your Highlights</h2>
+              <p className="mt-2 text-[#5a463a] font-serif text-center">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
               <div className="mt-4">
                 <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">
@@ -188,7 +188,7 @@ function App() {
               {file && (
                 <>
                   {highlightCount > 0 && (
-                    <div className="mt-4 text-gray-700">
+                    <div className="mt-4 text-gray-700 text-center">
                       Found {highlightCount} highlights
                     </div>
                   )}
