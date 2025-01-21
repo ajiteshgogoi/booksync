@@ -39,6 +39,58 @@ const RATE_LIMIT_MAX = 10; // Max requests per window
 const BOOK_TTL = 60 * 60 * 24; // 24 hours
 const HIGHLIGHT_TTL = 60 * 60 * 24 * 7; // 1 week
 const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
+const TOKEN_TTL = 60 * 60 * 2; // 2 hours
+
+// Token management
+export async function storeOAuthToken(userId: string, token: string): Promise<void> {
+  try {
+    await redis.set(`oauth:${userId}`, token, {
+      ex: TOKEN_TTL
+    });
+    logger.debug('OAuth token stored', { userId });
+  } catch (error) {
+    logger.error('Failed to store OAuth token', { userId, error });
+    throw error;
+  }
+}
+
+export async function getOAuthToken(userId: string): Promise<string | null> {
+  try {
+    const token = await redis.get<string>(`oauth:${userId}`);
+    if (token) {
+      logger.debug('Retrieved OAuth token', { userId });
+      return token;
+    }
+    logger.warn('No OAuth token found', { userId });
+    return null;
+  } catch (error) {
+    logger.error('Failed to get OAuth token', { userId, error });
+    throw error;
+  }
+}
+
+export async function refreshOAuthToken(userId: string, token: string): Promise<void> {
+  try {
+    await redis.set(`oauth:${userId}`, token, {
+      ex: TOKEN_TTL,
+      keepTtl: undefined
+    });
+    logger.debug('OAuth token refreshed', { userId });
+  } catch (error) {
+    logger.error('Failed to refresh OAuth token', { userId, error });
+    throw error;
+  }
+}
+
+export async function deleteOAuthToken(userId: string): Promise<void> {
+  try {
+    await redis.del(`oauth:${userId}`);
+    logger.debug('OAuth token deleted', { userId });
+  } catch (error) {
+    logger.error('Failed to delete OAuth token', { userId, error });
+    throw error;
+  }
+}
 
 // Queue functions
 export async function addJobToQueue(jobId: string): Promise<void> {
