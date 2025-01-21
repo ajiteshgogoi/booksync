@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis';
+import Redis from 'ioredis';
 
 // Simple console logger implementation
 const logger = {
@@ -13,25 +13,21 @@ let _redis: Redis | null = null;
 
 async function initializeRedis(): Promise<Redis> {
   try {
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    if (!process.env.REDIS_URL) {
       throw new Error('Missing Redis configuration in environment variables');
     }
 
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
+    const redis = new Redis(process.env.REDIS_URL);
 
     // Debug log environment variables
     logger.debug('Redis environment variables', {
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN ? '***' : 'undefined'
+      url: process.env.REDIS_URL
     });
 
     // Test connection
     await redis.ping();
     logger.info('Redis client initialized successfully', {
-      url: process.env.UPSTASH_REDIS_REST_URL
+      url: process.env.REDIS_URL
     });
     return redis;
   } catch (error) {
@@ -76,9 +72,7 @@ const TOKEN_TTL = 60 * 60 * 2; // 2 hours
 export async function storeOAuthToken(token: string, workspaceId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`oauth:${workspaceId}`, token, {
-      ex: TOKEN_TTL
-    });
+    await redis.set(`oauth:${workspaceId}`, token, 'EX', TOKEN_TTL);
     logger.debug('OAuth token stored', { workspaceId });
   } catch (error) {
     logger.error('Failed to store OAuth token', { workspaceId, error });
@@ -94,7 +88,7 @@ export async function getOAuthToken(): Promise<string | null> {
       logger.warn('No OAuth token found');
       return null;
     }
-    const token = await redis.get<string>(keys[0]);
+    const token = await redis.get(keys[0]);
     if (token) {
       logger.debug('Retrieved OAuth token');
       return token;
@@ -109,10 +103,7 @@ export async function getOAuthToken(): Promise<string | null> {
 export async function refreshOAuthToken(token: string, workspaceId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`oauth:${workspaceId}`, token, {
-      ex: TOKEN_TTL,
-      keepTtl: undefined
-    });
+    await redis.set(`oauth:${workspaceId}`, token, 'EX', TOKEN_TTL);
     logger.debug('OAuth token refreshed', { workspaceId });
   } catch (error) {
     logger.error('Failed to refresh OAuth token', { workspaceId, error });
@@ -150,7 +141,7 @@ export async function addJobToQueue(jobId: string): Promise<void> {
 export async function getNextJob(): Promise<string | null> {
   try {
     const redis = await getRedis();
-    const jobId = await redis.lpop<string>(QUEUE_NAME);
+    const jobId = await redis.lpop(QUEUE_NAME);
     if (jobId) {
       logger.debug('Retrieved next job from queue', { jobId });
     }
@@ -164,9 +155,7 @@ export async function getNextJob(): Promise<string | null> {
 export async function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`job:${jobId}:status`, JSON.stringify(status), {
-      ex: JOB_TTL
-    });
+    await redis.set(`job:${jobId}:status`, JSON.stringify(status), 'EX', JOB_TTL);
     logger.debug('Job status updated', { jobId, status });
   } catch (error) {
     logger.error('Failed to set job status', { jobId, error });
@@ -177,11 +166,10 @@ export async function setJobStatus(jobId: string, status: JobStatus): Promise<vo
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   try {
     const redis = await getRedis();
-    const status = await redis.get<JobStatus | string>(`job:${jobId}:status`);
+    const status = await redis.get(`job:${jobId}:status`);
     if (status) {
       logger.debug('Retrieved job status', { jobId });
-      // Handle both string and already-parsed object cases
-      return typeof status === 'string' ? JSON.parse(status) : status;
+      return JSON.parse(status);
     }
     return null;
   } catch (error) {
@@ -241,9 +229,7 @@ export async function cacheHighlight(userId: string, title: string, highlight: a
   try {
     const redis = await getRedis();
     const key = `highlight:${userId}:${title}:${highlight.location}`;
-    await redis.set(key, JSON.stringify(highlight), {
-      ex: HIGHLIGHT_TTL
-    });
+    await redis.set(key, JSON.stringify(highlight), 'EX', HIGHLIGHT_TTL);
     logger.debug('Highlight cached', { 
       userId, 
       title, 
@@ -263,7 +249,7 @@ export async function cacheHighlight(userId: string, title: string, highlight: a
 export async function getCachedBookPageId(userId: string, title: string): Promise<string | null> {
   try {
     const redis = await getRedis();
-    const pageId = await redis.get<string>(`page_id:${userId}:${title}`);
+    const pageId = await redis.get(`page_id:${userId}:${title}`);
     logger.debug('Retrieved cached book page ID', { 
       userId, 
       title,
@@ -283,9 +269,7 @@ export async function getCachedBookPageId(userId: string, title: string): Promis
 export async function cacheBookPageId(userId: string, title: string, pageId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`page_id:${userId}:${title}`, pageId, {
-      ex: PAGE_ID_TTL
-    });
+    await redis.set(`page_id:${userId}:${title}`, pageId, 'EX', PAGE_ID_TTL);
     logger.debug('Book page ID cached', { 
       userId, 
       title 
@@ -304,8 +288,8 @@ export async function cacheBookPageId(userId: string, title: string, pageId: str
 export async function getCachedBook(userId: string, title: string): Promise<any> {
   try {
     const redis = await getRedis();
-    const cached = await redis.get<string>(`book:${userId}:${title}`);
-    if (typeof cached === 'string') {
+    const cached = await redis.get(`book:${userId}:${title}`);
+    if (cached) {
       logger.debug('Retrieved cached book', { 
         userId, 
         title 
@@ -326,9 +310,7 @@ export async function getCachedBook(userId: string, title: string): Promise<any>
 export async function cacheBook(userId: string, book: any): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`book:${userId}:${book.title}`, JSON.stringify(book), {
-      ex: BOOK_TTL
-    });
+    await redis.set(`book:${userId}:${book.title}`, JSON.stringify(book), 'EX', BOOK_TTL);
     logger.debug('Book cached', { 
       userId, 
       title: book.title 
@@ -390,24 +372,24 @@ export async function getRedisMetrics(): Promise<{
 }> {
   try {
     const redis = await getRedis();
-    const metrics = await redis.mget(
+    const [hits, misses, errors, operations] = await redis.mget(
       'stats:cache:hits',
       'stats:cache:misses',
       'stats:errors',
       'stats:operations'
-    ) as string[];
+    );
     
-    const hits = parseInt(metrics[0] ?? '0');
-    const misses = parseInt(metrics[1] ?? '0');
-    const errors = parseInt(metrics[2] ?? '0');
-    const operations = parseInt(metrics[3] ?? '0');
+    const hitsNum = parseInt(hits ?? '0');
+    const missesNum = parseInt(misses ?? '0');
+    const errorsNum = parseInt(errors ?? '0');
+    const operationsNum = parseInt(operations ?? '0');
     
-    const hitRate = hits + misses > 0 ? hits / (hits + misses) : 0;
+    const hitRate = hitsNum + missesNum > 0 ? hitsNum / (hitsNum + missesNum) : 0;
     
     return {
       cacheHitRate: hitRate,
-      errorRate: errors / Math.max(operations, 1),
-      operations
+      errorRate: errorsNum / Math.max(operationsNum, 1),
+      operations: operationsNum
     };
   } catch (error) {
     logger.error('Failed to get Redis metrics', { error });

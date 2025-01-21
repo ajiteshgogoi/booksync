@@ -38,7 +38,7 @@ export async function queueSyncJob(
     const key = `highlights:${jobId}:${i}`;
     const value = JSON.stringify(highlightWithUser);
     console.debug(`Storing highlight ${i + 1}/${highlights.length}:`, { key, value });
-    await redis.set(key, value, { ex: JOB_TTL });
+    await redis.set(key, value, 'EX', JOB_TTL);
     
     // Verify storage
     const stored = await redis.get(key);
@@ -192,7 +192,7 @@ async function getHighlightsFromQueue(jobId: string) {
     
     // Get all values at once instead of using scan
     if (allKeys.length > 0) {
-      const batch = await redis.mget<(string | Record<string, any> | null)[]>(...allKeys);
+      const batch = await redis.mget(...allKeys);
       console.debug('Raw batch values:', batch);
       
       for (const [index, item] of batch.entries()) {

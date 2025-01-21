@@ -191,7 +191,7 @@ export async function createOAuthToken(code: string) {
     await redis.set(
       `oauth:${token.workspace_id}`,
       JSON.stringify(token),
-      { ex: expiration }
+      'EX', expiration
     );
     console.debug('OAuth token stored successfully');
     
