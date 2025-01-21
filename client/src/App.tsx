@@ -15,6 +15,8 @@ function App() {
   const [syncedCount, setSyncedCount] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [currentStep, setCurrentStep] = useState<string>('Waiting to start');
+  const [isTimeout, setIsTimeout] = useState(false);
 
   const calculateTimeRemaining = (progress: number) => {
     if (!startTime || progress === 0) return null;
@@ -37,6 +39,7 @@ function App() {
       setFile(selectedFile);
       setErrorMessage(null);
       setSyncStatus('parsing');
+      setCurrentStep('Parsing your highlights...');
 
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -52,9 +55,11 @@ function App() {
 
         setHighlightCount(data.count);
         setSyncStatus('idle');
+        setCurrentStep('Ready to sync');
       } catch (error) {
         setSyncStatus('error');
         setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
+        setCurrentStep('Error occurred');
       }
     } else {
       setErrorMessage('Please select "My Clippings.txt" from your Kindle');
@@ -68,6 +73,8 @@ function App() {
     setErrorMessage(null);
     setSyncedCount(0);
     setStartTime(Date.now());
+    setIsTimeout(false);
+    setCurrentStep('Starting sync...');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -97,11 +104,13 @@ function App() {
           if (status.progress) {
             setSyncedCount(status.progress);
             setTimeRemaining(calculateTimeRemaining(status.progress));
+            setCurrentStep(status.message || 'Syncing highlights...');
           }
           
           if (status.state === 'completed') {
             setSyncStatus('success');
             setTimeRemaining(null);
+            setCurrentStep('Sync completed successfully');
             return true;
           }
           
@@ -115,6 +124,7 @@ function App() {
           setSyncStatus('error');
           setErrorMessage(error instanceof Error ? error.message : 'Failed to check sync status');
           setTimeRemaining(null);
+          setCurrentStep('Error occurred');
           return true;
         }
       };
@@ -129,12 +139,23 @@ function App() {
         }
       }, 1000);
 
+      // Set timeout check
+      const timeout = setTimeout(() => {
+        setIsTimeout(true);
+        setCurrentStep('Sync is taking longer than expected...');
+        setErrorMessage('Sync is still running. You can safely close this page and check back later.');
+      }, 60000);
+
       // Cleanup interval on component unmount
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
       setTimeRemaining(null);
+      setCurrentStep('Error occurred');
     }
   };
 
@@ -163,6 +184,7 @@ function App() {
       setFile(null);
       setErrorMessage(null);
       setSyncStatus('idle');
+      setCurrentStep('Waiting to start');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
     }
@@ -262,22 +284,38 @@ function App() {
                     <div className="mt-4">
                       <div className="w-full bg-[#e0d6c2] rounded-full h-2 overflow-hidden">
                         <div
-                          className="bg-[#8b7355] h-full"
+                          className="bg-[#8b7355] h-full transition-all duration-300"
                           style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
                         />
                       </div>
-                      <div className="mt-2 text-sm text-[#5a463a] font-serif">
-                        Synced {syncedCount} of {highlightCount} highlights
-                        {timeRemaining && (
-                          <span className="ml-2">• {timeRemaining}</span>
+                      <div className="mt-2 text-sm text-[#5a463a] font-serif space-y-1">
+                        <div className="font-medium">{currentStep}</div>
+                        <div>
+                          Synced {syncedCount} of {highlightCount} highlights
+                          {timeRemaining && (
+                            <span className="ml-2">• {timeRemaining}</span>
+                          )}
+                        </div>
+                        {isTimeout && (
+                          <div className="text-[#8b7355]">
+                            ⏳ Sync is still running in the background. You can safely close this page.
+                          </div>
                         )}
                       </div>
                     </div>
                   )}
 
                   {syncStatus === 'success' && (
-                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
-                      ✅ Successfully synced {highlightCount} highlights!
+                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif space-y-2">
+                      <div>✅ Successfully synced {highlightCount} highlights!</div>
+                      <div className="text-sm">
+                        Next steps:
+                        <ul className="list-disc list-inside mt-1">
+                          <li>Check your Notion database</li>
+                          <li>Organize your highlights</li>
+                          <li>Create new highlights and sync again</li>
+                        </ul>
+                      </div>
                     </div>
                   )}
 
