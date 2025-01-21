@@ -156,7 +156,7 @@ function App() {
     // Clear URL params after a longer delay to allow message display
     setTimeout(() => {
       window.history.replaceState({}, document.title, window.location.pathname);
-    }, 10000); // 10 second delay
+    }, 30000); // 30 second delay
     
     // Only do initial auth check if we're not showing an auth error
     if (!authError) {
@@ -252,13 +252,13 @@ function App() {
                     </div>
                   )}
 
-                  {errorMessage && (
+                  {(errorMessage || authStatus === 'cancelled') && (
                     <div className={`mt-4 p-4 rounded-md font-serif ${
                       authStatus === 'cancelled'
                         ? 'bg-[#fff3e0] text-[#e65100] border border-[#ffcc80]' 
                         : 'bg-[#ffebee] text-[#c62828]'
                     }`}>
-                      ❌ {errorMessage}
+                      ❌ {errorMessage || 'Connection to Notion was cancelled. Please try again if you want to connect.'}
                     </div>
                   )}
 
