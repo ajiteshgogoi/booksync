@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
 
-type SyncStatus = 'idle' | 'parsing' | 'syncing' | 'success' | 'error';
+type SyncStatus = 'idle' | 'parsing' | 'syncing' | 'success' | 'error' | 'queued';
 
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
@@ -63,25 +63,53 @@ function App() {
 
       if (!response.ok) throw new Error(await response.text());
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = new TextDecoder().decode(value);
+      const { jobId } = await response.json();
+      
+      // Start polling for job status
+      const pollStatus = async () => {
         try {
-          const data = JSON.parse(text);
-          if (data.type === 'progress') {
-            setSyncedCount(data.count);
+          const statusResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
+            credentials: 'include'
+          });
+          
+          if (!statusResponse.ok) throw new Error('Failed to check status');
+          
+          const status = await statusResponse.json();
+          
+          if (status.progress) {
+            setSyncedCount(status.progress);
           }
-        } catch (e) {
-          console.error('Failed to parse progress:', e);
+          
+          if (status.state === 'completed') {
+            setSyncStatus('success');
+            return true;
+          }
+          
+          if (status.state === 'failed') {
+            throw new Error(status.error || 'Sync failed');
+          }
+          
+          // Continue polling
+          return false;
+        } catch (error) {
+          setSyncStatus('error');
+          setErrorMessage(error instanceof Error ? error.message : 'Failed to check sync status');
+          return true;
         }
-      }
+      };
 
-      setSyncStatus('success');
+      // Initial poll
+      if (await pollStatus()) return;
+
+      // Set up interval polling
+      const interval = setInterval(async () => {
+        if (await pollStatus()) {
+          clearInterval(interval);
+        }
+      }, 1000);
+
+      // Cleanup interval on component unmount
+      return () => clearInterval(interval);
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
