@@ -196,9 +196,13 @@ export async function setOAuthToken(token: typeof oauthToken) {
   if (!token || 
       !token.access_token || 
       !token.refresh_token || 
-      !token.workspace_id || 
-      !token.expires_in) {
-    throw new Error('Invalid OAuth token provided');
+      !token.workspace_id) {
+    throw new Error('Invalid OAuth token provided - missing required fields');
+  }
+  
+  // Set default expires_in if not provided
+  if (!token.expires_in) {
+    token.expires_in = 3600; // 1 hour default
   }
 
   // Store token in Redis with 1 hour less than expiry to allow for refresh
