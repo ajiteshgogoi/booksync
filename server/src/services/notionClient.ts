@@ -178,6 +178,7 @@ export function clearAuth() {
 }
 
 export async function updateNotionDatabase(
+  userId: string,
   highlights: Highlight[],
   onProgress?: () => void
 ): Promise<void> {
@@ -205,7 +206,7 @@ export async function updateNotionDatabase(
 
     // Update or create pages for each book
     for (const book of Object.values(books)) {
-      await updateOrCreateBookPage(book, onProgress);
+      await updateOrCreateBookPage(userId, book, onProgress);
     }
   } catch (error) {
     console.error('Error updating Notion database:', error);
@@ -214,6 +215,7 @@ export async function updateNotionDatabase(
 }
 
 async function updateOrCreateBookPage(
+  userId: string,
   book: NotionBookPage,
   onProgress?: () => void
 ) {
@@ -221,13 +223,13 @@ async function updateOrCreateBookPage(
   
   try {
     // Check cache first
-    const cachedBook = await getCachedBook(book.title);
+    const cachedBook = await getCachedBook(userId, book.title);
     if (cachedBook) {
       return cachedBook;
     }
 
     // Check rate limit before making API calls
-    if (!(await checkRateLimit())) {
+    if (!(await checkRateLimit(userId))) {
       throw new Error('Rate limit exceeded');
     }
 
@@ -409,11 +411,11 @@ async function updateOrCreateBookPage(
       });
 
       // Cache the highlight after successful creation
-      await cacheHighlight(book.title, highlight);
+      await cacheHighlight(userId, book.title, highlight);
     }
 
     // Cache the entire book after all highlights are processed
-    await cacheBook(book);
+    await cacheBook(userId, book);
   } catch (error) {
     console.error('Error updating Notion page:', error);
     throw error;

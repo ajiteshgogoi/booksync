@@ -15,10 +15,10 @@ const BOOK_TTL = 60 * 60 * 24; // 24 hours
 const HIGHLIGHT_TTL = 60 * 60 * 24 * 7; // 1 week
 const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
 
-export async function checkRateLimit(): Promise<boolean> {
+export async function checkRateLimit(userId: string): Promise<boolean> {
   try {
     const currentTime = Math.floor(Date.now() / 1000);
-    const key = `rate_limit:${currentTime}`;
+    const key = `rate_limit:${userId}:${currentTime}`;
     
     const requests = await redisClient.incr(key);
     if (requests === 1) {
@@ -32,9 +32,9 @@ export async function checkRateLimit(): Promise<boolean> {
   }
 }
 
-export async function getCachedBook(title: string): Promise<NotionBookPage | null> {
+export async function getCachedBook(userId: string, title: string): Promise<NotionBookPage | null> {
   try {
-    const cached = await redisClient.get<string>(`book:${title}`);
+    const cached = await redisClient.get<string>(`book:${userId}:${title}`);
     if (typeof cached === 'string') {
       return JSON.parse(cached) as NotionBookPage;
     }
@@ -45,40 +45,40 @@ export async function getCachedBook(title: string): Promise<NotionBookPage | nul
   }
 }
 
-export async function cacheBook(book: NotionBookPage): Promise<void> {
-  await redisClient.set(`book:${book.title}`, JSON.stringify(book), {
+export async function cacheBook(userId: string, book: NotionBookPage): Promise<void> {
+  await redisClient.set(`book:${userId}:${book.title}`, JSON.stringify(book), {
     ex: BOOK_TTL
   });
 }
 
-export async function invalidateBookCache(title: string): Promise<void> {
-  await redisClient.del(`book:${title}`);
+export async function invalidateBookCache(userId: string, title: string): Promise<void> {
+  await redisClient.del(`book:${userId}:${title}`);
 }
 
-export async function isHighlightCached(title: string, highlight: Highlight): Promise<boolean> {
-  const key = `highlight:${title}:${highlight.location}`;
+export async function isHighlightCached(userId: string, title: string, highlight: Highlight): Promise<boolean> {
+  const key = `highlight:${userId}:${title}:${highlight.location}`;
   return (await redisClient.exists(key)) === 1;
 }
 
-export async function cacheHighlight(title: string, highlight: Highlight): Promise<void> {
-  const key = `highlight:${title}:${highlight.location}`;
+export async function cacheHighlight(userId: string, title: string, highlight: Highlight): Promise<void> {
+  const key = `highlight:${userId}:${title}:${highlight.location}`;
   await redisClient.set(key, JSON.stringify(highlight), {
     ex: HIGHLIGHT_TTL
   });
 }
 
-export async function getCachedBookPageId(title: string): Promise<string | null> {
-  return await redisClient.get(`page_id:${title}`);
+export async function getCachedBookPageId(userId: string, title: string): Promise<string | null> {
+  return await redisClient.get(`page_id:${userId}:${title}`);
 }
 
-export async function cacheBookPageId(title: string, pageId: string): Promise<void> {
-  await redisClient.set(`page_id:${title}`, pageId, {
+export async function cacheBookPageId(userId: string, title: string, pageId: string): Promise<void> {
+  await redisClient.set(`page_id:${userId}:${title}`, pageId, {
     ex: PAGE_ID_TTL
   });
 }
 
-export async function clearAllCaches(): Promise<void> {
-  const keys = await redisClient.keys('*');
+export async function clearUserCaches(userId: string): Promise<void> {
+  const keys = await redisClient.keys(`*:${userId}:*`);
   if (keys.length > 0) {
     await redisClient.del(...keys);
   }

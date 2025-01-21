@@ -11,6 +11,7 @@ const BATCH_SIZE = 10; // Number of highlights per batch
 const BATCH_DELAY = 1000; // 1 second delay between batches
 
 export async function syncHighlights(
+  userId: string,
   fileContent: string,
   onProgress?: (count: number) => void
 ): Promise<void> {
@@ -22,7 +23,7 @@ export async function syncHighlights(
     // Process highlights in batches
     for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
       // Check rate limit before each batch
-      if (!await checkRateLimit()) {
+      if (!await checkRateLimit(userId)) {
         throw new Error('Rate limit exceeded');
       }
 
@@ -31,18 +32,18 @@ export async function syncHighlights(
       // Filter out already cached highlights
       const highlightsToSync = [];
       for (const highlight of batch) {
-        if (!await isHighlightCached(highlight.bookTitle, highlight)) {
+        if (!await isHighlightCached(userId, highlight.bookTitle, highlight)) {
           highlightsToSync.push(highlight);
         }
       }
 
       // Sync the batch if there are new highlights
       if (highlightsToSync.length > 0) {
-        await updateNotionDatabase(highlightsToSync);
+        await updateNotionDatabase(userId, highlightsToSync);
         
         // Cache the synced highlights
         for (const highlight of highlightsToSync) {
-          await cacheHighlight(highlight.bookTitle, highlight);
+          await cacheHighlight(userId, highlight.bookTitle, highlight);
           syncedCount++;
           onProgress?.(syncedCount);
         }
