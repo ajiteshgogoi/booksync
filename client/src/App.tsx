@@ -122,42 +122,45 @@ function App() {
   }, []);
 
   return (
-    <div className="container">
-      <header className="header">
-        <h1>BookSync</h1>
-        <p className="subtitle">Sync your Kindle highlights to Notion</p>
-      </header>
-
-      <main className="main-content">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <main className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900">BookSync</h1>
+          <p className="mt-2 text-lg text-gray-600">Sync your Kindle highlights to Notion</p>
+        </div>
         {!isAuthenticated ? (
-          <div className="card auth-card">
-            <h2>Connect to Notion</h2>
-            <p>First, copy the Kindle Highlights template to your Notion workspace.</p>
+          <div className="bg-white rounded-lg shadow p-6 text-center">
+            <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
+            <p className="mt-2 text-gray-600">First, copy the Kindle Highlights template to your Notion workspace.</p>
             <button 
               onClick={handleLogin}
-              className="primary-button"
+              className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2 rounded-md transition-colors"
             >
               Connect to Notion
             </button>
           </div>
         ) : (
-          <div className="card sync-card">
-            <h2>Sync Your Highlights</h2>
-            <p>Connect your Kindle and upload "My Clippings.txt" to get started.</p>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold text-gray-900">Sync Your Highlights</h2>
+            <p className="mt-2 text-gray-600">Connect your Kindle and upload "My Clippings.txt" to get started.</p>
 
-            <div className="file-upload">
-              <input
-                type="file"
-                accept=".txt"
-                onChange={handleFileChange}
-                disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
-              />
+            <div className="mt-4">
+              <label className="block bg-indigo-600 hover:bg-indigo-700 text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors">
+                <input
+                  type="file"
+                  accept=".txt"
+                  onChange={handleFileChange}
+                  disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
+                  className="hidden"
+                />
+                Upload My Clippings.txt
+              </label>
             </div>
 
             {file && (
               <>
                 {highlightCount > 0 && (
-                  <div className="highlight-count">
+                  <div className="mt-4 text-gray-700">
                     Found {highlightCount} highlights
                   </div>
                 )}
@@ -165,34 +168,34 @@ function App() {
                 <button
                   onClick={handleSync}
                   disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
-                  className="primary-button"
+                  className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {syncStatus === 'parsing' ? 'Parsing...' :
                    syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
                 </button>
 
                 {syncStatus === 'syncing' && (
-                  <div className="progress-container">
-                    <div className="progress-bar">
+                  <div className="mt-4">
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                       <div
-                        className="progress-fill"
+                        className="bg-indigo-600 h-full"
                         style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
                       />
                     </div>
-                    <div className="progress-text">
+                    <div className="mt-2 text-sm text-gray-600">
                       Synced {syncedCount} of {highlightCount} highlights
                     </div>
                   </div>
                 )}
 
                 {syncStatus === 'success' && (
-                  <div className="success-message">
+                  <div className="mt-4 p-4 bg-green-50 text-green-700 rounded-md">
                     ✅ Successfully synced {highlightCount} highlights!
                   </div>
                 )}
 
                 {errorMessage && (
-                  <div className="error-message">
+                  <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-md">
                     ❌ {errorMessage}
                   </div>
                 )}
@@ -202,13 +205,28 @@ function App() {
         )}
       </main>
 
-      <div className="support-container">
+      <div className="fixed bottom-4 right-4">
         <script src="https://storage.ko-fi.com/cdn/scripts/overlay-widget.js"></script>
         <div id="kofi-widget-container"></div>
       </div>
 
-      <footer className="footer">
-        <p>Made with ❤️ by Gogoi</p>
+      <footer className="mt-8 py-4 border-t border-gray-100">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-4">
+          <a 
+            href="https://ko-fi.com/gogoi" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
+          >
+            <img 
+              src="https://storage.ko-fi.com/cdn/cup-border.png" 
+              alt="Ko-fi logo" 
+              className="w-5 h-5"
+            />
+            Buy Me a Coffee
+          </a>
+          <p className="text-gray-600">© {new Date().getFullYear()} Ajitesh Gogoi</p>
+        </div>
       </footer>
     </div>
   );
