@@ -268,18 +268,16 @@ function App() {
 
                   {syncStatus === 'syncing' && (
                     <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
-                      {isTimeout && (
-                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                          <div className="text-[#5a463a] font-medium">
-                            ⏳ Sync is still running in the background
-                          </div>
-                          <div className="text-sm text-[#5a463a] mt-2 space-y-1">
-                            <div>• You can safely close this page</div>
-                            <div>• Sync will continue server-side</div>
-                            <div>• You'll see results in Notion when complete</div>
-                          </div>
+                      <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
+                        <div className="text-[#5a463a] font-medium">
+                          ⏳ Sync is running in the background
                         </div>
-                      )}
+                        <div className="text-sm text-[#5a463a] mt-2 space-y-1">
+                          <div>• You can safely close this page</div>
+                          <div>• Sync will continue server-side</div>
+                          <div>• You'll see results in Notion when complete</div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
