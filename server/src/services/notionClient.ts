@@ -194,8 +194,10 @@ export async function createOAuthToken(code: string) {
 
 export async function setOAuthToken(token: typeof oauthToken) {
   if (!token || 
+      typeof token !== 'object' ||
       !token.access_token || 
-      !token.refresh_token || 
+      !token.token_type || 
+      !token.bot_id || 
       !token.workspace_id) {
     throw new Error('Invalid OAuth token provided - missing required fields');
   }
@@ -203,6 +205,11 @@ export async function setOAuthToken(token: typeof oauthToken) {
   // Set default expires_in if not provided
   if (!token.expires_in) {
     token.expires_in = 3600; // 1 hour default
+  }
+  
+  // Ensure refresh_token exists (it's optional in Notion's response)
+  if (!token.refresh_token) {
+    token.refresh_token = '';
   }
 
   // Store token in Redis with 1 hour less than expiry to allow for refresh
