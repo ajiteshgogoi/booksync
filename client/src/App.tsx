@@ -122,19 +122,10 @@ function App() {
           credentials: 'include'
         });
         
-        if (response.status === 401) {
-          // Handle unauthorized specifically
-          setIsAuthenticated(false);
-          setAuthError(true);
-          setErrorMessage('Your session has expired. Please reconnect to Notion.');
-          return;
-        }
-
         if (!response.ok) {
-          // Handle other errors
+          // Clear auth state on any failed response
           setIsAuthenticated(false);
           setAuthError(true);
-          setErrorMessage('Failed to check authentication status. Please try again.');
           return;
         }
 
@@ -142,17 +133,14 @@ function App() {
         if (data.authenticated) {
           setIsAuthenticated(true);
           setAuthError(false);
-          setErrorMessage(null);
         } else {
           setIsAuthenticated(false);
           setAuthError(true);
-          setErrorMessage('Not authenticated. Please connect to Notion.');
         }
       } catch (error) {
         console.error('Auth check failed:', error);
         setIsAuthenticated(false);
         setAuthError(true);
-        setErrorMessage('Failed to check authentication status. Please try again.');
       }
     };
 
