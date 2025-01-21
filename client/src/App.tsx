@@ -13,6 +13,23 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  const calculateTimeRemaining = (progress: number) => {
+    if (!startTime || progress === 0) return null;
+    
+    const elapsed = Date.now() - startTime;
+    const estimatedTotal = (elapsed / progress) * 100;
+    const remaining = estimatedTotal - elapsed;
+    
+    if (remaining < 0) return null;
+    
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    
+    return `${minutes}m ${seconds}s remaining`;
+  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -50,6 +67,7 @@ function App() {
     setSyncStatus('syncing');
     setErrorMessage(null);
     setSyncedCount(0);
+    setStartTime(Date.now());
 
     const formData = new FormData();
     formData.append('file', file);
@@ -78,10 +96,12 @@ function App() {
           
           if (status.progress) {
             setSyncedCount(status.progress);
+            setTimeRemaining(calculateTimeRemaining(status.progress));
           }
           
           if (status.state === 'completed') {
             setSyncStatus('success');
+            setTimeRemaining(null);
             return true;
           }
           
@@ -94,6 +114,7 @@ function App() {
         } catch (error) {
           setSyncStatus('error');
           setErrorMessage(error instanceof Error ? error.message : 'Failed to check sync status');
+          setTimeRemaining(null);
           return true;
         }
       };
@@ -108,12 +129,19 @@ function App() {
         }
       }, 1000);
 
-      // Cleanup interval on component unmount //
+      // Cleanup interval on component unmount
       return () => clearInterval(interval);
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
+      setTimeRemaining(null);
     }
+  };
+
+  const handleRetry = async () => {
+    if (!file) return;
+    setErrorMessage(null);
+    await handleSync();
   };
 
   const handleLogin = () => {
@@ -240,6 +268,9 @@ function App() {
                       </div>
                       <div className="mt-2 text-sm text-[#5a463a] font-serif">
                         Synced {syncedCount} of {highlightCount} highlights
+                        {timeRemaining && (
+                          <span className="ml-2">• {timeRemaining}</span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -251,11 +282,18 @@ function App() {
                   )}
 
                   {errorMessage && (
-                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
-                      ❌ {errorMessage}
+                    <div className="mt-4">
+                      <div className="p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
+                        ❌ {errorMessage}
+                      </div>
+                      <button
+                        onClick={handleRetry}
+                        className="mt-2 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
+                      >
+                        Retry Sync
+                      </button>
                     </div>
                   )}
-
                 </>
               )}
 
