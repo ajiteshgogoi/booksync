@@ -215,6 +215,8 @@ function App() {
               <a 
                 href="mailto:ajiteshgogoi@gmail.com?subject=BookSync Feedback" 
                 className="text-[#5a463a] font-serif text-sm underline hover:underline"
+                target="_blank" 
+                rel="noopener noreferrer"
               >
                 Feedback and Bugs
               </a>
