@@ -79,10 +79,11 @@ export async function setJobStatus(jobId: string, status: JobStatus): Promise<vo
 
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   try {
-    const status = await redis.get<string>(`job:${jobId}:status`);
+    const status = await redis.get<JobStatus | string>(`job:${jobId}:status`);
     if (status) {
       logger.debug('Retrieved job status', { jobId });
-      return JSON.parse(status);
+      // Handle both string and already-parsed object cases
+      return typeof status === 'string' ? JSON.parse(status) : status;
     }
     return null;
   } catch (error) {
