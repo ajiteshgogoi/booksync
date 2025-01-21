@@ -7,7 +7,7 @@ import {
   isHighlightCached,
   cacheHighlight,
   getCachedBook,
-  cacheBook,//
+  cacheBook,
   invalidateBookCache
 } from './redisService';
 

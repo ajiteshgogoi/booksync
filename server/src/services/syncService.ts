@@ -1,59 +1,112 @@
 import { parseClippings } from '../utils/parseClippings';
 import { updateNotionDatabase } from './notionClient';
 import { 
+  redis,
   cacheHighlight,
   isHighlightCached,
-  checkRateLimit
+  checkRateLimit,
+  addJobToQueue,
+  getJobStatus,
+  JOB_TTL
 } from './redisService';
 
 // Configuration
 const BATCH_SIZE = 10; // Number of highlights per batch
 const BATCH_DELAY = 1000; // 1 second delay between batches
 
-export async function syncHighlights(
+interface SyncJob {
+  userId: string;
+  fileContent: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  total: number;
+  error?: string;
+}
+
+export async function queueSyncJob(
   userId: string,
-  fileContent: string,
-  onProgress?: (count: number) => void
-): Promise<void> {
+  fileContent: string
+): Promise<string> {
+  const jobId = `sync:${userId}:${Date.now()}`;
+  const highlights = parseClippings(fileContent);
+  
+  const job: SyncJob = {
+    userId,
+    fileContent,
+    status: 'pending',
+    progress: 0,
+    total: highlights.length
+  };
+
+  await redis.set(`job:${jobId}`, JSON.stringify(job), {
+    ex: JOB_TTL
+  });
+  await addJobToQueue(jobId);
+  
+  return jobId;
+}
+
+export async function processSyncJob(jobId: string) {
   try {
-    // Parse the clippings file
-    const highlights = parseClippings(fileContent);
-    let syncedCount = 0;
+    const job = await getJob(jobId);
+    if (!job) throw new Error('Job not found');
     
-    // Process highlights in batches
+    job.status = 'processing';
+    await updateJob(jobId, job);
+
+    const highlights = parseClippings(job.fileContent);
+    
     for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
-      // Check rate limit before each batch
-      if (!await checkRateLimit(userId)) {
+      if (!await checkRateLimit(job.userId)) {
         throw new Error('Rate limit exceeded');
       }
 
       const batch = highlights.slice(i, i + BATCH_SIZE);
-      
-      // Filter out already cached highlights
       const highlightsToSync = [];
+      
       for (const highlight of batch) {
-        if (!await isHighlightCached(userId, highlight.bookTitle, highlight)) {
+        if (!await isHighlightCached(job.userId, highlight.bookTitle, highlight)) {
           highlightsToSync.push(highlight);
         }
       }
 
-      // Sync the batch if there are new highlights
       if (highlightsToSync.length > 0) {
-        await updateNotionDatabase(userId, highlightsToSync);
+        await updateNotionDatabase(job.userId, highlightsToSync);
         
-        // Cache the synced highlights
         for (const highlight of highlightsToSync) {
-          await cacheHighlight(userId, highlight.bookTitle, highlight);
-          syncedCount++;
-          onProgress?.(syncedCount);
+          await cacheHighlight(job.userId, highlight.bookTitle, highlight);
+          job.progress++;
+          await updateJob(jobId, job);
         }
       }
 
-      // Add delay between batches to prevent timeouts
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
     }
+
+    job.status = 'completed';
+    await updateJob(jobId, job);
   } catch (error) {
-    console.error('Error syncing highlights:', error);
+    const job = await getJob(jobId);
+    if (job) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : 'Unknown error';
+      await updateJob(jobId, job);
+    }
     throw error;
   }
+}
+
+export async function getSyncStatus(jobId: string): Promise<SyncJob | null> {
+  return await getJob(jobId);
+}
+
+async function getJob(jobId: string): Promise<SyncJob | null> {
+  const job = await redis.get<string>(`job:${jobId}`);
+  return job ? JSON.parse(job) : null;
+}
+
+async function updateJob(jobId: string, job: SyncJob) {
+  await redis.set(`job:${jobId}`, JSON.stringify(job), {
+    ex: JOB_TTL
+  });
 }

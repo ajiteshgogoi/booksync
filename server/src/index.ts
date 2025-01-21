@@ -10,7 +10,7 @@ interface User {
 interface CustomRequest extends Request {
   user?: User;
 }
-import { syncHighlights } from './services/syncService';
+import { processSyncJob, queueSyncJob } from './services/syncService';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
 import { parseClippings } from './utils/parseClippings';
 import axios from 'axios';
@@ -169,18 +169,23 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
+    if (!Buffer.isBuffer(req.file.buffer)) {
+      throw new Error('Invalid file format');
+    }
+    
     const fileContent = req.file.buffer.toString('utf-8');
-    const highlights = parseClippings(fileContent);
-    let syncedCount = 0;
+    if (typeof fileContent !== 'string') {
+      throw new Error('Failed to convert file content to string');
+    }
 
-    // Create a progress callback
-    const onProgress = (count: number) => {
-      res.write(JSON.stringify({ type: 'progress', count }));
-    };
+    // Validate file content
+    if (!fileContent.includes('==========')) {
+      throw new Error('Invalid My Clippings file format');
+    }
 
-    // Sync highlights with progress reporting
     const userId = req.user?.id || 'default-user-id';
-    await syncHighlights(userId, fileContent, onProgress);
+    const jobId = await queueSyncJob(userId, fileContent);
+    await processSyncJob(jobId);
     
     res.end();
   } catch (error) {
