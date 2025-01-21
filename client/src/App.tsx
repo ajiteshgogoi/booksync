@@ -3,6 +3,8 @@ import './App.css';
 
 type SyncStatus = 'idle' | 'parsing' | 'syncing' | 'success' | 'error';
 
+const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -22,7 +24,7 @@ function App() {
       formData.append('file', selectedFile);
 
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/parse`, {
+        const response = await fetch(`${apiBase}/parse`, {
           method: 'POST',
           body: formData,
         });
@@ -52,7 +54,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/sync`, {
+      const response = await fetch(`${apiBase}/sync`, {
         method: 'POST',
         body: formData,
         credentials: 'include'
@@ -86,13 +88,15 @@ function App() {
   };
 
   const handleLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL}/auth/notion`;
+    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+    window.location.href = `${apiBase}/auth/notion`;
   };
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/check`, {
+        const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+        const response = await fetch(`${apiBase}/auth/check`, {
           credentials: 'include'
         });
         if (response.ok) setIsAuthenticated(true);
