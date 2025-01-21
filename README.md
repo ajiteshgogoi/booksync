@@ -90,6 +90,37 @@ server/
 │       └── parseClippings.ts  # Kindle file parser
 ```
 
+## Deployment
+
+### Vercel Deployment
+
+1. Push your repository to GitHub
+
+2. Create a new project on Vercel
+   - Import your GitHub repository
+   - Framework Preset: Other
+   - Root Directory: ./
+   - Build Command: `cd client && npm install && npm run build`
+   - Output Directory: client/dist
+   - Install Command: `cd client && npm install`
+
+3. Add Environment Variables in Vercel:
+   ```
+   NOTION_OAUTH_CLIENT_ID=your_client_id
+   NOTION_OAUTH_CLIENT_SECRET=your_client_secret
+   NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
+   CLIENT_URL=https://your-vercel-url.vercel.app
+   ```
+
+4. Update client environment:
+   - Create `.env.production` in client directory
+   - Set `VITE_API_URL=https://your-vercel-url.vercel.app`
+
+5. Deploy:
+   ```bash
+   vercel
+   ```
+
 ## Contributing
 
 Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.

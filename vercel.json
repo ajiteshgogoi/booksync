@@ -1,0 +1,15 @@
+{
+  "buildCommand": "cd client && npm install && npm run build",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/server/src/index.ts"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/client/index.html"
+    }
+  ],
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"
+}
