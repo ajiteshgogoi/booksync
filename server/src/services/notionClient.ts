@@ -42,6 +42,7 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
   }
 }
 
+
 export interface Highlight {
   bookTitle: string;
   author: string;
@@ -418,106 +419,97 @@ async function updateOrCreateBookPage(
       page_size: 100
     });
 
-      // Create a set of existing highlight texts for duplicate checking
-      const existingHighlightLocations = new Set(
-        existingBlocks
-          .filter(block => 'type' in block && block.type === 'paragraph' && 'paragraph' in block)
-          .map(block => {
-            const text = (block as any).paragraph?.rich_text?.[0]?.text?.content || '';
-            const locationMatch = text.match(/📍 Location: ([\d-]+)/);
-            return locationMatch ? locationMatch[1] : '';
-          })
-          .filter(Boolean)
-      );
-
-      // Create a set of existing highlight texts for content comparison
-      const existingHighlightContents = new Set(
-        existingBlocks
-          .filter(block => 'type' in block && block.type === 'paragraph' && 'paragraph' in block)
-          .map(block => {
-            const text = (block as any).paragraph?.rich_text?.[0]?.text?.content || '';
-            return text.split('\n📍 Location:')[0]; // Get just the highlight text
-          })
-      );
-
-      // Add only new highlights, preserving existing ones
+      // Add all highlights, checking for duplicates
       const processedHighlights = new Set();
-      for (const highlight of book.highlights) {
-        // Update progress for every highlight processed
-        onProgress?.();
-        
-        // Skip if this highlight already exists by location or content
-        if (processedHighlights.has(highlight.location) || 
-            existingHighlightLocations.has(highlight.location) ||
-            existingHighlightContents.has(highlight.highlight)) {
-          continue;
-        }
+      let addedCount = 0;
       
-      processedHighlights.add(highlight.location);
-      
-      // Check if this is a new highlight for an existing book
-      const isNewHighlight = existingPageId && 
-        !existingHighlightLocations.has(highlight.location);
-
-      // Helper function to split text at sentence boundaries
-      const splitAtSentences = (text: string, maxLength: number): string[] => {
-        const sentences = text.split(/(?<=[.!?])\s+/);
-        const chunks: string[] = [];
-        let currentChunk = '';
-        
-        for (const sentence of sentences) {
-          if ((currentChunk + sentence).length <= maxLength) {
-            currentChunk += (currentChunk ? ' ' : '') + sentence;
-          } else {
-            if (currentChunk) chunks.push(currentChunk);
-            currentChunk = sentence;
+      try {
+        for (const highlight of book.highlights) {
+        try {
+          // Update progress for every highlight processed
+          onProgress?.();
+          
+          // Skip if we've already processed this location
+          if (processedHighlights.has(highlight.location)) {
+            continue;
           }
-        }
-        
-        if (currentChunk) chunks.push(currentChunk);
-        return chunks;
-      };
+          
+          processedHighlights.add(highlight.location);
 
-      // Split highlight into chunks of <= 2000 characters at sentence boundaries
-      const highlightText = highlight.highlight.join('\n\n');
-      const chunks = splitAtSentences(highlightText, 2000);
-      
-      // Create blocks for each chunk
-      const blocks = chunks.map((chunk, index) => ({
-        object: 'block' as const,
-        type: 'paragraph' as const,
-        paragraph: {
-          rich_text: [
-            {
-              type: 'text' as const,
-              text: {
-                content: chunk
+          // Helper function to split text at sentence boundaries
+          const splitAtSentences = (text: string, maxLength: number): string[] => {
+            const sentences = text.split(/(?<=[.!?])\s+/);
+            const chunks: string[] = [];
+            let currentChunk = '';
+            
+            for (const sentence of sentences) {
+              if ((currentChunk + sentence).length <= maxLength) {
+                currentChunk += (currentChunk ? ' ' : '') + sentence;
+              } else {
+                if (currentChunk) chunks.push(currentChunk);
+                currentChunk = sentence;
               }
-            },
-            ...(index === chunks.length - 1 ? [{
-              type: 'text' as const,
-              text: {
-                content: `\n📍 Location: ${highlight.location} | 📅 Added: ${highlight.date.toLocaleString()}`
-              },
-              annotations: {
-                color: 'gray' as const
-              }
-            }] : [])
-          ]
+            }
+            
+            if (currentChunk) chunks.push(currentChunk);
+            return chunks;
+          };
+
+          // Split highlight into chunks of <= 2000 characters at sentence boundaries
+          const highlightText = highlight.highlight.join('\n\n');
+          const chunks = splitAtSentences(highlightText, 2000);
+          
+          // Create blocks for each chunk
+          const blocks = chunks.map((chunk, index) => ({
+            object: 'block' as const,
+            type: 'paragraph' as const,
+            paragraph: {
+              rich_text: [
+                {
+                  type: 'text' as const,
+                  text: {
+                    content: chunk
+                  }
+                },
+                ...(index === chunks.length - 1 ? [{
+                  type: 'text' as const,
+                  text: {
+                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${highlight.date.toLocaleString()}`
+                  },
+                  annotations: {
+                    color: 'gray' as const
+                  }
+                }] : [])
+              ]
+            }
+          }));
+
+          const result = await notion.blocks.children.append({
+            block_id: pageId,
+            children: blocks
+          });
+
+          if (!result || !result.results || result.results.length === 0) {
+            console.error('Failed to append highlight blocks:', highlight.location);
+            continue;
+          }
+
+          // Cache the highlight after successful creation
+          await cacheHighlight(userId, book.title, highlight);
+          addedCount++;
+        } catch (error) {
+          console.error('Error processing highlight:', highlight.location, error);
         }
-      }));
+      }
 
-      await notion.blocks.children.append({
-        block_id: pageId,
-        children: blocks
-      });
+      console.log(`Added ${addedCount} new highlights for "${book.title}"`);
 
-      // Cache the highlight after successful creation
-      await cacheHighlight(userId, book.title, highlight);
+      // Cache the entire book after all highlights are processed
+      await cacheBook(userId, book);
+    } catch (error) {
+      console.error('Error processing highlights:', error);
+      throw error;
     }
-
-    // Cache the entire book after all highlights are processed
-    await cacheBook(userId, book);
   } catch (error) {
     console.error('Error updating Notion page:', error);
     throw error;
