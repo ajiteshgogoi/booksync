@@ -122,25 +122,17 @@ function App() {
           credentials: 'include'
         });
         
-        if (!response.ok) {
-          // Clear auth state on any failed response
-          setIsAuthenticated(false);
-          setAuthError(true);
-          return;
-        }
-
+        // Only set authenticated if we get a valid token
         const data = await response.json();
-        if (data.authenticated) {
+        if (response.ok && data.authenticated) {
           setIsAuthenticated(true);
           setAuthError(false);
         } else {
           setIsAuthenticated(false);
-          setAuthError(true);
         }
       } catch (error) {
         console.error('Auth check failed:', error);
         setIsAuthenticated(false);
-        setAuthError(true);
       }
     };
 
