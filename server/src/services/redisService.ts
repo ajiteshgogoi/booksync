@@ -10,6 +10,15 @@ export const redis = new Redis({
 export const QUEUE_NAME = 'sync_jobs';
 export const JOB_TTL = 60 * 60 * 24; // 24 hours
 
+// Job status types
+export type JobStatus = {
+  state: 'pending' | 'processing' | 'completed' | 'failed';
+  progress?: number;
+  message?: string;
+  result?: any;
+  total?: number;
+};
+
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60; // 60 seconds
 const RATE_LIMIT_MAX = 10; // Max requests per window
@@ -22,14 +31,22 @@ const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
 // Queue functions
 export async function addJobToQueue(jobId: string): Promise<void> {
   await redis.rpush(QUEUE_NAME, jobId);
+  await setJobStatus(jobId, { state: 'pending' });
 }
 
 export async function getNextJob(): Promise<string | null> {
   return await redis.lpop(QUEUE_NAME);
 }
 
-export async function getJobStatus(jobId: string): Promise<any> {
-  return await redis.get(`job:${jobId}`);
+export async function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
+  await redis.set(`job:${jobId}:status`, JSON.stringify(status), {
+    ex: JOB_TTL
+  });
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
+  const status = await redis.get<string>(`job:${jobId}:status`);
+  return status ? JSON.parse(status) : null;
 }
 
 // Rate limiting

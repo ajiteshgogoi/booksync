@@ -1,20 +1,52 @@
+import { redis, getNextJob, setJobStatus, JobStatus } from './services/redisService';
 import { processSyncJob } from './services/syncService';
-import { redis } from './services/redisService';
-import { JOB_TTL } from './services/redisService';
+
+async function processJob(jobId: string) {
+  try {
+    // Update status to processing
+    await setJobStatus(jobId, {
+      state: 'processing',
+      progress: 0,
+      message: 'Starting sync...'
+    });
+
+    // Process job with progress updates
+    await processSyncJob(jobId, async (progress: number, message: string) => {
+      await setJobStatus(jobId, {
+        state: 'processing',
+        progress,
+        message
+      });
+    });
+
+    // Mark job as completed
+    await setJobStatus(jobId, {
+      state: 'completed',
+      progress: 100,
+      message: 'Sync completed successfully'
+    });
+  } catch (error) {
+    console.error(`Failed processing job ${jobId}:`, error);
+    await setJobStatus(jobId, {
+      state: 'failed',
+      message: error instanceof Error ? error.message : 'Sync failed'
+    });
+  }
+}
 
 async function processJobs() {
   while (true) {
     try {
       // Get next job from queue
-      const jobId = await redis.lpop('sync-queue');
+      const jobId = await getNextJob();
       
-      if (typeof jobId === 'string') {
+      if (jobId) {
         console.log(`Processing job: ${jobId}`);
-        await processSyncJob(jobId);
+        await processJob(jobId);
+        console.log(`Completed job: ${jobId}`);
       } else {
         // No jobs available, wait before checking again
         await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log(`Completed job: ${jobId}`);
       }
     } catch (error) {
       console.error('Job processing error:', error);
