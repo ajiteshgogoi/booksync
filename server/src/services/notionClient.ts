@@ -419,18 +419,19 @@ async function updateOrCreateBookPage(
       page_size: 100
     });
 
-      // Get all cached highlights for this book
-      const cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`) as Record<string, string> | null;
-      
       // Add all highlights, checking for duplicates
       const processedHighlights = new Set();
       let addedCount = 0;
       
-      if (!cachedHighlights) {
-        console.log('No cached highlights found');
-      }
-      
       try {
+        // Try to get cached highlights if Redis is available
+        let cachedHighlights: Record<string, string> | null = null;
+        try {
+          cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`);
+        } catch (redisError) {
+          console.warn('Redis cache unavailable, proceeding without caching:', redisError);
+        }
+        
         for (const highlight of book.highlights) {
           try {
             // Update progress for every highlight processed
@@ -441,14 +442,18 @@ async function updateOrCreateBookPage(
               continue;
             }
             
-            // Check if highlight exists in cache
+            // Check if highlight exists in cache (if Redis is available)
             if (cachedHighlights) {
               const cachedHighlight = cachedHighlights[highlight.location];
               if (cachedHighlight) {
-                const cachedData = JSON.parse(cachedHighlight);
-                if (cachedData.highlight === highlight.highlight.join('\n\n')) {
-                  processedHighlights.add(highlight.location);
-                  continue;
+                try {
+                  const cachedData = JSON.parse(cachedHighlight);
+                  if (cachedData.highlight === highlight.highlight.join('\n\n')) {
+                    processedHighlights.add(highlight.location);
+                    continue;
+                  }
+                } catch (parseError) {
+                  console.warn('Failed to parse cached highlight:', parseError);
                 }
               }
             }
