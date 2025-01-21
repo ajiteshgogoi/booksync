@@ -2,7 +2,7 @@ import express, { Request } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
-import { createWorker } from './worker';
+import { startWorker } from './worker';
 
 interface User {
   id: string;
@@ -227,8 +227,15 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 });
 
 if (!process.env.VERCEL) {
+  // Start the server
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+  });
+
+  // Start the background worker
+  startWorker().catch(error => {
+    console.error('Failed to start worker:', error);
+    process.exit(1);
   });
 }
 

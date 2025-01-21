@@ -52,6 +52,7 @@ export interface Highlight {
   highlight: string[];
   location: string;
   date: Date;
+  userId?: string;
 }
 
 export interface NotionBookPage {
@@ -279,6 +280,27 @@ export async function updateNotionDatabase(
   onProgress?: () => void
 ): Promise<void> {
   try {
+    // First ensure we have a valid token
+    const token = await getOAuthToken();
+    if (!token || !token.access_token) {
+      throw new Error('No valid OAuth token found');
+    }
+
+    // Initialize Notion client if needed
+    if (!notion) {
+      initializeNotionClient(token.access_token);
+    }
+
+    // Ensure we have found the Kindle Highlights database
+    if (!databaseId) {
+      console.log('Finding Kindle Highlights database...');
+      await findKindleHighlightsDatabase();
+      if (!databaseId) {
+        throw new Error('Could not find Kindle Highlights database. Please ensure you have copied the template to your workspace.');
+      }
+      console.log('Found Kindle Highlights database:', databaseId);
+    }
+
     // Group highlights by book
     const books = highlights.reduce<Record<string, NotionBookPage>>((acc, highlight) => {
       if (!acc[highlight.bookTitle]) {

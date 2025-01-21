@@ -145,5 +145,19 @@ export function parseClippings(fileContent: string): Highlight[] {
   }
 
   console.log(`Successfully parsed ${highlights.length} highlights`);
+  
+  // Log a sample highlight for verification
+  if (highlights.length > 0) {
+    console.debug('Sample highlight:', JSON.stringify(highlights[0], null, 2));
+  }
+  
+  // Verify all highlights have required fields
+  highlights.forEach((h, index) => {
+    console.debug(`Verifying highlight ${index + 1}/${highlights.length}`);
+    if (!h.bookTitle || !h.author || !h.highlight || !h.location || !h.date) {
+      console.warn('Invalid highlight structure:', h);
+    }
+  });
+
   return highlights;
 }
