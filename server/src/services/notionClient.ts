@@ -174,12 +174,14 @@ export async function createOAuthToken(code: string) {
       throw new Error('Invalid token structure from Notion');
     }
 
-    // Store token in Redis with 1 hour less than expiry to allow for refresh
-    await redis.set(
-      `notion:oauth:${token.workspace_id}`,
-      JSON.stringify(token),
-      { ex: token.expires_in - 3600 }
-    );
+  // Store token in Redis with 1 hour less than expiry to allow for refresh
+  // Ensure expiration time is at least 1 second
+  const expiration = Math.max(token.expires_in - 3600, 1);
+  await redis.set(
+    `notion:oauth:${token.workspace_id}`,
+    JSON.stringify(token),
+    { ex: expiration }
+  );
     
     oauthToken = token;
     initializeNotionClient();
@@ -213,10 +215,12 @@ export async function setOAuthToken(token: typeof oauthToken) {
   }
 
   // Store token in Redis with 1 hour less than expiry to allow for refresh
+  // Ensure expiration time is at least 1 second
+  const expiration = Math.max(token.expires_in - 3600, 1);
   await redis.set(
     `notion:oauth:${token.workspace_id}`,
     JSON.stringify(token),
-    { ex: token.expires_in - 3600 }
+    { ex: expiration }
   );
   
   oauthToken = token;
