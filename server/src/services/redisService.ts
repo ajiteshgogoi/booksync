@@ -64,7 +64,7 @@ const RATE_LIMIT_MAX = 10; // Max requests per window
 
 // Cache TTLs
 const BOOK_TTL = 60 * 60 * 24; // 24 hours
-const HIGHLIGHT_TTL = 60 * 60 * 24 * 7; // 1 week
+const HIGHLIGHT_TTL = 60 * 60 * 24; // 24 hours
 const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
 const TOKEN_TTL = 60 * 60 * 2; // 2 hours
 
