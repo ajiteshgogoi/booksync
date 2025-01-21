@@ -22,11 +22,11 @@
     },
     {
       "src": "^/assets/(.*)",
-      "dest": "dist/assets/$1"
+      "dest": "client/assets/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "dist/index.html"
+      "dest": "client/index.html"
     }
   ]
 }
