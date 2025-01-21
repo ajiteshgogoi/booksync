@@ -12,26 +12,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
-  const [syncedCount, setSyncedCount] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const [currentStep, setCurrentStep] = useState<string>('Waiting to start');
   const [isTimeout, setIsTimeout] = useState(false);
-
-  const calculateTimeRemaining = (progress: number) => {
-    if (!startTime || progress === 0) return null;
-    
-    const elapsed = Date.now() - startTime;
-    const estimatedTotal = (elapsed / progress) * 100;
-    const remaining = estimatedTotal - elapsed;
-    
-    if (remaining < 0) return null;
-    
-    const minutes = Math.floor(remaining / 60000);
-    const seconds = Math.floor((remaining % 60000) / 1000);
-    
-    return `${minutes}m ${seconds}s remaining`;
-  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -39,7 +20,6 @@ function App() {
       setFile(selectedFile);
       setErrorMessage(null);
       setSyncStatus('parsing');
-      setCurrentStep('Parsing your highlights...');
 
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -55,11 +35,9 @@ function App() {
 
         setHighlightCount(data.count);
         setSyncStatus('idle');
-        setCurrentStep('Ready to sync');
       } catch (error) {
         setSyncStatus('error');
         setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
-        setCurrentStep('Error occurred');
       }
     } else {
       setErrorMessage('Please select "My Clippings.txt" from your Kindle');
@@ -71,10 +49,7 @@ function App() {
 
     setSyncStatus('syncing');
     setErrorMessage(null);
-    setSyncedCount(0);
-    setStartTime(Date.now());
     setIsTimeout(false);
-    setCurrentStep('Starting sync...');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -103,15 +78,12 @@ function App() {
           const status = await statusResponse.json();
           
           if (status.progress) {
-            setSyncedCount(status.progress);
-            setTimeRemaining(calculateTimeRemaining(status.progress));
-            setCurrentStep(status.message || 'Syncing highlights...');
+            // Update progress
           }
           
           if (status.state === 'completed') {
             setSyncStatus('success');
-            setTimeRemaining(null);
-            setCurrentStep('Sync completed successfully');
+            // Sync completed
             return true;
           }
           
@@ -124,8 +96,7 @@ function App() {
         } catch (error) {
           setSyncStatus('error');
           setErrorMessage(error instanceof Error ? error.message : 'Failed to check sync status');
-          setTimeRemaining(null);
-          setCurrentStep('Error occurred');
+          // Error occurred
           return true;
         }
       };
@@ -143,7 +114,7 @@ function App() {
       // Set timeout check
       const timeout = setTimeout(() => {
         setIsTimeout(true);
-        setCurrentStep('Sync is taking longer than expected...');
+        // Sync is taking longer than expected
         setErrorMessage('Sync is still running. You can safely close this page and check back later.');
       }, 60000);
 
@@ -155,15 +126,8 @@ function App() {
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
-      setTimeRemaining(null);
-      setCurrentStep('Error occurred');
+      // Error occurred
     }
-  };
-
-  const handleRetry = async () => {
-    if (!file) return;
-    setErrorMessage(null);
-    await handleSync();
   };
 
   const handleLogin = () => {
@@ -185,7 +149,7 @@ function App() {
       setFile(null);
       setErrorMessage(null);
       setSyncStatus('idle');
-      setCurrentStep('Waiting to start');
+      // Reset state
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
     }
@@ -213,7 +177,7 @@ function App() {
             if (status.state === 'processing') {
               setSyncStatus('syncing');
               setIsTimeout(true);
-              setCurrentStep('Sync is still running in the background');
+              // Sync is still running
             } else {
               // Clear jobId if sync is completed or failed
               localStorage.removeItem('syncJobId');
