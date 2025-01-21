@@ -134,14 +134,20 @@ function App() {
     };
 
     const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('auth') === 'success') {
+    const authStatus = searchParams.get('auth');
+    
+    if (authStatus === 'success') {
       // After successful auth, check the actual auth state
       checkAuth();
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else {
-      // Initial load - check auth state
-      checkAuth();
+    } else if (authStatus === 'error') {
+      setErrorMessage('Failed to connect to Notion. Please try again.');
     }
+    
+    // Clear URL params after handling
+    window.history.replaceState({}, document.title, window.location.pathname);
+    
+    // Always check auth state
+    checkAuth();
   }, []);
 
   useEffect(() => {
