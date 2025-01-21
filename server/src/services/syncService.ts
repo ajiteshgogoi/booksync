@@ -45,25 +45,6 @@ export async function queueSyncJob(
     total: highlights.length
   };
 
-  // Process first batch immediately
-  const firstBatch = highlights.slice(0, BATCH_SIZE);
-  const highlightsToSync = [];
-  
-  for (const highlight of firstBatch) {
-    if (!await isHighlightCached(userId, highlight.bookTitle, highlight)) {
-      highlightsToSync.push(highlight);
-    }
-  }
-
-  if (highlightsToSync.length > 0) {
-    await updateNotionDatabase(userId, highlightsToSync);
-    
-    for (const highlight of highlightsToSync) {
-      await cacheHighlight(userId, highlight.bookTitle, highlight);
-      job.progress++;
-    }
-  }
-
   await redis.set(`job:${jobId}`, JSON.stringify(job), {
     ex: JOB_TTL
   });

@@ -6,6 +6,7 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node build/index.js",
+    "worker": "node build/worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
