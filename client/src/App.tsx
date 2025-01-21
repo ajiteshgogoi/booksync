@@ -122,30 +122,32 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-[#f5f2e9] bg-[url('/src/assets/parchment-texture.jpg')] bg-cover bg-center flex flex-col">
       <main className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">BookSync</h1>
-          <p className="mt-2 text-lg text-gray-600">Sync your Kindle highlights to Notion</p>
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-[#8b7355] to-[#3d2b1f] bg-clip-text text-transparent font-serif tracking-wide [text-shadow:0_2px_4px_rgba(0,0,0,0.3)] relative after:content-[''] after:absolute after:left-0 after:right-0 after:-bottom-2 after:h-[2px] after:bg-gradient-to-r after:from-[#8b7355] after:to-[#3d2b1f]">
+            📚 BookSync
+          </h1>
+          <p className="mt-2 text-lg text-[#5a463a] font-serif">Sync your Kindle highlights to Notion</p>
         </div>
         {!isAuthenticated ? (
-          <div className="bg-white rounded-lg shadow p-6 text-center">
+          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 text-center border border-[#e0d6c2]">
             <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
             <p className="mt-2 text-gray-600">First, copy the Kindle Highlights template to your Notion workspace.</p>
             <button 
               onClick={handleLogin}
-              className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2 rounded-md transition-colors"
+              className="mt-4 bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
             >
               Connect to Notion
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold text-gray-900">Sync Your Highlights</h2>
-            <p className="mt-2 text-gray-600">Connect your Kindle and upload "My Clippings.txt" to get started.</p>
+          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2]">
+            <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
+            <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload "My Clippings.txt" to get started.</p>
 
             <div className="mt-4">
-              <label className="block bg-indigo-600 hover:bg-indigo-700 text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors">
+              <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">
                 <input
                   type="file"
                   accept=".txt"
@@ -168,7 +170,7 @@ function App() {
                 <button
                   onClick={handleSync}
                   disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
-                  className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="mt-4 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif"
                 >
                   {syncStatus === 'parsing' ? 'Parsing...' :
                    syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
@@ -176,26 +178,26 @@ function App() {
 
                 {syncStatus === 'syncing' && (
                   <div className="mt-4">
-                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div className="w-full bg-[#e0d6c2] rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-indigo-600 h-full"
+                        className="bg-[#8b7355] h-full"
                         style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
                       />
                     </div>
-                    <div className="mt-2 text-sm text-gray-600">
+                    <div className="mt-2 text-sm text-[#5a463a] font-serif">
                       Synced {syncedCount} of {highlightCount} highlights
                     </div>
                   </div>
                 )}
 
                 {syncStatus === 'success' && (
-                  <div className="mt-4 p-4 bg-green-50 text-green-700 rounded-md">
+                  <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
                     ✅ Successfully synced {highlightCount} highlights!
                   </div>
                 )}
 
                 {errorMessage && (
-                  <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-md">
+                  <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
                     ❌ {errorMessage}
                   </div>
                 )}
@@ -210,14 +212,14 @@ function App() {
         <div id="kofi-widget-container"></div>
       </div>
 
-      <footer className="mt-8 py-4 border-t border-gray-100">
+      <footer className="mt-8 py-4 border-t border-gray-100 relative z-20">
         <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-4">
-          <a 
-            href="https://ko-fi.com/gogoi" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors"
-          >
+            <a 
+              href="https://ko-fi.com/gogoi" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-[#4a6cf7] text-white hover:text-white px-4 py-2 rounded-md transition-all font-serif hover:-translate-y-0.5 hover:shadow-lg [text-shadow:0_1px_1px_rgba(0,0,0,0.3)]"
+            >
             <img 
               src="https://storage.ko-fi.com/cdn/cup-border.png" 
               alt="Ko-fi logo" 
@@ -225,7 +227,7 @@ function App() {
             />
             Buy Me a Coffee
           </a>
-          <p className="text-gray-600">© {new Date().getFullYear()} Ajitesh Gogoi</p>
+          <p className="text-[#5a463a] font-serif">© {new Date().getFullYear()} Ajitesh Gogoi</p>
         </div>
       </footer>
     </div>
