@@ -27,10 +27,6 @@ function App() {
       return;
     }
     
-    // Clear any existing error state
-    setErrorMessage(null);
-    setSyncStatus('idle');
-    
     setFile(selectedFile);
     setErrorMessage(null);
     setSyncStatus('parsing');
@@ -185,30 +181,36 @@ function App() {
         // First check sync status if jobId exists
         const jobId = localStorage.getItem('syncJobId');
         if (jobId) {
+          // Set syncing state immediately if we have a jobId
+          setSyncStatus('syncing');
+          setIsTimeout(true);
+          
+          // Restore file from localStorage if available
+          const fileData = localStorage.getItem('syncFileData');
+          if (fileData) {
+            const base64Data = fileData.split(',')[1];
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const file = new File(
+              [bytes],
+              localStorage.getItem('syncFileName') || 'My Clippings.txt'
+            );
+            setFile(file);
+          } else {
+            setFile(new File([], 'My Clippings.txt'));
+          }
+          
+          // Now check the actual status
           const syncResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
             credentials: 'include'
           });
+          
           if (syncResponse.ok) {
             const status = await syncResponse.json();
             if (status.state === 'processing') {
-              setSyncStatus('syncing');
-              setIsTimeout(true);
-              const fileData = localStorage.getItem('syncFileData');
-              if (fileData) {
-                const base64Data = fileData.split(',')[1];
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
-                const file = new File(
-                  [bytes],
-                  localStorage.getItem('syncFileName') || 'My Clippings.txt'
-                );
-                setFile(file);
-              } else {
-                setFile(new File([], 'My Clippings.txt'));
-              }
               setIsAuthenticated(true); // Assume authenticated if sync is in progress
               return; // Skip auth check since we're already syncing
             } else if (status.state === 'completed') {
@@ -298,6 +300,12 @@ function App() {
                 </label>
               </div>
 
+              {errorMessage && !isTimeout && (
+                <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif text-center">
+                  ❌ {errorMessage}
+                </div>
+              )}
+
               {file && (
                 <>
                   {highlightCount > 0 && (
@@ -333,12 +341,6 @@ function App() {
                   {syncStatus === 'success' && (
                     <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif text-center">
                       ✅ Sync completed successfully
-                    </div>
-                  )}
-
-                  {errorMessage && !isTimeout && (
-                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
-                      ❌ {errorMessage}
                     </div>
                   )}
                 </>
