@@ -1,7 +1,15 @@
-import express from 'express';
+import express, { Request } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
+
+interface User {
+  id: string;
+}
+
+interface CustomRequest extends Request {
+  user?: User;
+}
 import { syncHighlights } from './services/syncService';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
 import { parseClippings } from './utils/parseClippings';
@@ -150,7 +158,7 @@ app.post(`${apiBasePath}/auth/disconnect`, (req, res) => {
 });
 
 // Sync endpoint for uploading MyClippings.txt with progress streaming
-app.post(`${apiBasePath}/sync`, upload.single('file'), async (req, res) => {
+app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -171,7 +179,8 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req, res) => {
     };
 
     // Sync highlights with progress reporting
-    await syncHighlights(fileContent, onProgress);
+    const userId = req.user?.id || 'default-user-id';
+    await syncHighlights(userId, fileContent, onProgress);
     
     res.end();
   } catch (error) {
