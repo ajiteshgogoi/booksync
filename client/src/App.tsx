@@ -138,21 +138,19 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search);
     const authStatus = searchParams.get('auth');
     
-    // Clear URL params first to prevent re-triggering
-    window.history.replaceState({}, document.title, window.location.pathname);
-    
     if (authStatus === 'success') {
       setAuthError(false);
       checkAuth();
     } else if (authStatus === 'error') {
       setAuthError(true);
       setErrorMessage('Failed to connect to Notion. Please try again.');
-      return;
     } else if (authStatus === 'cancelled') {
       setAuthError(true);
       setErrorMessage('Connection to Notion was cancelled.');
-      return;
     }
+    
+    // Clear URL params after handling auth status
+    window.history.replaceState({}, document.title, window.location.pathname);
     
     // Only do initial auth check if we're not showing an auth error
     if (!authError) {
