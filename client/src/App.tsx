@@ -147,68 +147,79 @@ function App() {
             </button>
           </div>
         ) : (
-          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2]">
-            <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
-            <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
+          <>
+            <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2]">
+              <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
+              <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
-            <div className="mt-4">
-              <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">
-                <input
-                  type="file"
-                  accept=".txt"
-                  onChange={handleFileChange}
-                  disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
-                  className="hidden"
-                />
-                Upload My Clippings.txt
-              </label>
+              <div className="mt-4">
+                <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">
+                  <input
+                    type="file"
+                    accept=".txt"
+                    onChange={handleFileChange}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing'}
+                    className="hidden"
+                  />
+                  Upload My Clippings.txt
+                </label>
+              </div>
+
+              {file && (
+                <>
+                  {highlightCount > 0 && (
+                    <div className="mt-4 text-gray-700">
+                      Found {highlightCount} highlights
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSync}
+                    disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
+                    className="mt-4 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif"
+                  >
+                    {syncStatus === 'parsing' ? 'Parsing...' :
+                     syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
+                  </button>
+
+                  {syncStatus === 'syncing' && (
+                    <div className="mt-4">
+                      <div className="w-full bg-[#e0d6c2] rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-[#8b7355] h-full"
+                          style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 text-sm text-[#5a463a] font-serif">
+                        Synced {syncedCount} of {highlightCount} highlights
+                      </div>
+                    </div>
+                  )}
+
+                  {syncStatus === 'success' && (
+                    <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
+                      ✅ Successfully synced {highlightCount} highlights!
+                    </div>
+                  )}
+
+                  {errorMessage && (
+                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
+                      ❌ {errorMessage}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-
-            {file && (
-              <>
-                {highlightCount > 0 && (
-                  <div className="mt-4 text-gray-700">
-                    Found {highlightCount} highlights
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSync}
-                  disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
-                  className="mt-4 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif"
-                >
-                  {syncStatus === 'parsing' ? 'Parsing...' :
-                   syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
-                </button>
-
-                {syncStatus === 'syncing' && (
-                  <div className="mt-4">
-                    <div className="w-full bg-[#e0d6c2] rounded-full h-2 overflow-hidden">
-                      <div
-                        className="bg-[#8b7355] h-full"
-                        style={{ width: `${(syncedCount / highlightCount) * 100}%` }}
-                      />
-                    </div>
-                    <div className="mt-2 text-sm text-[#5a463a] font-serif">
-                      Synced {syncedCount} of {highlightCount} highlights
-                    </div>
-                  </div>
-                )}
-
-                {syncStatus === 'success' && (
-                  <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif">
-                    ✅ Successfully synced {highlightCount} highlights!
-                  </div>
-                )}
-
-                {errorMessage && (
-                  <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
-                    ❌ {errorMessage}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+            
+            <div className="mt-8 text-center">
+              <a 
+                href="mailto:ajiteshgogoi@gmail.com?subject=BookSync Feedback" 
+                className="text-[#5a463a] font-serif text-sm underline hover:underline"
+              >
+                Feedback and Bugs
+              </a>
+            </div>
+          </>
         )}
       </main>
 
