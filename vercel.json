@@ -1,15 +1,25 @@
 {
-  "buildCommand": "cd client && npm install && npm run build",
-  "outputDirectory": "client/dist",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/:path*",
-      "destination": "/server/src/index.ts"
+      "src": "server/src/index.ts",
+      "use": "@vercel/node"
     },
     {
-      "source": "/:path*",
-      "destination": "/client/index.html"
+      "src": "client/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./"
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/server/src/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/client/dist/$1"
+    }
+  ]
 }
