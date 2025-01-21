@@ -16,7 +16,7 @@ export async function syncHighlights(
 ): Promise<void> {
   try {
     // Parse the clippings file
-    const highlights = parseClippings(fileContent);//
+    const highlights = parseClippings(fileContent);
     let syncedCount = 0;
     
     // Process highlights in batches
