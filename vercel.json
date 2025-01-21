@@ -19,14 +19,11 @@
       "dest": "server/src/index.ts"
     },
     {
-      "src": "/assets/(.*)",
+      "src": "^/assets/(.*)",
       "dest": "client/dist/assets/$1"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
+      "src": "^/(?!api/?.*$).*",
       "dest": "client/dist/index.html"
     }
   ]
