@@ -1,5 +1,15 @@
 import { Client } from '@notionhq/client';
 import axios from 'axios';
+import {
+  checkRateLimit,
+  getCachedBookPageId,
+  cacheBookPageId,
+  isHighlightCached,
+  cacheHighlight,
+  getCachedBook,
+  cacheBook,
+  invalidateBookCache
+} from './redisService';
 
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
   try {
@@ -210,6 +220,17 @@ async function updateOrCreateBookPage(
   if (!databaseId) throw new Error('Database ID not found');
   
   try {
+    // Check cache first
+    const cachedBook = await getCachedBook(book.title);
+    if (cachedBook) {
+      return cachedBook;
+    }
+
+    // Check rate limit before making API calls
+    if (!(await checkRateLimit())) {
+      throw new Error('Rate limit exceeded');
+    }
+
     // Check if page already exists
     const { results } = await notion.databases.query({
       database_id: databaseId,
@@ -386,7 +407,13 @@ async function updateOrCreateBookPage(
         block_id: pageId,
         children: blocks
       });
+
+      // Cache the highlight after successful creation
+      await cacheHighlight(book.title, highlight);
     }
+
+    // Cache the entire book after all highlights are processed
+    await cacheBook(book);
   } catch (error) {
     console.error('Error updating Notion page:', error);
     throw error;
