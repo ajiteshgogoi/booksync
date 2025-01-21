@@ -14,6 +14,7 @@ function App() {
   const [highlightCount, setHighlightCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState(0);
   const [authError, setAuthError] = useState(false);
+  const [authStatus, setAuthStatus] = useState<'success' | 'error' | 'cancelled' | null>(null);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -139,20 +140,23 @@ function App() {
     const authStatus = searchParams.get('auth');
     
     if (authStatus === 'success') {
+      setAuthStatus('success');
       setAuthError(false);
       checkAuth();
     } else if (authStatus === 'error') {
+      setAuthStatus('error');
       setAuthError(true);
       setErrorMessage('Failed to connect to Notion. Please try again.');
     } else if (authStatus === 'cancelled') {
+      setAuthStatus('cancelled');
       setAuthError(true);
-      setErrorMessage('Connection to Notion was cancelled.');
+      setErrorMessage('Connection to Notion was cancelled. Please try again if you want to connect.');
     }
     
-    // Clear URL params after a short delay to allow message display
+    // Clear URL params after a longer delay to allow message display
     setTimeout(() => {
       window.history.replaceState({}, document.title, window.location.pathname);
-    }, 3000); // 3 second delay
+    }, 10000); // 10 second delay
     
     // Only do initial auth check if we're not showing an auth error
     if (!authError) {
@@ -249,7 +253,11 @@ function App() {
                   )}
 
                   {errorMessage && (
-                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif">
+                    <div className={`mt-4 p-4 rounded-md font-serif ${
+                      authStatus === 'cancelled'
+                        ? 'bg-[#fff3e0] text-[#e65100] border border-[#ffcc80]' 
+                        : 'bg-[#ffebee] text-[#c62828]'
+                    }`}>
                       ❌ {errorMessage}
                     </div>
                   )}
