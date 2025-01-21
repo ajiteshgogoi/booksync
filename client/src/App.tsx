@@ -108,7 +108,7 @@ function App() {
         }
       }, 1000);
 
-      // Cleanup interval on component unmount
+      // Cleanup interval on component unmount //
       return () => clearInterval(interval);
     } catch (error) {
       setSyncStatus('error');
