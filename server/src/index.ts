@@ -15,10 +15,18 @@ const app = express();
 const port = process.env.PORT || 3001;
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Handle /api prefix in production
+const apiPrefix = process.env.NODE_ENV === 'production' ? '/api' : '';
+
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true
 }));
+
+// Apply API prefix to all routes
+app.use(apiPrefix, (req, res, next) => {
+  next();
+});
 app.use(express.json());
 app.use(cookieParser());
 
