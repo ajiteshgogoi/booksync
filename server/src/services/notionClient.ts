@@ -161,6 +161,12 @@ export function getNotionClient() {
   return notion;
 }
 
+export function clearAuth() {
+  oauthToken = null;
+  databaseId = null;
+  notion = null as unknown as Client;
+}
+
 export async function updateNotionDatabase(
   highlights: Highlight[],
   onProgress?: () => void

@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { syncHighlights } from './services/syncService';
-import { setOAuthToken, getOAuthToken, refreshOAuthToken } from './services/notionClient';
+import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
 import { parseClippings } from './utils/parseClippings';
 import axios from 'axios';
 import qs from 'querystring';
@@ -136,6 +136,16 @@ app.post(`${apiBasePath}/auth/refresh`, async (req, res) => {
   } catch (error) {
     console.error('Token refresh error:', error);
     res.status(500).json({ error: 'Failed to refresh token' });
+  }
+});
+
+app.post(`${apiBasePath}/auth/disconnect`, (req, res) => {
+  try {
+    clearAuth();
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Disconnect error:', error);
+    res.status(500).json({ error: 'Failed to disconnect' });
   }
 });
 

@@ -93,6 +93,25 @@ function App() {
     window.location.href = `${apiBase}/auth/notion`;
   };
 
+  const handleDisconnect = async () => {
+    try {
+      const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+      const response = await fetch(`${apiBase}/auth/disconnect`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      if (!response.ok) throw new Error('Failed to disconnect');
+      
+      setIsAuthenticated(false);
+      setFile(null);
+      setErrorMessage(null);
+      setSyncStatus('idle');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
+    }
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -148,7 +167,7 @@ function App() {
           </div>
         ) : (
           <>
-            <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2]">
+            <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2] mb-4">
               <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
               <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
@@ -207,8 +226,16 @@ function App() {
                       ❌ {errorMessage}
                     </div>
                   )}
+
                 </>
               )}
+
+              <button
+                onClick={handleDisconnect}
+                className="mt-4 w-full bg-[#a1887f] hover:bg-[#8d6e63] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
+              >
+                Disconnect Notion
+              </button>
             </div>
             
             <div className="mt-8 text-center">
