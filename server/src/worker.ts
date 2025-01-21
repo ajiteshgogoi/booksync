@@ -69,6 +69,13 @@ if (isMainThread) {
       // Replace dead worker
       createWorker();
     });
+    
+    // Handle Vercel serverless environment
+    process.on('SIGTERM', async () => {
+      console.log('Received SIGTERM, cleaning up workers...');
+      await Promise.all(workers.map(w => w.terminate()));
+      process.exit(0);
+    });
   }
 
   // Initialize worker pool
