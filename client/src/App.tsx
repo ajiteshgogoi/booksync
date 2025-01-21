@@ -13,7 +13,6 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState(0);
-  const [authError, setAuthError] = useState(false);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -125,7 +124,6 @@ function App() {
         const data = await response.json();
         if (response.ok && data.authenticated) {
           setIsAuthenticated(true);
-          setAuthError(false);
         } else {
           setIsAuthenticated(false);
         }
@@ -142,19 +140,17 @@ function App() {
     window.history.replaceState({}, document.title, window.location.pathname);
     
     if (authStatus === 'success') {
-      setAuthError(false);
+      // After successful auth, check the actual auth state
       checkAuth();
     } else if (authStatus === 'error') {
-      setAuthError(true);
+      // Only set error message and don't check auth state
       setErrorMessage('Failed to connect to Notion. Please try again.');
       return;
     }
     
-    // Only do initial auth check if we're not showing an auth error
-    if (!authError) {
-      checkAuth();
-    }
-  }, [authError]);
+    // Initial load - check auth state
+    checkAuth();
+  }, []);
 
   useEffect(() => {
     if (window.kofiWidgetOverlay) {
