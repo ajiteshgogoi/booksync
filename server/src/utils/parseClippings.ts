@@ -17,7 +17,9 @@ export function parseClippings(fileContent: string): Highlight[] {
   console.log(`Found ${entries.length} valid entries`);
   
   const highlights: Highlight[] = [];
+  const highlightGroups = new Map<string, Highlight[]>();
 
+  // First pass: group highlights by book and page
   for (const entry of entries) {
     try {
       // Handle both Windows (\r\n) and Unix (\n) line endings
@@ -84,7 +86,12 @@ export function parseClippings(fileContent: string): Highlight[] {
         contentPreview: highlight.substring(0, 50) + '...'
       });
 
-      highlights.push({
+      // Group highlights by book and page
+      const groupKey = `${bookTitle}|${location.split('-')[0]}`;
+      if (!highlightGroups.has(groupKey)) {
+        highlightGroups.set(groupKey, []);
+      }
+      highlightGroups.get(groupKey)!.push({
         bookTitle,
         author,
         highlight,
@@ -94,6 +101,32 @@ export function parseClippings(fileContent: string): Highlight[] {
     } catch (error) {
       console.error('Error parsing entry:', error);
       continue;
+    }
+  }
+
+  // Second pass: process groups to find most complete highlights
+  for (const group of highlightGroups.values()) {
+    // Sort by date (newest first)
+    group.sort((a, b) => b.date.getTime() - a.date.getTime());
+    
+    // Keep track of unique highlights
+    const uniqueHighlights = new Set<string>();
+    
+    for (const highlight of group) {
+      // Check if this highlight is a subset of any existing highlight
+      let isSubset = false;
+      for (const existing of uniqueHighlights) {
+        if (existing.includes(highlight.highlight)) {
+          isSubset = true;
+          break;
+        }
+      }
+      
+      // If not a subset, add to unique highlights
+      if (!isSubset) {
+        uniqueHighlights.add(highlight.highlight);
+        highlights.push(highlight);
+      }
     }
   }
 
