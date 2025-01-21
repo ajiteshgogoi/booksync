@@ -348,7 +348,8 @@ async function updateOrCreateBookPage(
     let existingPageId: string | undefined;
     let lastSyncDate = new Date(0);
 
-    // Check if page exists and get last highlight date
+    // Get the initial lastSyncDate before processing any highlights
+    let initialLastSyncDate = new Date(0);
     const { results } = await notion.databases.query({
       database_id: databaseId,
       filter: {
@@ -364,26 +365,34 @@ async function updateOrCreateBookPage(
       const pageData = await notion.pages.retrieve({ page_id: existingPageId });
       const lastSyncDateStr = (pageData as any).properties?.['Last Synced']?.date?.start;
       if (lastSyncDateStr) {
-        lastSyncDate = new Date(lastSyncDateStr);
+        initialLastSyncDate = new Date(lastSyncDateStr);
       }
     }
 
-    // Filter highlights that are newer than the last sync
+    // Filter highlights that are newer than the initial last sync date
     const newHighlights = book.highlights.filter(highlight => {
       const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
-      return highlightDate > lastSyncDate;
+      return highlightDate > initialLastSyncDate;
     });
 
     // If no new highlights, skip updating the page
     if (newHighlights.length === 0) {
-      console.log(`No new highlights for "${book.title}" since ${lastSyncDate.toLocaleString()}`);
+      console.log(`No new highlights for "${book.title}" since ${initialLastSyncDate.toLocaleString()}`);
       return;
     }
 
     // Update book object with filtered highlights
     book.highlights = newHighlights;
 
-    // Create or update the page
+    // Update lastHighlighted to be the newest highlight date
+    const newestHighlightDate = newHighlights.reduce((newest, highlight) => {
+      const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
+      return highlightDate > newest ? highlightDate : newest;
+    }, new Date(0));
+    
+    book.lastHighlighted = newestHighlightDate;
+
+    // Create or update the page (without updating last sync date yet)
     let pageId: string;
     if (existingPageId) {
       const coverUrl = await getBookCoverUrl(book.title, book.author);
@@ -408,9 +417,6 @@ async function updateOrCreateBookPage(
           },
           'Last Highlighted': {
             date: { start: book.lastHighlighted.toISOString() }
-          },
-          'Last Synced': {
-            date: { start: new Date().toISOString() }
           }
         }
       });
