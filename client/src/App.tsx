@@ -7,7 +7,9 @@ type SyncStatus = 'idle' | 'parsing' | 'syncing' | 'success' | 'error' | 'queued
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    localStorage.getItem('isAuthenticated') === 'true'
+  );
   const [file, setFile] = useState<File | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -162,9 +164,13 @@ function App() {
       if (!response.ok) throw new Error('Failed to disconnect');
       
       setIsAuthenticated(false);
+      localStorage.removeItem('isAuthenticated');
       setFile(null);
       setErrorMessage(null);
       setSyncStatus('idle');
+      localStorage.removeItem('syncJobId');
+      localStorage.removeItem('syncFileData');
+      localStorage.removeItem('syncFileName');
       // Reset state
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
@@ -187,7 +193,22 @@ function App() {
             if (status.state === 'processing') {
               setSyncStatus('syncing');
               setIsTimeout(true);
-              setFile(new File([], 'My Clippings.txt')); // Restore file state
+              const fileData = localStorage.getItem('syncFileData');
+              if (fileData) {
+                const base64Data = fileData.split(',')[1];
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const file = new File(
+                  [bytes],
+                  localStorage.getItem('syncFileName') || 'My Clippings.txt'
+                );
+                setFile(file);
+              } else {
+                setFile(new File([], 'My Clippings.txt'));
+              }
               setIsAuthenticated(true); // Assume authenticated if sync is in progress
               return; // Skip auth check since we're already syncing
             } else if (status.state === 'completed') {
@@ -216,6 +237,7 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('auth') === 'success') {
       setIsAuthenticated(true);
+      localStorage.setItem('isAuthenticated', 'true');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     checkAuthAndSync();
