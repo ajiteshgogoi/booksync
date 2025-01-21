@@ -173,19 +173,39 @@ export async function setOAuthToken(token: typeof oauthToken) {
 export async function getOAuthToken() {
   if (oauthToken) return oauthToken;
   
-  // Try to load from Redis if not in memory
-  const keys = await redis.keys('notion:oauth:*');
-  if (keys.length > 0 && keys[0]) {
-    const key = String(keys[0]);
-      const token = await redis.get(key);
-      if (token && typeof token === 'string') {
-        oauthToken = JSON.parse(token);
-      initializeNotionClient();
-      return oauthToken;
+  try {
+    // Try to load from Redis if not in memory
+    const keys = await redis.keys('notion:oauth:*');
+    if (keys.length === 0 || !keys[0]) {
+      console.log('No OAuth tokens found in Redis');
+      return null;
     }
+
+    const key = String(keys[0]);
+    const token = await redis.get(key);
+    
+    if (!token || typeof token !== 'string') {
+      console.log('Invalid token format from Redis');
+      return null;
+    }
+
+    const parsedToken = JSON.parse(token);
+    
+    // Validate token structure
+    if (!parsedToken?.access_token || 
+        !parsedToken?.refresh_token ||
+        !parsedToken?.workspace_id) {
+      console.error('Invalid token structure:', parsedToken);
+      return null;
+    }
+
+    oauthToken = parsedToken;
+    initializeNotionClient();
+    return oauthToken;
+  } catch (error) {
+    console.error('Error getting OAuth token:', error);
+    return null;
   }
-  
-  return null;
 }
 
 export function getNotionClient() {
