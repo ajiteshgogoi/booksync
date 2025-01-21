@@ -22,9 +22,17 @@ async function initializeRedis(): Promise<Redis> {
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
     });
 
+    // Debug log environment variables
+    logger.debug('Redis environment variables', {
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN ? '***' : 'undefined'
+    });
+
     // Test connection
     await redis.ping();
-    logger.info('Redis client initialized successfully');
+    logger.info('Redis client initialized successfully', {
+      url: process.env.UPSTASH_REDIS_REST_URL
+    });
     return redis;
   } catch (error) {
     logger.error('Failed to initialize Redis client', { error });
@@ -65,56 +73,63 @@ const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
 const TOKEN_TTL = 60 * 60 * 2; // 2 hours
 
 // Token management
-export async function storeOAuthToken(userId: string, token: string): Promise<void> {
+export async function storeOAuthToken(token: string, workspaceId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`oauth:${userId}`, token, {
+    await redis.set(`oauth:${workspaceId}`, token, {
       ex: TOKEN_TTL
     });
-    logger.debug('OAuth token stored', { userId });
+    logger.debug('OAuth token stored', { workspaceId });
   } catch (error) {
-    logger.error('Failed to store OAuth token', { userId, error });
+    logger.error('Failed to store OAuth token', { workspaceId, error });
     throw error;
   }
 }
 
-export async function getOAuthToken(userId: string): Promise<string | null> {
+export async function getOAuthToken(): Promise<string | null> {
   try {
     const redis = await getRedis();
-    const token = await redis.get<string>(`oauth:${userId}`);
+    const keys = await redis.keys('oauth:*');
+    if (keys.length === 0) {
+      logger.warn('No OAuth token found');
+      return null;
+    }
+    const token = await redis.get<string>(keys[0]);
     if (token) {
-      logger.debug('Retrieved OAuth token', { userId });
+      logger.debug('Retrieved OAuth token');
       return token;
     }
-    logger.warn('No OAuth token found', { userId });
     return null;
   } catch (error) {
-    logger.error('Failed to get OAuth token', { userId, error });
+    logger.error('Failed to get OAuth token', { error });
     throw error;
   }
 }
 
-export async function refreshOAuthToken(userId: string, token: string): Promise<void> {
+export async function refreshOAuthToken(token: string, workspaceId: string): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.set(`oauth:${userId}`, token, {
+    await redis.set(`oauth:${workspaceId}`, token, {
       ex: TOKEN_TTL,
       keepTtl: undefined
     });
-    logger.debug('OAuth token refreshed', { userId });
+    logger.debug('OAuth token refreshed', { workspaceId });
   } catch (error) {
-    logger.error('Failed to refresh OAuth token', { userId, error });
+    logger.error('Failed to refresh OAuth token', { workspaceId, error });
     throw error;
   }
 }
 
-export async function deleteOAuthToken(userId: string): Promise<void> {
+export async function deleteOAuthToken(): Promise<void> {
   try {
     const redis = await getRedis();
-    await redis.del(`oauth:${userId}`);
-    logger.debug('OAuth token deleted', { userId });
+    const keys = await redis.keys('oauth:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+      logger.debug('OAuth token deleted');
+    }
   } catch (error) {
-    logger.error('Failed to delete OAuth token', { userId, error });
+    logger.error('Failed to delete OAuth token', { error });
     throw error;
   }
 }

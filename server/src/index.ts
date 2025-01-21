@@ -2,6 +2,7 @@ import express, { Request } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
+import { createWorker } from './worker';
 
 interface User {
   id: string;
@@ -170,9 +171,9 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req, res) => {
   }
 });
 
-app.post(`${apiBasePath}/auth/disconnect`, (req, res) => {
+app.post(`${apiBasePath}/auth/disconnect`, async (req, res) => {
   try {
-    clearAuth();
+    await clearAuth();
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Disconnect error:', error);

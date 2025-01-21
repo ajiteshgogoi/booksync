@@ -20,9 +20,12 @@ export async function queueSyncJob(
   userId: string,
   fileContent: string
 ): Promise<string> {
+  console.debug('Starting sync job for user:', userId);
   const jobId = `sync:${userId}:${Date.now()}`;
   const highlights = parseClippings(fileContent);
+  console.debug('Parsed highlights count:', highlights.length);
   const redis = await getRedis();
+  console.debug('Redis client initialized');
   
   // Store highlights in Redis in chunks
   for (let i = 0; i < highlights.length; i++) {

@@ -3,11 +3,11 @@ import { getRedis } from './services/redisService';
 import { processSyncJob } from './services/syncService';
 import type { Redis as UpstashRedis } from '@upstash/redis';
 
-async function createWorker() {
+export async function createWorker() {
   const redis = await getRedis();
   
   return new Worker(
-    'syncQueue',
+    'sync_jobs',
     async (job: Job) => {
       try {
         await processSyncJob(job.data.jobId, async (progress, message) => {
@@ -21,9 +21,9 @@ async function createWorker() {
     },
     {
       connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: Number(process.env.REDIS_PORT) || 6379,
-        password: process.env.REDIS_PASSWORD
+        host: process.env.UPSTASH_REDIS_REST_URL,
+        password: process.env.UPSTASH_REDIS_REST_TOKEN,
+        tls: {}
       }
     }
   );

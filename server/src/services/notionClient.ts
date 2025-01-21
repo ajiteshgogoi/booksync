@@ -9,7 +9,11 @@ import {
   cacheHighlight,
   getCachedBook,
   cacheBook,
-  invalidateBookCache
+  invalidateBookCache,
+  storeOAuthToken,
+  getOAuthToken as getRedisOAuthToken,
+  refreshOAuthToken as refreshRedisOAuthToken,
+  deleteOAuthToken as deleteRedisOAuthToken
 } from './redisService';
 
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
@@ -111,12 +115,14 @@ export async function refreshOAuthToken() {
     client_secret: process.env.NOTION_OAUTH_CLIENT_SECRET,
   });
 
-  oauthToken = {
+  const newToken = {
     ...oauthToken,
     ...response.data,
     expires_in: response.data.expires_in,
   };
 
+  await refreshRedisOAuthToken(JSON.stringify(newToken), newToken.workspace_id);
+  oauthToken = newToken;
   initializeNotionClient();
 }
 
@@ -156,6 +162,7 @@ export async function findKindleHighlightsDatabase() {
 }
 
 export async function createOAuthToken(code: string) {
+  console.debug('Creating OAuth token with code:', code);
   try {
     const response = await axios.post('https://api.notion.com/v1/oauth/token', {
       grant_type: 'authorization_code',
@@ -164,6 +171,7 @@ export async function createOAuthToken(code: string) {
       client_id: process.env.NOTION_OAUTH_CLIENT_ID,
       client_secret: process.env.NOTION_OAUTH_CLIENT_SECRET,
     });
+    console.debug('Received OAuth token response:', response.data);
 
     const token = response.data;
     
@@ -175,14 +183,16 @@ export async function createOAuthToken(code: string) {
     }
 
     const redis = await getRedis();
+    console.debug('Storing OAuth token in Redis for workspace:', token.workspace_id);
     // Store token in Redis with 1 hour less than expiry to allow for refresh
     // Ensure expiration time is at least 1 second
     const expiration = Math.max(token.expires_in - 3600, 1);
     await redis.set(
-      `notion:oauth:${token.workspace_id}`,
+      `oauth:${token.workspace_id}`,
       JSON.stringify(token),
       { ex: expiration }
     );
+    console.debug('OAuth token stored successfully');
     
     oauthToken = token;
     initializeNotionClient();
@@ -196,11 +206,11 @@ export async function createOAuthToken(code: string) {
 }
 
 export async function setOAuthToken(token: typeof oauthToken) {
-  if (!token || 
+  if (!token ||
       typeof token !== 'object' ||
-      !token.access_token || 
-      !token.token_type || 
-      !token.bot_id || 
+      !token.access_token ||
+      !token.token_type ||
+      !token.bot_id ||
       !token.workspace_id) {
     throw new Error('Invalid OAuth token provided - missing required fields');
   }
@@ -215,16 +225,7 @@ export async function setOAuthToken(token: typeof oauthToken) {
     token.refresh_token = '';
   }
 
-  const redis = await getRedis();
-  // Store token in Redis with 1 hour less than expiry to allow for refresh
-  // Ensure expiration time is at least 1 second
-  const expiration = Math.max(token.expires_in - 3600, 1);
-  await redis.set(
-    `notion:oauth:${token.workspace_id}`,
-    JSON.stringify(token),
-    { ex: expiration }
-  );
-  
+  await storeOAuthToken(JSON.stringify(token), token.workspace_id);
   oauthToken = token;
   initializeNotionClient();
   await findKindleHighlightsDatabase();
@@ -234,26 +235,15 @@ export async function getOAuthToken() {
   if (oauthToken) return oauthToken;
   
   try {
-    const redis = await getRedis();
-    // Try to load from Redis if not in memory
-    const keys = await redis.keys('notion:oauth:*');
-    if (keys.length === 0 || !keys[0]) {
-      console.log('No OAuth tokens found in Redis');
-      return null;
-    }
-
-    const key = String(keys[0]);
-    const token = await redis.get(key);
-    
-    if (!token || typeof token !== 'string') {
-      console.log('Invalid token format from Redis');
+    const token = await getRedisOAuthToken();
+    if (!token) {
       return null;
     }
 
     const parsedToken = JSON.parse(token);
     
     // Validate token structure
-    if (!parsedToken?.access_token || 
+    if (!parsedToken?.access_token ||
         !parsedToken?.refresh_token ||
         !parsedToken?.workspace_id) {
       console.error('Invalid token structure:', parsedToken);
@@ -276,7 +266,8 @@ export function getNotionClient() {
   return notion;
 }
 
-export function clearAuth() {
+export async function clearAuth() {
+  await deleteRedisOAuthToken();
   oauthToken = null;
   databaseId = null;
   notion = null as unknown as Client;
