@@ -419,22 +419,41 @@ async function updateOrCreateBookPage(
       page_size: 100
     });
 
+      // Get all cached highlights for this book
+      const cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`) as Record<string, string> | null;
+      
       // Add all highlights, checking for duplicates
       const processedHighlights = new Set();
       let addedCount = 0;
       
+      if (!cachedHighlights) {
+        console.log('No cached highlights found');
+      }
+      
       try {
         for (const highlight of book.highlights) {
-        try {
-          // Update progress for every highlight processed
-          onProgress?.();
-          
-          // Skip if we've already processed this location
-          if (processedHighlights.has(highlight.location)) {
-            continue;
-          }
-          
-          processedHighlights.add(highlight.location);
+          try {
+            // Update progress for every highlight processed
+            onProgress?.();
+            
+            // Skip if we've already processed this location
+            if (processedHighlights.has(highlight.location)) {
+              continue;
+            }
+            
+            // Check if highlight exists in cache
+            if (cachedHighlights) {
+              const cachedHighlight = cachedHighlights[highlight.location];
+              if (cachedHighlight) {
+                const cachedData = JSON.parse(cachedHighlight);
+                if (cachedData.highlight === highlight.highlight.join('\n\n')) {
+                  processedHighlights.add(highlight.location);
+                  continue;
+                }
+              }
+            }
+            
+            processedHighlights.add(highlight.location);
 
           // Helper function to split text at sentence boundaries
           const splitAtSentences = (text: string, maxLength: number): string[] => {
@@ -494,9 +513,11 @@ async function updateOrCreateBookPage(
             continue;
           }
 
-          // Cache the highlight after successful creation
-          await cacheHighlight(userId, book.title, highlight);
-          addedCount++;
+          // Only cache if we actually added the highlight
+          if (result && result.results && result.results.length > 0) {
+            await cacheHighlight(userId, book.title, highlight);
+            addedCount++;
+          }
         } catch (error) {
           console.error('Error processing highlight:', highlight.location, error);
         }
