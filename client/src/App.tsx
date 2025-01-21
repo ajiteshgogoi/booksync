@@ -148,10 +148,6 @@ function App() {
       setAuthError(true);
       setErrorMessage('Failed to connect to Notion. Please try again.');
       return;
-    } else if (authStatus === 'cancelled') {
-      setAuthError(true);
-      setErrorMessage('Connection to Notion was cancelled.');
-      return;
     }
     
     // Only do initial auth check if we're not showing an auth error
