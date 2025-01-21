@@ -1,6 +1,7 @@
 import { Client } from '@notionhq/client';
 import axios from 'axios';
 import {
+  redis,
   checkRateLimit,
   getCachedBookPageId,
   cacheBookPageId,
@@ -155,13 +156,36 @@ export async function findKindleHighlightsDatabase() {
 }
 
 export async function setOAuthToken(token: typeof oauthToken) {
+  if (!token) return;
+  
+  // Store token in Redis with 1 hour less than expiry to allow for refresh
+  await redis.set(
+    `notion:oauth:${token.workspace_id}`,
+    JSON.stringify(token),
+    { ex: token.expires_in - 3600 }
+  );
+  
   oauthToken = token;
   initializeNotionClient();
   await findKindleHighlightsDatabase();
 }
 
-export function getOAuthToken() {
-  return oauthToken;
+export async function getOAuthToken() {
+  if (oauthToken) return oauthToken;
+  
+  // Try to load from Redis if not in memory
+  const keys = await redis.keys('notion:oauth:*');
+  if (keys.length > 0 && keys[0]) {
+    const key = String(keys[0]);
+      const token = await redis.get(key);
+      if (token && typeof token === 'string') {
+        oauthToken = JSON.parse(token);
+      initializeNotionClient();
+      return oauthToken;
+    }
+  }
+  
+  return null;
 }
 
 export function getNotionClient() {
@@ -184,7 +208,7 @@ export async function updateNotionDatabase(
 ): Promise<void> {
   try {
     // Group highlights by book
-    const books = highlights.reduce((acc, highlight) => {
+    const books = highlights.reduce<Record<string, NotionBookPage>>((acc, highlight) => {
       if (!acc[highlight.bookTitle]) {
         acc[highlight.bookTitle] = {
           title: highlight.bookTitle,

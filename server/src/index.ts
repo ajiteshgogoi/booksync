@@ -72,12 +72,17 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req, res) => {
 });
 
 // Auth check endpoint
-app.get(`${apiBasePath}/auth/check`, (req, res) => {
-  const token = getOAuthToken();
-  if (token && token.access_token) {
-    res.status(200).json({ authenticated: true });
-  } else {
-    res.status(401).json({ authenticated: false });
+app.get(`${apiBasePath}/auth/check`, async (req, res) => {
+  try {
+    const token = await getOAuthToken();
+    if (token && token.access_token) {
+      res.status(200).json({ authenticated: true });
+    } else {
+      res.status(401).json({ authenticated: false });
+    }
+  } catch (error) {
+    console.error('Auth check error:', error);
+    res.status(500).json({ error: 'Failed to check authentication status' });
   }
 });
 
@@ -140,7 +145,8 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
 app.post(`${apiBasePath}/auth/refresh`, async (req, res) => {
   try {
     await refreshOAuthToken();
-    res.status(200).json({ token: getOAuthToken() });
+    const token = await getOAuthToken();
+    res.status(200).json({ token });
   } catch (error) {
     console.error('Token refresh error:', error);
     res.status(500).json({ error: 'Failed to refresh token' });
