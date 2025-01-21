@@ -1,16 +1,29 @@
 # BookSync
 
-A clean, simple web application to sync your Kindle highlights to Notion. BookSync automatically organizes your highlights by book, preserves metadata like locations and dates, and prevents duplicates.
+A clean, simple web application to sync your Kindle highlights to Notion. BookSync automatically organizes your highlights by book, preserves metadata like locations and dates, and uses smart deduplication to ensure clean data.
 
 ## Features
 
-- OAuth integration with Notion
-- Automatic database detection
-- Parses My Clippings.txt from Kindle
-- Groups highlights by book
-- Preserves highlight metadata (location, date)
-- Prevents duplicate highlights
-- Real-time sync progress tracking
+- **Smart Deduplication**
+  - Parser-level deduplication of overlapping highlights
+  - Content + location based duplicate detection
+  - Time-based syncing (only syncs highlights newer than last sync)
+  - Automatic handling of edited highlights
+- **Efficient Syncing**
+  - Background processing for large libraries
+  - Continues syncing even if browser is closed
+  - Real-time progress tracking
+  - Automatic rate limiting
+- **Notion Integration**
+  - OAuth integration with automatic refresh
+  - Automatic database detection
+  - Book cover fetching from multiple sources
+  - Preserves all highlight metadata
+- **User Experience**
+  - Real-time progress bar with time estimates
+  - Background processing notifications
+  - Sync status persistence
+  - Clean, intuitive interface
 
 ## Setup
 
@@ -53,12 +66,65 @@ npm run dev
 
 5. Visit http://localhost:5173 in your browser
 
+## How It Works
+
+### 1. Parser Layer
+When you upload My Clippings.txt, the parser:
+- Groups highlights by book and location
+- Removes duplicates and overlapping content
+- Preserves metadata (location, timestamp)
+- Handles multi-line highlights and special characters
+
+### 2. Queue Layer
+For reliable processing:
+- Each sync is queued with a unique job ID
+- Progress is tracked across sessions
+- Background processing continues if browser closes
+- Automatic rate limiting and retries
+
+### 3. Sync Layer
+During synchronization:
+- Checks last sync time for each book in Notion
+- Only processes highlights newer than last sync
+- Updates both 'Last Highlighted' and 'Last Synced' dates
+- Chunks large highlights to meet Notion's limits
+
+### 4. UI Layer
+The interface provides:
+- Real-time sync progress
+- Estimated time remaining
+- Current operation status
+- Background processing notifications
+- Error handling with retry options
+
 ## Usage
 
-1. Copy the Kindle Highlights template to your Notion workspace
-2. Connect your Notion account through the app
-3. Upload your Kindle's My Clippings.txt file
-4. Watch your highlights sync to Notion!
+1. **First Time Setup**
+   - Copy the [Kindle Highlights template](https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a) to your Notion workspace
+   - Connect your Notion account through the app
+   - The app will automatically find your highlights database
+
+2. **Syncing Highlights**
+   - Connect your Kindle to your computer
+   - Find "My Clippings.txt" in your Kindle's documents folder
+   - Upload the file through the BookSync interface
+   - The app will parse and start syncing your highlights
+   - You can close the browser - sync will continue in background
+   - Return anytime to check progress
+
+3. **Organizing in Notion**
+   - Highlights are organized by book
+   - Each book page includes:
+     - Cover image (auto-fetched)
+     - Author information
+     - Highlight count
+     - Last highlighted date
+     - Last sync date
+   - Highlights preserve:
+     - Original text
+     - Location information
+     - Timestamp
+     - Formatting
 
 ## Development
 
@@ -83,8 +149,10 @@ client/
 server/
 ├── src/
 │   ├── index.ts               # Express server setup
+│   ├── worker.ts              # Background job processor
 │   ├── services/
 │   │   ├── notionClient.ts    # Notion API integration
+│   │   ├── redisService.ts    # Redis queue management
 │   │   └── syncService.ts     # Highlight sync logic
 │   └── utils/
 │       └── parseClippings.ts  # Kindle file parser
