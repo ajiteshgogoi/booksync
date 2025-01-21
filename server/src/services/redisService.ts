@@ -17,6 +17,8 @@ export type JobStatus = {
   message?: string;
   result?: any;
   total?: number;
+  lastCheckpoint?: number;
+  completedAt?: number;
 };
 
 // Rate limiting configuration

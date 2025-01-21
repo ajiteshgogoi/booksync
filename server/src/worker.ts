@@ -1,21 +1,27 @@
-import { redis, getNextJob, setJobStatus, JobStatus } from './services/redisService';
+import { redis, getNextJob, setJobStatus, getJobStatus, JobStatus } from './services/redisService';
 import { processSyncJob } from './services/syncService';
 
 async function processJob(jobId: string) {
   try {
+    // Check if this is a continuation of a partial job
+    const existingStatus = await getJobStatus(jobId);
+    const startProgress = existingStatus?.progress || 0;
+    
     // Update status to processing
     await setJobStatus(jobId, {
       state: 'processing',
-      progress: 0,
-      message: 'Starting sync...'
+      progress: startProgress,
+      message: startProgress > 0 ? 'Resuming sync...' : 'Starting sync...'
     });
 
-    // Process job with progress updates
+    // Process job with progress updates and checkpointing
     await processSyncJob(jobId, async (progress: number, message: string) => {
+      // Save progress every 10% or 5 seconds, whichever comes first
       await setJobStatus(jobId, {
         state: 'processing',
         progress,
-        message
+        message,
+        lastCheckpoint: Date.now()
       });
     });
 
@@ -23,7 +29,8 @@ async function processJob(jobId: string) {
     await setJobStatus(jobId, {
       state: 'completed',
       progress: 100,
-      message: 'Sync completed successfully'
+      message: 'Sync completed successfully',
+      completedAt: Date.now()
     });
   } catch (error) {
     console.error(`Failed processing job ${jobId}:`, error);
