@@ -155,6 +155,43 @@ export async function findKindleHighlightsDatabase() {
   }
 }
 
+export async function createOAuthToken(code: string) {
+  try {
+    const response = await axios.post('https://api.notion.com/v1/oauth/token', {
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: process.env.NOTION_REDIRECT_URI,
+      client_id: process.env.NOTION_OAUTH_CLIENT_ID,
+      client_secret: process.env.NOTION_OAUTH_CLIENT_SECRET,
+    });
+
+    const token = response.data;
+    
+    // Validate token structure
+    if (!token?.access_token || 
+        !token?.refresh_token ||
+        !token?.workspace_id) {
+      throw new Error('Invalid token structure from Notion');
+    }
+
+    // Store token in Redis with 1 hour less than expiry to allow for refresh
+    await redis.set(
+      `notion:oauth:${token.workspace_id}`,
+      JSON.stringify(token),
+      { ex: token.expires_in - 3600 }
+    );
+    
+    oauthToken = token;
+    initializeNotionClient();
+    await findKindleHighlightsDatabase();
+    
+    return token;
+  } catch (error) {
+    console.error('Error creating OAuth token:', error);
+    throw error;
+  }
+}
+
 export async function setOAuthToken(token: typeof oauthToken) {
   if (!token) return;
   
