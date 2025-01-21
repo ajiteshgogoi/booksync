@@ -8,18 +8,23 @@ export interface Highlight {
 
 export function parseClippings(fileContent: string): Highlight[] {
   console.log('Starting to parse clippings file');
-  const entries = fileContent.split('==========');
-  console.log(`Found ${entries.length} raw entries`);
+  // Split and filter entries
+  const entries = fileContent
+    .split('==========')
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0);
+  
+  console.log(`Found ${entries.length} valid entries`);
   
   const highlights: Highlight[] = [];
 
   for (const entry of entries) {
     try {
       // Handle both Windows (\r\n) and Unix (\n) line endings
-      const lines = entry.trim().split(/\r?\n/).map(line => line.trim());
+      const lines = entry.split(/\r?\n/).map(line => line.trim());
       
-      // Skip empty entries
-      if (lines.length < 4) {
+      // Skip entries that don't have at least 3 lines (title, metadata, content)
+      if (lines.length < 3) {
         console.log('Skipping entry: insufficient lines', { lineCount: lines.length });
         continue;
       }
