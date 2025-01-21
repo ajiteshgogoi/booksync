@@ -1,28 +1,5 @@
 import { Client } from '@notionhq/client';
 import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
-
-const TOKEN_FILE = path.join(__dirname, 'notion_token.json');
-
-function loadToken() {
-  try {
-    if (fs.existsSync(TOKEN_FILE)) {
-      return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'));
-    }
-  } catch (error) {
-    console.error('Error loading token:', error);
-  }
-  return null;
-}
-
-function saveToken(token: any) {
-  try {
-    fs.writeFileSync(TOKEN_FILE, JSON.stringify(token, null, 2));
-  } catch (error) {
-    console.error('Error saving token:', error);
-  }
-}
 
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
   try {
@@ -72,7 +49,25 @@ export interface NotionBookPage {
 
 // Initialize Notion client
 let notion: Client;
-let oauthToken = loadToken();
+let oauthToken: {
+  access_token: string;
+  token_type: string;
+  bot_id: string;
+  workspace_name: string;
+  workspace_icon: string;
+  workspace_id: string;
+  owner: {
+    type: string;
+    user?: {
+      object: string;
+      id: string;
+      name: string;
+      avatar_url: string;
+    };
+  };
+  expires_in: number;
+  refresh_token: string;
+} | null = null;
 
 // Database ID is discovered after OAuth
 let databaseId: string | null = null;
@@ -151,7 +146,6 @@ export async function findKindleHighlightsDatabase() {
 
 export async function setOAuthToken(token: typeof oauthToken) {
   oauthToken = token;
-  saveToken(token);
   initializeNotionClient();
   await findKindleHighlightsDatabase();
 }
@@ -171,11 +165,6 @@ export function clearAuth() {
   oauthToken = null;
   databaseId = null;
   notion = null as unknown as Client;
-  try {
-    fs.unlinkSync(TOKEN_FILE);
-  } catch (error) {
-    console.error('Error clearing auth token:', error);
-  }
 }
 
 export async function updateNotionDatabase(
