@@ -213,12 +213,12 @@ function App() {
       </div>
 
       <footer className="mt-8 py-4 border-t border-gray-100 relative z-20">
-        <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-4">
+        <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-2">
             <a 
               href="https://ko-fi.com/gogoi" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-[#4a6cf7] text-white hover:text-white px-4 py-2 rounded-md transition-all font-serif hover:-translate-y-0.5 hover:shadow-lg [text-shadow:0_1px_1px_rgba(0,0,0,0.3)]"
+              className="inline-flex items-center gap-2 bg-[#4a6cf7] text-white hover:text-white px-3 py-1.5 text-sm rounded-md transition-all font-serif hover:-translate-y-0.5 hover:shadow-lg [text-shadow:0_1px_1px_rgba(0,0,0,0.3)]"
             >
             <img 
               src="https://storage.ko-fi.com/cdn/cup-border.png" 
@@ -227,7 +227,7 @@ function App() {
             />
             Buy Me a Coffee
           </a>
-          <p className="text-[#5a463a] font-serif">© {new Date().getFullYear()} Ajitesh Gogoi</p>
+          <p className="text-[#5a463a] font-serif text-sm">© {new Date().getFullYear()} ajitesh gogoi</p>
         </div>
       </footer>
     </div>
