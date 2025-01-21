@@ -9,12 +9,35 @@ const logger = {
 };
 
 // Initialize Redis client
-export const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+let _redis: Redis | null = null;
 
-logger.info('Redis client initialized');
+async function initializeRedis(): Promise<Redis> {
+  try {
+    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+      throw new Error('Missing Redis configuration in environment variables');
+    }
+
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+
+    // Test connection
+    await redis.ping();
+    logger.info('Redis client initialized successfully');
+    return redis;
+  } catch (error) {
+    logger.error('Failed to initialize Redis client', { error });
+    throw error;
+  }
+}
+
+export async function getRedis(): Promise<Redis> {
+  if (!_redis) {
+    _redis = await initializeRedis();
+  }
+  return _redis;
+}
 
 // Queue configuration
 export const QUEUE_NAME = 'sync_jobs';
@@ -44,6 +67,7 @@ const TOKEN_TTL = 60 * 60 * 2; // 2 hours
 // Token management
 export async function storeOAuthToken(userId: string, token: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.set(`oauth:${userId}`, token, {
       ex: TOKEN_TTL
     });
@@ -56,6 +80,7 @@ export async function storeOAuthToken(userId: string, token: string): Promise<vo
 
 export async function getOAuthToken(userId: string): Promise<string | null> {
   try {
+    const redis = await getRedis();
     const token = await redis.get<string>(`oauth:${userId}`);
     if (token) {
       logger.debug('Retrieved OAuth token', { userId });
@@ -71,6 +96,7 @@ export async function getOAuthToken(userId: string): Promise<string | null> {
 
 export async function refreshOAuthToken(userId: string, token: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.set(`oauth:${userId}`, token, {
       ex: TOKEN_TTL,
       keepTtl: undefined
@@ -84,6 +110,7 @@ export async function refreshOAuthToken(userId: string, token: string): Promise<
 
 export async function deleteOAuthToken(userId: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.del(`oauth:${userId}`);
     logger.debug('OAuth token deleted', { userId });
   } catch (error) {
@@ -95,6 +122,7 @@ export async function deleteOAuthToken(userId: string): Promise<void> {
 // Queue functions
 export async function addJobToQueue(jobId: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.rpush(QUEUE_NAME, jobId);
     await setJobStatus(jobId, { state: 'pending' });
     logger.debug('Job added to queue', { jobId });
@@ -106,6 +134,7 @@ export async function addJobToQueue(jobId: string): Promise<void> {
 
 export async function getNextJob(): Promise<string | null> {
   try {
+    const redis = await getRedis();
     const jobId = await redis.lpop<string>(QUEUE_NAME);
     if (jobId) {
       logger.debug('Retrieved next job from queue', { jobId });
@@ -119,6 +148,7 @@ export async function getNextJob(): Promise<string | null> {
 
 export async function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.set(`job:${jobId}:status`, JSON.stringify(status), {
       ex: JOB_TTL
     });
@@ -131,6 +161,7 @@ export async function setJobStatus(jobId: string, status: JobStatus): Promise<vo
 
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   try {
+    const redis = await getRedis();
     const status = await redis.get<JobStatus | string>(`job:${jobId}:status`);
     if (status) {
       logger.debug('Retrieved job status', { jobId });
@@ -147,6 +178,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
 // Rate limiting
 export async function checkRateLimit(userId: string): Promise<boolean> {
   try {
+    const redis = await getRedis();
     const currentTime = Math.floor(Date.now() / 1000);
     const key = `rate_limit:${userId}:${currentTime}`;
     
@@ -170,6 +202,7 @@ export async function checkRateLimit(userId: string): Promise<boolean> {
 // Highlight caching
 export async function isHighlightCached(userId: string, title: string, highlight: any): Promise<boolean> {
   try {
+    const redis = await getRedis();
     const key = `highlight:${userId}:${title}:${highlight.location}`;
     const exists = await redis.exists(key);
     logger.debug('Highlight cache check', { 
@@ -191,6 +224,7 @@ export async function isHighlightCached(userId: string, title: string, highlight
 
 export async function cacheHighlight(userId: string, title: string, highlight: any): Promise<void> {
   try {
+    const redis = await getRedis();
     const key = `highlight:${userId}:${title}:${highlight.location}`;
     await redis.set(key, JSON.stringify(highlight), {
       ex: HIGHLIGHT_TTL
@@ -213,6 +247,7 @@ export async function cacheHighlight(userId: string, title: string, highlight: a
 // Book page caching
 export async function getCachedBookPageId(userId: string, title: string): Promise<string | null> {
   try {
+    const redis = await getRedis();
     const pageId = await redis.get<string>(`page_id:${userId}:${title}`);
     logger.debug('Retrieved cached book page ID', { 
       userId, 
@@ -232,6 +267,7 @@ export async function getCachedBookPageId(userId: string, title: string): Promis
 
 export async function cacheBookPageId(userId: string, title: string, pageId: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.set(`page_id:${userId}:${title}`, pageId, {
       ex: PAGE_ID_TTL
     });
@@ -252,6 +288,7 @@ export async function cacheBookPageId(userId: string, title: string, pageId: str
 // Book caching
 export async function getCachedBook(userId: string, title: string): Promise<any> {
   try {
+    const redis = await getRedis();
     const cached = await redis.get<string>(`book:${userId}:${title}`);
     if (typeof cached === 'string') {
       logger.debug('Retrieved cached book', { 
@@ -273,6 +310,7 @@ export async function getCachedBook(userId: string, title: string): Promise<any>
 
 export async function cacheBook(userId: string, book: any): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.set(`book:${userId}:${book.title}`, JSON.stringify(book), {
       ex: BOOK_TTL
     });
@@ -292,6 +330,7 @@ export async function cacheBook(userId: string, book: any): Promise<void> {
 
 export async function invalidateBookCache(userId: string, title: string): Promise<void> {
   try {
+    const redis = await getRedis();
     await redis.del(`book:${userId}:${title}`);
     logger.debug('Book cache invalidated', { 
       userId, 
@@ -310,6 +349,7 @@ export async function invalidateBookCache(userId: string, title: string): Promis
 // Cache clearing
 export async function clearUserCaches(userId: string): Promise<void> {
   try {
+    const redis = await getRedis();
     const keys = await redis.keys(`*:${userId}:*`);
     if (keys.length > 0) {
       await redis.del(...keys);
@@ -334,6 +374,7 @@ export async function getRedisMetrics(): Promise<{
   operations: number;
 }> {
   try {
+    const redis = await getRedis();
     const metrics = await redis.mget(
       'stats:cache:hits',
       'stats:cache:misses',
@@ -362,3 +403,6 @@ export async function getRedisMetrics(): Promise<{
     };
   }
 }
+
+// Export the redis instance for direct access when needed
+export { getRedis as redis };

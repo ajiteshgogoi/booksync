@@ -1,7 +1,7 @@
 import { parseClippings } from '../utils/parseClippings';
 import { updateNotionDatabase } from './notionClient';
 import { 
-  redis,
+  getRedis,
   cacheHighlight,
   isHighlightCached,
   checkRateLimit,
@@ -22,6 +22,7 @@ export async function queueSyncJob(
 ): Promise<string> {
   const jobId = `sync:${userId}:${Date.now()}`;
   const highlights = parseClippings(fileContent);
+  const redis = await getRedis();
   
   // Store highlights in Redis in chunks
   for (let i = 0; i < highlights.length; i++) {
@@ -48,6 +49,7 @@ export async function processSyncJob(
   onProgress?: (progress: number, message: string) => Promise<void>
 ) {
   try {
+    const redis = await getRedis();
     // Update status to processing
     await setJobStatus(jobId, {
       state: 'processing',
@@ -135,6 +137,7 @@ export async function getSyncStatus(jobId: string): Promise<JobStatus | null> {
 }
 
 async function getHighlightsFromQueue(jobId: string) {
+  const redis = await getRedis();
   const highlights: string[] = [];
   let cursor = 0;
   

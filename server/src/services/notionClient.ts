@@ -1,7 +1,7 @@
 import { Client } from '@notionhq/client';
 import axios from 'axios';
 import {
-  redis,
+  getRedis,
   checkRateLimit,
   getCachedBookPageId,
   cacheBookPageId,
@@ -41,7 +41,6 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
     return null;
   }
 }
-
 
 export interface Highlight {
   bookTitle: string;
@@ -175,14 +174,15 @@ export async function createOAuthToken(code: string) {
       throw new Error('Invalid token structure from Notion');
     }
 
-  // Store token in Redis with 1 hour less than expiry to allow for refresh
-  // Ensure expiration time is at least 1 second
-  const expiration = Math.max(token.expires_in - 3600, 1);
-  await redis.set(
-    `notion:oauth:${token.workspace_id}`,
-    JSON.stringify(token),
-    { ex: expiration }
-  );
+    const redis = await getRedis();
+    // Store token in Redis with 1 hour less than expiry to allow for refresh
+    // Ensure expiration time is at least 1 second
+    const expiration = Math.max(token.expires_in - 3600, 1);
+    await redis.set(
+      `notion:oauth:${token.workspace_id}`,
+      JSON.stringify(token),
+      { ex: expiration }
+    );
     
     oauthToken = token;
     initializeNotionClient();
@@ -215,6 +215,7 @@ export async function setOAuthToken(token: typeof oauthToken) {
     token.refresh_token = '';
   }
 
+  const redis = await getRedis();
   // Store token in Redis with 1 hour less than expiry to allow for refresh
   // Ensure expiration time is at least 1 second
   const expiration = Math.max(token.expires_in - 3600, 1);
@@ -233,6 +234,7 @@ export async function getOAuthToken() {
   if (oauthToken) return oauthToken;
   
   try {
+    const redis = await getRedis();
     // Try to load from Redis if not in memory
     const keys = await redis.keys('notion:oauth:*');
     if (keys.length === 0 || !keys[0]) {
@@ -419,46 +421,47 @@ async function updateOrCreateBookPage(
       page_size: 100
     });
 
-      // Add all highlights, checking for duplicates
-      const processedHighlights = new Set();
-      let addedCount = 0;
-      
+    // Add all highlights, checking for duplicates
+    const processedHighlights = new Set();
+    let addedCount = 0;
+    
+    try {
+      const redis = await getRedis();
+      // Try to get cached highlights if Redis is available
+      let cachedHighlights: Record<string, string> | null = null;
       try {
-        // Try to get cached highlights if Redis is available
-        let cachedHighlights: Record<string, string> | null = null;
+        cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`);
+      } catch (redisError) {
+        console.warn('Redis cache unavailable, proceeding without caching:', redisError);
+      }
+      
+      for (const highlight of book.highlights) {
         try {
-          cachedHighlights = await redis.hgetall(`book:${userId}:${book.title}:highlights`);
-        } catch (redisError) {
-          console.warn('Redis cache unavailable, proceeding without caching:', redisError);
-        }
-        
-        for (const highlight of book.highlights) {
-          try {
-            // Update progress for every highlight processed
-            onProgress?.();
-            
-            // Skip if we've already processed this location
-            if (processedHighlights.has(highlight.location)) {
-              continue;
-            }
-            
-            // Check if highlight exists in cache (if Redis is available)
-            if (cachedHighlights) {
-              const cachedHighlight = cachedHighlights[highlight.location];
-              if (cachedHighlight) {
-                try {
-                  const cachedData = JSON.parse(cachedHighlight);
-                  if (cachedData.highlight === highlight.highlight.join('\n\n')) {
-                    processedHighlights.add(highlight.location);
-                    continue;
-                  }
-                } catch (parseError) {
-                  console.warn('Failed to parse cached highlight:', parseError);
+          // Update progress for every highlight processed
+          onProgress?.();
+          
+          // Skip if we've already processed this location
+          if (processedHighlights.has(highlight.location)) {
+            continue;
+          }
+          
+          // Check if highlight exists in cache (if Redis is available)
+          if (cachedHighlights) {
+            const cachedHighlight = cachedHighlights[highlight.location];
+            if (cachedHighlight) {
+              try {
+                const cachedData = JSON.parse(cachedHighlight);
+                if (cachedData.highlight === highlight.highlight.join('\n\n')) {
+                  processedHighlights.add(highlight.location);
+                  continue;
                 }
+              } catch (parseError) {
+                console.warn('Failed to parse cached highlight:', parseError);
               }
             }
-            
-            processedHighlights.add(highlight.location);
+          }
+          
+          processedHighlights.add(highlight.location);
 
           // Helper function to split text at sentence boundaries
           const splitAtSentences = (text: string, maxLength: number): string[] => {
