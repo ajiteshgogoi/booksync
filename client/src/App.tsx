@@ -133,7 +133,7 @@ function App() {
         {!isAuthenticated ? (
           <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 text-center border border-[#e0d6c2]">
             <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
-            <p className="mt-2 text-gray-600">First, copy the Kindle Highlights template to your Notion workspace.</p>
+            <p className="mt-2 text-gray-600">First, copy the <a href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a" target="_blank" rel="noopener noreferrer" className="text-[#8b7355] hover:underline">Kindle Highlights template</a> to your Notion workspace.</p>
             <button 
               onClick={handleLogin}
               className="mt-4 bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
@@ -144,7 +144,7 @@ function App() {
         ) : (
           <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 border border-[#e0d6c2]">
             <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif">Sync Your Highlights</h2>
-            <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload "My Clippings.txt" to get started.</p>
+            <p className="mt-2 text-[#5a463a] font-serif">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
             <div className="mt-4">
               <label className="block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif">

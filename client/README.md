@@ -12,10 +12,11 @@ Sync your Kindle highlights to Notion with ease.
 
 ## Getting Started
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Start development server: `npm run dev`
-4. Open [http://localhost:5173](http://localhost:5173) in your browser
+1. First, copy the [Kindle Highlights template](https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a) to your Notion workspace
+2. Clone the repository
+3. Install dependencies: `npm install`
+4. Start development server: `npm run dev`
+5. Open [http://localhost:5173](http://localhost:5173) in your browser
 
 ## Deployment
 
