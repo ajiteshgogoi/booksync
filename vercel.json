@@ -8,10 +8,9 @@
       "src": "client/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "buildCommand": "npm install && npm run build",
+        "buildCommand": "cd client && npm install && npm run build",
         "zeroConfig": false,
-        "workingDirectory": "client",
-        "outputDirectory": "dist"
+        "outputDirectory": "client"
       }
     }
   ],
