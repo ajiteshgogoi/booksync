@@ -1,9 +1,7 @@
 import { parseClippings } from '../utils/parseClippings';
 import { updateNotionDatabase } from './notionClient';
-import { 
+import {
   getRedis,
-  cacheHighlight,
-  isHighlightCached,
   checkRateLimit,
   addJobToQueue,
   getJobStatus,
@@ -89,22 +87,14 @@ export async function processSyncJob(
       }
 
       const batch = highlights.slice(i, i + BATCH_SIZE);
-      const highlightsToSync = [];
       
-      // Filter out cached highlights
-      for (const highlight of batch) {
-        if (!await isHighlightCached(highlight.userId, highlight.bookTitle, highlight)) {
-          highlightsToSync.push(highlight);
-        }
-      }
-
-      // Sync highlights to Notion
-      if (highlightsToSync.length > 0) {
+      // Process batch of highlights
+      if (batch.length > 0) {
         try {
-          console.debug(`Processing batch of ${highlightsToSync.length} highlights`);
+          console.debug(`Processing batch of ${batch.length} highlights`);
           
           // Verify all highlights have required fields
-          const invalidHighlights = highlightsToSync.filter(h => 
+          const invalidHighlights = batch.filter(h =>
             !h.userId || !h.bookTitle || !h.highlight || !h.location || !h.date
           );
           
@@ -114,36 +104,28 @@ export async function processSyncJob(
           }
 
           // Verify all highlights have the same userId
-          const userId = highlightsToSync[0].userId;
-          if (!highlightsToSync.every(h => h.userId === userId)) {
+          const userId = batch[0].userId;
+          if (!batch.every(h => h.userId === userId)) {
             throw new Error('Batch contains highlights from multiple users');
           }
 
-          console.debug(`Updating Notion database for user ${userId}`);
-          await updateNotionDatabase(userId, highlightsToSync);
+          console.debug(`Updating Notion database with ${batch.length} highlights`);
+          await updateNotionDatabase(batch);
           
-          // Only cache highlights after successful Notion update
-          for (const highlight of highlightsToSync) {
-            try {
-              await cacheHighlight(highlight.userId, highlight.bookTitle, highlight);
-              processed++;
-              
-              // Update progress
-              const progress = Math.round((processed / total) * 100);
-              await setJobStatus(jobId, {
-                state: 'processing',
-                progress,
-                message: `Processing ${processed}/${total} highlights`
-              });
-              
-              // Call progress callback if provided
-              if (onProgress) {
-                await onProgress(progress, `Processing ${processed}/${total} highlights`);
-              }
-            } catch (error) {
-              console.error('Error caching highlight:', error, highlight);
-              // Continue processing other highlights
-            }
+          // Update progress
+          processed += batch.length;
+          const progress = Math.round((processed / total) * 100);
+          
+          // Update job status
+          await setJobStatus(jobId, {
+            state: 'processing',
+            progress,
+            message: `Processing ${processed}/${total} highlights`
+          });
+          
+          // Call progress callback if provided
+          if (onProgress) {
+            await onProgress(progress, `Processing ${processed}/${total} highlights`);
           }
         } catch (error) {
           console.error('Error syncing highlights to Notion:', error);

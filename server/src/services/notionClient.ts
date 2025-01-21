@@ -267,7 +267,6 @@ export async function clearAuth() {
 }
 
 export async function updateNotionDatabase(
-  userId: string,
   highlights: Highlight[],
   onProgress?: () => void
 ): Promise<void> {
@@ -323,9 +322,14 @@ export async function updateNotionDatabase(
       return acc;
     }, {} as Record<string, NotionBookPage>);
 
+    // Ensure we have a valid databaseId
+    if (!databaseId) {
+      throw new Error('Database ID not found');
+    }
+
     // Update or create pages for each book
     for (const book of Object.values(books)) {
-      await updateOrCreateBookPage(userId, book, onProgress);
+      await updateOrCreateBookPage(databaseId, book, onProgress);
     }
   } catch (error) {
     console.error('Error updating Notion database:', error);
@@ -334,7 +338,7 @@ export async function updateNotionDatabase(
 }
 
 async function updateOrCreateBookPage(
-  userId: string,
+  databaseId: string,
   book: NotionBookPage,
   onProgress?: () => void
 ) {
