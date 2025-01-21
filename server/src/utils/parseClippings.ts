@@ -42,7 +42,7 @@ export function parseClippings(fileContent: string): Highlight[] {
       const author = titleAuthorMatch[2].trim();
 
       // Extract highlight metadata
-      const metadataMatch = lines[1].match(/- Your Highlight at location (\d+-\d+) \| Added on (.+)$/);
+      const metadataMatch = lines[1].match(/- Your Highlight (?:at|on page \d+) \| location (\d+-\d+) \| Added on (.+)$/);
       if (!metadataMatch) {
         console.log('Skipping entry: invalid metadata format', { line: lines[1] });
         continue;
