@@ -57,27 +57,13 @@ jobs:
           echo "Build complete"
 
       - name: Process File
+        env:
+          FILE_CONTENT: ${{ toJSON(github.event.client_payload.fileContent) }}
+          USER_ID: ${{ github.event.client_payload.userId }}
         run: |
           cd server
           echo "Starting file processing..."
-          node --experimental-vm-modules -e "
-          const { processFileContent } = await import('./build/src/services/processService.js');
-          const fileContent = JSON.stringify(${{ toJSON(github.event.client_payload.fileContent) }});
-          const userId = '${{ github.event.client_payload.userId }}';
-          
-          console.log('Starting file processing with:', {
-            userId,
-            contentLength: fileContent.length
-          });
-          
-          try {
-            await processFileContent(userId, fileContent);
-            console.log('File processing completed successfully');
-          } catch (error) {
-            console.error('Failed to process file:', error);
-            process.exit(1);
-          }
-          "
+          node --experimental-vm-modules processHighlights.js
 
   test-webhook:
     if: github.event.action == 'process_highlights_test'
