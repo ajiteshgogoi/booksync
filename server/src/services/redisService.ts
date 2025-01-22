@@ -56,6 +56,7 @@ export type JobStatus = {
   total?: number;
   lastCheckpoint?: number;
   completedAt?: number;
+  lastProcessedIndex?: number;  // Track the last processed highlight index
 };
 
 // Rate limiting configuration

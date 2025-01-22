@@ -1,11 +1,14 @@
-import { getRedis, getNextJob, setJobStatus, getJobStatus, JobStatus } from './services/redisService';
+import { getRedis, getNextJob, setJobStatus, getJobStatus, addJobToQueue, JobStatus } from './services/redisService';
 import { processSyncJob } from './services/syncService';
 
 // Configuration for worker behavior
-const MAX_JOBS_PER_RUN = 100; // Process more jobs since we run once per day
-const MAX_JOBS_PER_USER = 10; // Limit jobs per user for fair processing
-const MAX_RUNTIME = 300000; // 5 minutes max runtime for Vercel
-const JOB_TIMEOUT = 60000; // 60 seconds max per job
+const isProd = process.env.NODE_ENV === 'production';
+
+// Use different limits based on environment
+const MAX_JOBS_PER_RUN = isProd ? 50 : Infinity; // No limit locally
+const MAX_JOBS_PER_USER = isProd ? 5 : Infinity; // No limit locally
+const MAX_RUNTIME = isProd ? 270000 : 3600000; // 4.5 mins in prod, 1 hour locally
+const JOB_TIMEOUT = isProd ? 30000 : 300000; // 30 secs in prod, 5 mins locally
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
@@ -54,20 +57,28 @@ export async function startWorker() {
       } catch (error) {
         console.error('Error processing job:', jobId, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const status = await getJobStatus(jobId);
         
-        const failedStatus: JobStatus = {
-          state: 'failed' as const,
-          message: error instanceof Error && error.message === 'Job timeout'
-            ? 'Job timed out - will retry in next run'
-            : errorMessage
-        };
-
-        await setJobStatus(jobId, failedStatus);
-
-        if (errorMessage.includes('Notion')) {
+        if (error instanceof Error && error.message === 'Job timeout') {
+          // If job timed out, requeue it to continue from last processed index
+          await setJobStatus(jobId, {
+            state: 'pending' as const,
+            message: 'Job timed out - will continue in next run',
+            lastProcessedIndex: status?.lastProcessedIndex || 0
+          });
+          await addJobToQueue(jobId);
+        } else if (errorMessage.includes('Notion')) {
           await setJobStatus(jobId, {
             state: 'failed' as const,
-            message: 'Failed to sync with Notion. Please ensure you have copied the Kindle Highlights template and granted necessary permissions.'
+            message: 'Failed to sync with Notion. Please ensure you have copied the Kindle Highlights template and granted necessary permissions.',
+            lastProcessedIndex: status?.lastProcessedIndex || 0
+          });
+        } else {
+          // For other errors, mark as failed but preserve progress
+          await setJobStatus(jobId, {
+            state: 'failed' as const,
+            message: errorMessage,
+            lastProcessedIndex: status?.lastProcessedIndex || 0
           });
         }
       }
