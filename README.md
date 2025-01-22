@@ -12,7 +12,7 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Enhanced hash generation using book title, author and content
   - Redis cache with 24-hour TTL for efficient duplicate checking
 - **Efficient Syncing**
-  - Daily background processing via Vercel Cron Jobs (runs at midnight UTC)
+  - Regular background processing via GitHub Actions (runs every 30 minutes)
   - Resilient processing with automatic retries and error recovery
   - Real-time progress tracking with job status persistence
   - Intelligent batch processing with rate limiting
@@ -60,7 +60,6 @@ NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
 CLIENT_URL=http://localhost:5173
 REDIS_URL=redis://localhost:6379  # Or your Redis connection URL
 REDIS_TTL=86400                   # Cache TTL in seconds (24 hours)
-CRON_SECRET=your_cron_secret     # Required for Vercel Cron authentication
 
 # In client/.env
 VITE_API_URL=http://localhost:3001
@@ -130,7 +129,8 @@ The interface provides:
    - Processing happens via GitHub Actions workflow (runs every 30 minutes)
    - Efficient batch processing with no timeout limits:
      - Can handle thousands of highlights
-     - Processes up to 100 highlights per run
+     - Processes up to 1000 highlights per run
+     - Uses batches of 25 highlights for optimal performance
      - Progress is saved and can be checked anytime
      - Automatic continuation from last processed position
    - Free and unlimited processing using GitHub's free tier (2000 minutes/month)
@@ -224,35 +224,7 @@ The application uses a hybrid deployment approach for optimal performance:
    - Create `.env.production` in client directory
    - Set `VITE_API_URL=https://your-vercel-url.vercel.app`
 
-5. Configure vercel.json with cron jobs:
-   ```json
-   {
-     "version": 2,
-     "builds": [
-       {
-         "src": "client/package.json",
-         "use": "@vercel/static-build",
-         "config": { "distDir": "dist" }
-       },
-       {
-         "src": "server/src/index.ts",
-         "use": "@vercel/node"
-       }
-     ],
-     "routes": [
-       { "src": "/api/(.*)", "dest": "server/src/index.ts" },
-       { "src": "/(.*)", "dest": "client/dist/$1" }
-     ],
-     "crons": [
-       {
-         "path": "/api/cron/process-sync",
-         "schedule": "*/2 * * * *"
-       }
-     ]
-   }
-   ```
-
-6. Deploy:
+5. Deploy:
    ```bash
    vercel
    ```
@@ -271,13 +243,7 @@ The application uses a hybrid deployment approach for optimal performance:
    - Ensure all required environment variables are set
    - Check if Notion integration has required capabilities enabled
 
-3. **Sync Processing Issues**
-   - Check if CRON_SECRET is properly set in Vercel environment variables
-   - Monitor Vercel Cron job logs for any errors
-   - Verify Redis connection and job queue state
-   - Check for rate limiting or timeout issues
-
-4. **Build Errors**
+3. **Build Errors**
    - Ensure Node.js version is 18 or higher
    - Clear node_modules and package-lock.json, then run npm install again
    - Check for TypeScript compilation errors
