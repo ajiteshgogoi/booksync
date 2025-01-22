@@ -32,31 +32,14 @@ jobs:
           npm cache clean --force
           npm ci
 
-      - name: Build server
+      - name: Build and run worker
         run: |
           cd server
+          # Build TypeScript files
           echo "Building server..."
           npm run build
-          echo "Build complete. Checking build directories..."
-          echo "Contents of build directory:"
-          ls -la build/
-          echo "Contents of build/src directory:"
-          ls -la build/src/
-          
-      - name: Verify build output
-        run: |
-          cd server
-          if [ ! -f "build/src/worker.js" ]; then
-            echo "Error: worker.js not found in build directory!"
-            ls -la build/src
-            exit 1
-          fi
-          
-      - name: Run sync process
-        run: |
-          cd server
-          echo "Compiling TypeScript..."
-          ./node_modules/.bin/tsc
+          echo "Build complete"
+
           # Set environment variables for GitHub Actions
           export MAX_RUNTIME='18000000'  # 5 hours
           export JOB_TIMEOUT='3600000'   # 1 hour
