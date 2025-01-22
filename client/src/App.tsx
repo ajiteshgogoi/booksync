@@ -64,9 +64,9 @@ function App() {
       fileName: localStorage.getItem('syncFileName')
     });
 
-    // Set and persist sync status
-    setSyncStatus('syncing');
-    localStorage.setItem('syncStatus', 'syncing');
+    // Set queued state immediately
+    setSyncStatus('queued');
+    localStorage.setItem('syncStatus', 'queued');
     setErrorMessage(null);
     setIsTimeout(false);
 
@@ -85,8 +85,13 @@ function App() {
       if (!response.ok) throw new Error(await response.text());
 
       const { jobId } = await response.json();
+      console.log('Received jobId:', jobId);
       
-      // Store sync data immediately
+      // Update state to syncing now that we have a jobId
+      setSyncStatus('syncing');
+      localStorage.setItem('syncStatus', 'syncing');
+      
+      // Store sync data
       localStorage.setItem('syncJobId', jobId);
       
       // Store file content as base64 string
@@ -97,7 +102,7 @@ function App() {
       };
       reader.readAsDataURL(file);
       
-      console.log('Stored new sync jobId:', jobId);
+      console.log('Updated sync status to syncing with jobId:', jobId);
       
       // Start polling for job status
       const pollStatus = async () => {
@@ -375,7 +380,10 @@ function App() {
     const jobId = localStorage.getItem('syncJobId');
     console.log('Checking for active sync on refresh, jobId:', jobId);
     const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-    if (!jobId) return;
+    
+    // Don't start polling if we don't have a jobId or if we're just queued
+    const storedStatus = localStorage.getItem('syncStatus') as SyncStatus;
+    if (!jobId || storedStatus === 'queued') return;
 
     console.log('Starting polling on page load...');
     const pollStatus = async () => {
@@ -517,22 +525,26 @@ function App() {
 
                   <button
                     onClick={handleSync}
-                    disabled={syncStatus === 'syncing' || syncStatus === 'parsing'}
+                    disabled={syncStatus === 'syncing' || syncStatus === 'parsing' || syncStatus === 'queued'}
                     className="mt-4 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif"
                   >
                     {syncStatus === 'parsing' ? 'Parsing...' :
-                     syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
+                     syncStatus === 'syncing' ? 'Syncing...' :
+                     syncStatus === 'queued' ? 'In Queue...' : 'Sync Highlights'}
                   </button>
 
 {(syncStatus === 'syncing' || syncStatus === 'queued' || syncStatus === 'parsing') && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
                          <div className="text-[#5a463a] font-semibold text-lg">
-                           ⏳ Sync is running in the background
+                           {syncStatus === 'queued' ?
+                             '⏳ Preparing to sync...' :
+                             '⏳ Sync is running in the background'
+                           }
                          </div>
                          <div className="text-sm text-[#5a463a] mt-2 space-y-1">
                            <div>• You can safely close this page</div>
-                           <div>• Sync will continue server-side</div>
+                           <div>• {syncStatus === 'queued' ? 'Processing will begin shortly' : 'Sync will continue server-side'}</div>
                            <div>• You'll see results in Notion when complete</div>
                          </div>
                        </div>
