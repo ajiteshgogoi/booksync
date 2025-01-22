@@ -11,7 +11,9 @@ function App() {
     localStorage.getItem('isAuthenticated') === 'true'
   );
   const [file, setFile] = useState<File | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    () => (localStorage.getItem('syncStatus') as SyncStatus) || 'idle'
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [isTimeout, setIsTimeout] = useState(false);
@@ -54,7 +56,9 @@ function App() {
   const handleSync = async () => {
     if (!file) return;
 
+    // Set and persist sync status
     setSyncStatus('syncing');
+    localStorage.setItem('syncStatus', 'syncing');
     setErrorMessage(null);
     setIsTimeout(false);
 
@@ -167,6 +171,7 @@ function App() {
       localStorage.removeItem('syncJobId');
       localStorage.removeItem('syncFileData');
       localStorage.removeItem('syncFileName');
+      localStorage.removeItem('syncStatus');
       // Reset state
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
@@ -210,16 +215,33 @@ function App() {
         console.error('Auth check failed:', error);
       }
 
-      // Then check for active sync
+      // Restore sync state if available
       const jobId = localStorage.getItem('syncJobId');
-      if (jobId) {
-        // Set sync state immediately
-        setSyncStatus('syncing');
-        setIsTimeout(true);
+      const storedSyncStatus = localStorage.getItem('syncStatus') as SyncStatus;
+      const fileData = localStorage.getItem('syncFileData');
+      const fileName = localStorage.getItem('syncFileName');
 
-        // Restore file if available
-        const fileData = localStorage.getItem('syncFileData');
-        if (fileData) {
+      // If we have either a job ID or sync status, restore the sync state
+      if (jobId || storedSyncStatus === 'syncing') {
+        console.debug('Restoring sync state:', { jobId, storedSyncStatus });
+        
+        // Set timeout state for long-running syncs
+        setIsTimeout(true);
+        
+        // Always restore the sync status if available
+        if (storedSyncStatus) {
+          console.debug('Setting sync status to:', storedSyncStatus);
+          setSyncStatus(storedSyncStatus);
+        } else if (jobId) {
+          // Default to syncing if we have a job but no status
+          console.debug('Defaulting sync status to syncing');
+          setSyncStatus('syncing');
+          localStorage.setItem('syncStatus', 'syncing');
+        }
+
+        // Restore file if we have the data
+        if (fileData && fileName) {
+          console.debug('Restoring file data');
           try {
             const base64Data = fileData.split(',')[1];
             const binaryString = atob(base64Data);
@@ -227,41 +249,47 @@ function App() {
             for (let i = 0; i < binaryString.length; i++) {
               bytes[i] = binaryString.charCodeAt(i);
             }
-            setFile(new File(
-              [bytes],
-              localStorage.getItem('syncFileName') || 'My Clippings.txt'
-            ));
+            const restoredFile = new File([bytes], fileName);
+            setFile(restoredFile);
           } catch (error) {
             console.error('Failed to restore file:', error);
-            setFile(new File([], 'My Clippings.txt'));
+            if (fileName) {
+              setFile(new File([], fileName));
+            }
           }
         }
 
-        // Check sync status
-        try {
-          const syncResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
-            credentials: 'include'
-          });
-          
-          if (syncResponse.ok) {
-            const status = await syncResponse.json();
-            if (status.state === 'completed') {
-              setSyncStatus('success');
-              localStorage.removeItem('syncJobId');
-              localStorage.removeItem('syncFileData');
-              localStorage.removeItem('syncFileName');
-            } else if (status.state === 'failed') {
-              setSyncStatus('error');
-              setErrorMessage(status.error || 'Sync failed');
-              localStorage.removeItem('syncJobId');
-              localStorage.removeItem('syncFileData');
-              localStorage.removeItem('syncFileName');
+        // Check sync status immediately if we have a job ID
+        if (jobId) {
+          try {
+            const response = await fetch(`${apiBase}/sync/status/${jobId}`, {
+              credentials: 'include'
+            });
+            
+            if (response.ok) {
+              const status = await response.json();
+              console.debug('Retrieved sync status:', status);
+              
+              if (status.state === 'completed') {
+                setSyncStatus('success');
+                localStorage.setItem('syncStatus', 'success');
+                localStorage.removeItem('syncJobId');
+                localStorage.removeItem('syncFileData');
+                localStorage.removeItem('syncFileName');
+              } else if (status.state === 'failed') {
+                setSyncStatus('error');
+                setErrorMessage(status.error || 'Sync failed');
+                localStorage.removeItem('syncJobId');
+                localStorage.removeItem('syncFileData');
+                localStorage.removeItem('syncFileName');
+                localStorage.removeItem('syncStatus');
+              }
+              // Keep syncing state if still processing
             }
-            // Keep syncing state if still processing
+          } catch (error) {
+            console.error('Failed to check sync status:', error);
+            // Keep syncing state on error to allow retrying
           }
-        } catch (error) {
-          console.error('Sync status check failed:', error);
-          // Keep syncing state on error
         }
       }
     };
@@ -269,6 +297,13 @@ function App() {
     // Run initialization
     initializeState().catch(console.error);
   }, []);
+
+  // Save sync status to localStorage whenever it changes
+  useEffect(() => {
+    if (syncStatus) {
+      localStorage.setItem('syncStatus', syncStatus);
+    }
+  }, [syncStatus]);
 
   useEffect(() => {
     if (window.kofiWidgetOverlay) {
