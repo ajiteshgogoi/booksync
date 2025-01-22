@@ -521,7 +521,7 @@ function App() {
 {(syncStatus === 'syncing' || syncStatus === 'queued' || syncStatus === 'parsing') && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                         <div className="text-[#3d2b1f] font-semibold text-lg pulse-horizontal">
+                         <div className="text-[#1a120b] font-semibold text-lg pulse-horizontal">
                            {syncStatus === 'queued' ?
                              '⏳ Preparing to sync...' :
                              '⏳ Sync is running in the background'
@@ -554,7 +554,12 @@ function App() {
                     });
                     window.location.href = '/';
                   }}
-                  className="mt-4 mx-auto block bg-[#dc2626] hover:bg-[#b91c1c] text-white font-medium px-6 py-2 rounded-md transition-all duration-200 hover:shadow-md font-serif"
+                  className={`mt-4 mx-auto block bg-[#dc2626] hover:bg-[#b91c1c] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif shadow-md hover:shadow-lg ${
+                    ['parsing', 'syncing', 'queued'].includes(syncStatus)
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                  disabled={['parsing', 'syncing', 'queued'].includes(syncStatus)}
                 >
                   Disconnect Notion
                 </button>
