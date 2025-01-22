@@ -349,32 +349,7 @@ export async function updateNotionDatabase(
 }
 
 async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: pageId });
-    
-    if (!isFullPage(page)) {
-      console.warn('Received partial page response, falling back to block scanning');
-      return new Set();
-    }
-
-    const hashProperty = page.properties['Highlight Hash'];
-    
-    if (hashProperty?.type === 'rich_text' && 
-        Array.isArray(hashProperty.rich_text) && 
-        hashProperty.rich_text[0]?.type === 'text' && 
-        hashProperty.rich_text[0].plain_text) {
-      try {
-        const hashes = JSON.parse(hashProperty.rich_text[0].plain_text);
-        if (Array.isArray(hashes)) {
-          return new Set(hashes);
-        }
-      } catch (error) {
-        console.error('Error parsing highlight hashes:', error);
-      }
-    }
-  } catch (error) {
-    console.error('Error retrieving page:', error);
-  }
+  const page = await notion.pages.retrieve({ page_id: pageId });
   
   if (!isFullPage(page)) {
     return new Set();
