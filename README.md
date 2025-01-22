@@ -195,7 +195,19 @@ The interface provides:
      - Uses batches of 25 highlights for optimal performance
      - Progress is saved and can be checked anytime
      - Automatic continuation from last processed position
-   - Free and unlimited processing using GitHub's free tier (2000 minutes/month)
+   - Multi-user upload handling:
+     - Multiple users can upload files simultaneously
+     - Each upload is immediately accepted and queued with a unique job ID
+     - Queue preserves upload order for fair processing
+   - Smart background processing:
+     - GitHub Actions workflow runs every 30 minutes to process the queue
+     - Only one workflow runs at a time (newer runs cancel older ones)
+     - Each workflow can process up to 1000 highlights
+     - If your upload isn't processed in one run, it continues in the next
+   - Efficient use of GitHub Actions free tier:
+     - 2000 minutes/month shared across all users
+     - Each workflow can use up to 300 minutes (5 hours)
+     - Concurrency controls ensure efficient minutes usage
 
 3. **Organizing in Notion**
    - Highlights are organized by book

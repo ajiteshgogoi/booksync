@@ -5,6 +5,11 @@ on:
     - cron: '*/30 * * * *'  # Run every 30 minutes
   workflow_dispatch:  # Allow manual trigger
 
+# Cancel in-progress runs on new trigger
+concurrency:
+  group: 'kindle-sync'
+  cancel-in-progress: true
+
 jobs:
   sync:
     runs-on: ubuntu-latest
