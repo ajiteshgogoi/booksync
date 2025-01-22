@@ -63,6 +63,10 @@ jobs:
           DATABASE_ID: ${{ github.event.client_payload.databaseId }}
         run: |
           cd server
+          echo "Environment variables:"
+          echo "FILE_CONTENT length: ${#FILE_CONTENT}"
+          echo "USER_ID: $USER_ID"
+          echo "DATABASE_ID: $DATABASE_ID"
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
 
