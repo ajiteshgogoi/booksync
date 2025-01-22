@@ -1,4 +1,4 @@
-import express, { Request } from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
@@ -10,7 +10,11 @@ interface User {
 
 interface CustomRequest extends Request {
   user?: User;
+  file?: Express.Multer.File;
 }
+
+type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+type SyncHandler = (req: Request, res: Response) => void;
 import { processSyncJob, queueSyncJob, getSyncStatus } from './services/syncService';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
 import { parseClippings } from './utils/parseClippings';
@@ -42,12 +46,12 @@ function generateState() {
 }
 
 // Health check endpoint
-app.get(`${apiBasePath}/health`, (req, res) => {
+app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
 // Parse endpoint to get highlight count
-app.post(`${apiBasePath}/parse`, upload.single('file'), async (req, res) => {
+app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res: Response) => {
   try {
     console.log('Received parse request');
     
@@ -73,7 +77,7 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req, res) => {
 });
 
 // Auth check endpoint
-app.get(`${apiBasePath}/auth/check`, async (req, res) => {
+app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
     const token = await getOAuthToken();
     if (token && token.access_token) {
@@ -88,7 +92,7 @@ app.get(`${apiBasePath}/auth/check`, async (req, res) => {
 });
 
 // Notion OAuth routes
-app.get(`${apiBasePath}/auth/notion`, (req, res) => {
+app.get(`${apiBasePath}/auth/notion`, (req: Request, res: Response) => {
   const state = generateState();
   const redirectUri = process.env.NOTION_REDIRECT_URI;
   
@@ -114,8 +118,9 @@ app.get(`${apiBasePath}/auth/notion`, (req, res) => {
   res.redirect(authUrl);
 });
 
-app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
-  const { code, state } = req.query;
+app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  const state = req.query.state as string;
   const storedState = req.cookies.oauth_state;
 
   if (!code || !state || state !== storedState) {
@@ -143,7 +148,7 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
   }
 });
 
-app.post(`${apiBasePath}/auth/refresh`, async (req, res) => {
+app.post(`${apiBasePath}/auth/refresh`, async (req: Request, res: Response) => {
   try {
     await refreshOAuthToken();
     const token = await getOAuthToken();
@@ -155,7 +160,7 @@ app.post(`${apiBasePath}/auth/refresh`, async (req, res) => {
 });
 
 // Job status endpoint
-app.get(`${apiBasePath}/sync/status/:jobId`, async (req, res) => {
+app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response) => {
   try {
     const jobId = req.params.jobId;
     const status = await getSyncStatus(jobId);
@@ -171,7 +176,7 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req, res) => {
   }
 });
 
-app.post(`${apiBasePath}/auth/disconnect`, async (req, res) => {
+app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
   try {
     await clearAuth();
     res.status(200).json({ success: true });
@@ -235,7 +240,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
 // Cron endpoint for processing sync jobs (Vercel production only)
 if (process.env.VERCEL) {
-  app.get(`${apiBasePath}/cron/process-sync`, async (req, res) => {
+  app.get(`${apiBasePath}/cron/process-sync`, async (req: Request, res: Response) => {
     try {
       // Verify the request is from Vercel Cron
       const authHeader = req.headers.authorization;
