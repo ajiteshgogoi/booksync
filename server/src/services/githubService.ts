@@ -7,7 +7,7 @@ export async function triggerProcessing(
   console.log('\n=== GitHub Processing Trigger Start ===');
   
   try {
-    // Get and validate GitHub token
+    // Get GitHub token
     const githubToken = process.env.GITHUB_ACCESS_TOKEN;
     console.log('Token validation:', {
       present: !!githubToken,
@@ -21,11 +21,17 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Test API connection first
+    // Try a minimal dispatch first
+    console.log('\nTesting dispatch with minimal payload...');
     try {
-      console.log('\nTesting GitHub API connection...');
-      const testResponse = await axios.get(
-        'https://api.github.com/repos/ajiteshgogoi/booksync',
+      const testResponse = await axios.post(
+        'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+        {
+          event_type: 'process_highlights_test',
+          client_payload: {
+            test: true
+          }
+        },
         {
           headers: {
             'Accept': 'application/vnd.github.v3+json',
@@ -34,64 +40,52 @@ export async function triggerProcessing(
           }
         }
       );
-      console.log('Repository access test successful:', {
+
+      console.log('Test dispatch successful:', {
         status: testResponse.status,
-        repoName: testResponse.data?.full_name
+        statusText: testResponse.statusText
       });
     } catch (testError: any) {
-      console.error('Repository access test failed:', {
+      console.error('Test dispatch failed:', {
         status: testError.response?.status,
-        message: testError.response?.data?.message || testError.message
+        message: testError.response?.data?.message,
+        documentation: testError.response?.data?.documentation_url
       });
-      throw new Error(`GitHub API access test failed: ${testError.response?.data?.message || testError.message}`);
+      throw new Error(`GitHub dispatch test failed: ${testError.response?.data?.message || testError.message}`);
     }
 
-    // Prepare dispatch request
-    const payload = {
-      event_type: 'process_highlights',
-      client_payload: {
-        fileContent,
-        userId
-      }
-    };
-
-    console.log('\nSending dispatch request:', {
-      url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-      eventType: payload.event_type,
-      contentLength: fileContent.length
-    });
-
-    // Send the actual request
-    try {
-      const response = await axios.post(
-        'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-        payload,
-        {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `Bearer ${githubToken}`,
-            'User-Agent': 'BookSync-App',
-            'Content-Type': 'application/json'
-          }
+    // If test succeeded, send the actual data
+    console.log('\nSending full dispatch with file content...');
+    const response = await axios.post(
+      'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      {
+        event_type: 'process_highlights',
+        client_payload: {
+          fileContent,
+          userId
         }
-      );
-
-      if (response.status === 204) {
-        console.log('\n✅ Successfully triggered GitHub workflow');
-      } else {
-        throw new Error(`Unexpected response status: ${response.status}`);
+      },
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${githubToken}`,
+          'User-Agent': 'BookSync-App'
+        }
       }
-    } catch (dispatchError: any) {
-      console.error('\nDispatch request failed:', {
-        status: dispatchError.response?.status,
-        message: dispatchError.response?.data?.message || dispatchError.message,
-        documentation: dispatchError.response?.data?.documentation_url
-      });
-      throw dispatchError;
+    );
+
+    if (response.status === 204) {
+      console.log('\n✅ Successfully triggered GitHub workflow');
+    } else {
+      throw new Error(`Unexpected response status: ${response.status}`);
     }
 
-  } catch (error) {
-    console.error('\n❌ Error in triggerProcessing:', error);
+  } catch (error: any) {
+    console.error('\n❌ Error in triggerProcessing:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     throw error;
   } finally {
     console.log('\n=== GitHub Processing Trigger End ===\n');

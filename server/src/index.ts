@@ -33,7 +33,7 @@ type SyncHandler = (req: Request, res: Response) => void;
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
 import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
-import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient.js';
+import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
@@ -154,8 +154,8 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 // Auth check endpoint
 app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
-    const token = await getOAuthToken();
-    if (token && token.access_token) {
+    const client = await getClient();
+    if (client) {
       res.status(200).json({ authenticated: true });
     } else {
       res.status(401).json({ authenticated: false });
@@ -225,9 +225,9 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
 
 app.post(`${apiBasePath}/auth/refresh`, async (req: Request, res: Response) => {
   try {
-    await refreshOAuthToken();
-    const token = await getOAuthToken();
-    res.status(200).json({ token });
+    await refreshToken();
+    const client = await getClient();
+    res.status(200).json({ status: 'Token refreshed' });
   } catch (error) {
     console.error('Token refresh error:', error);
     res.status(500).json({ error: 'Failed to refresh token' });

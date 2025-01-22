@@ -2,7 +2,9 @@ name: Process Highlights
 
 on:
   repository_dispatch:
-    types: [process_highlights]
+    types: 
+      - process_highlights
+      - process_highlights_test
 
 permissions:
   contents: read
@@ -10,6 +12,7 @@ permissions:
 
 jobs:
   process-highlights:
+    if: github.event.action == 'process_highlights'
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 1 hour timeout for file processing
 
@@ -78,10 +81,15 @@ jobs:
             }
           })();"
 
-      - name: Handle Completion
-        if: success()
-        run: echo "✅ File processing completed successfully"
-
-      - name: Handle Failure
-        if: failure()
-        run: echo "❌ File processing failed"
+  test-webhook:
+    if: github.event.action == 'process_highlights_test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log Test Event
+        run: |
+          echo "Received test webhook event"
+          echo "Event type: ${{ github.event.action }}"
+          echo "Test payload: ${{ toJSON(github.event.client_payload) }}"
+      
+      - name: Return Success
+        run: echo "✅ Webhook test successful"
