@@ -482,9 +482,9 @@ function App() {
             <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
             <p className="mt-2 text-gray-600">First, copy the <a href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a" target="_blank" rel="noopener noreferrer" className="text-[#8b7355] underline hover:underline">Kindle Highlights Template</a> to your Notion workspace.</p>
             <p className="text-gray-600">Then connect to Notion and allow access.</p>
-              <span 
+              <span
                 onClick={() => setShowClippingsModal(true)}
-                className="text-[#8b7355] underline hover:underline cursor-pointer"
+                className="text-[#8b7355] underline cursor-pointer hover:text-[#6b5a46]"
               >
                 My Clippings.txt
               </span>
@@ -574,10 +574,10 @@ function App() {
 
               {syncStatus !== 'syncing' && syncStatus !== 'success' && (
                 <button
-                  onClick={handleDisconnect}
-                  className="mt-4 mx-auto w-55 bg-[#9c4a3c] hover:bg-[#7c3a2c] text-white font-medium px-4 py-1.5 rounded-md transition-colors font-serif flex justify-center"
+                  onClick={() => setShowClippingsModal(true)}
+                  className="text-[#8b7355] underline cursor-pointer hover:text-[#6b5a46]"
                 >
-                  Disconnect Notion
+                  My Clippings.txt
                 </button>
               )}
             </div>
@@ -597,27 +597,25 @@ function App() {
       </main>
 
       {showClippingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="bg-[#fffaf0] rounded-lg shadow-lg p-2 max-w-[240px] w-full border border-[#e0d6c2]">
-              <h2 className="text-lg font-bold text-[#3d2b1f] font-serif mb-1">
-                About My Clippings.txt
-              </h2>
-              <p className="text-xs text-[#5a463a] font-serif mb-2">
-                Automatically created by Kindle when you highlight text or add notes.
-              </p>
-              <ol className="list-decimal list-inside text-xs text-[#5a463a] font-serif space-y-0.5 mb-2">
-                <li>Connect Kindle via USB</li>
-                <li>Open Kindle drive</li>
-                <li>Find file in root directory</li>
-              </ol>
-              <button
-                onClick={() => setShowClippingsModal(false)}
-                className="w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white text-xs px-3 py-1 rounded-md transition-colors font-serif"
-              >
-                Close
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-2 max-w-[240px] w-full border border-[#e0d6c2]">
+            <h2 className="text-lg font-bold text-[#3d2b1f] font-serif mb-1">
+              About My Clippings.txt
+            </h2>
+            <p className="text-xs text-[#5a463a] font-serif mb-2">
+              Automatically created by Kindle when you highlight text or add notes.
+            </p>
+            <ol className="list-decimal list-inside text-xs text-[#5a463a] font-serif space-y-0.5 mb-2">
+              <li>Connect Kindle via USB</li>
+              <li>Open Kindle drive</li>
+              <li>Find file in root directory</li>
+            </ol>
+            <button
+              onClick={() => setShowClippingsModal(false)}
+              className="w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white text-xs px-3 py-1 rounded-md transition-colors font-serif"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
