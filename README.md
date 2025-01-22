@@ -203,7 +203,7 @@ The interface provides:
    - Protected multi-user system:
      - Notion API rate limiting (10 requests/minute)
      - 2000 monthly GitHub minutes shared fairly
-     - New workflow runs cancel old ones but jobs continue
+     - Jobs processed in strict FIFO order (oldest first)
      - Re-uploading same content only affects your quota
 
 3. **Organizing in Notion**
