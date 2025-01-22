@@ -269,8 +269,18 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
   }
 });
 
-// Sync endpoint for uploading MyClippings.txt
+// Sync endpoint for uploading MyClippings.txt with timeout
 app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res: Response) => {
+  const timeout = 30000; // 30 second timeout
+  const timeoutHandle = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'The request took too long to process. Please try again.'
+      });
+    }
+  }, timeout);
+
   try {
     console.log('\n=== Sync Request Received ===');
     
