@@ -13,11 +13,11 @@ import {
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
 
-// Use more conservative values in production (Vercel) to avoid timeouts
-const BATCH_SIZE = isProd ? 5 : 10;
-const BATCH_DELAY = isProd ? 50 : 100;
-const MAX_RETRIES = isProd ? 2 : 3;
-const MAX_HIGHLIGHTS_PER_RUN = isProd ? 20 : Infinity; // No limit locally
+// Use very conservative values in production to avoid timeouts
+const BATCH_SIZE = isProd ? 3 : 10;           // Smaller batches to ensure completion
+const BATCH_DELAY = isProd ? 10 : 100;        // Minimal delay in production
+const MAX_RETRIES = isProd ? 1 : 3;           // Single retry to avoid timeout
+const MAX_HIGHLIGHTS_PER_RUN = isProd ? 15 : Infinity; // Process fewer per run but ensure completion
 
 export async function queueSyncJob(
   databaseId: string,

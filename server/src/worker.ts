@@ -5,10 +5,10 @@ import { processSyncJob } from './services/syncService';
 const isProd = process.env.NODE_ENV === 'production';
 
 // Use different limits based on environment
-const MAX_JOBS_PER_RUN = isProd ? 50 : Infinity; // No limit locally
-const MAX_JOBS_PER_USER = isProd ? 5 : Infinity; // No limit locally
-const MAX_RUNTIME = isProd ? 270000 : 3600000; // 4.5 mins in prod, 1 hour locally
-const JOB_TIMEOUT = isProd ? 30000 : 300000; // 30 secs in prod, 5 mins locally
+const MAX_JOBS_PER_RUN = isProd ? 25 : Infinity;  // Fewer jobs for more time per job
+const MAX_JOBS_PER_USER = isProd ? 3 : Infinity;  // Fewer jobs per user
+const MAX_RUNTIME = isProd ? 50000 : 3600000;     // Under 1 minute in prod for safety
+const JOB_TIMEOUT = isProd ? 45000 : 300000;      // 45 sec timeout (buffer for 60s limit)
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
