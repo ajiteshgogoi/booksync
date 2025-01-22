@@ -37,8 +37,11 @@ jobs:
           cd server
           echo "Building server..."
           npm run build
-          echo "Build complete. Checking build directory..."
-          ls -la build/src
+          echo "Build complete. Checking build directories..."
+          echo "Contents of build directory:"
+          ls -la build/
+          echo "Contents of build/src directory:"
+          ls -la build/src/
           
       - name: Verify build output
         run: |
@@ -52,6 +55,8 @@ jobs:
       - name: Run sync process
         run: |
           cd server
+          echo "Compiling TypeScript..."
+          ./node_modules/.bin/tsc
           echo "Starting worker process..."
           node -e "
           const { startWorker } = require('./build/src/worker.js');
