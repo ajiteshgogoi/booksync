@@ -118,7 +118,7 @@ function App() {
           setErrorMessage(
             'Your highlights are queued for processing. ' +
             'Processing happens every 30 minutes through our background system. ' +
-            'If you have too many highlights, it may take a coule of hours for all of them to sync. ' +
+            'If you have too many highlights, it may take a couple of hours for all of them to sync. ' +
             'You can safely close this page - your highlights will appear in Notion gradually as they are processed.'
           );
         }, 3000); // Show message after 3 seconds
