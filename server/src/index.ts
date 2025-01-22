@@ -339,8 +339,18 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       });
       
       console.log('Calling triggerProcessing...');
-      await triggerProcessing(fileContent, userId);
-      console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
+      try {
+        await triggerProcessing(fileContent, userId);
+        console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
+      } catch (error) {
+        console.error('Failed to trigger GitHub processing:', error);
+        await setJobStatus(jobId, {
+          state: 'failed',
+          message: 'Failed to trigger processing',
+          progress: 0
+        });
+        throw error;
+      }
     } catch (error: any) {
       console.error('\n❌ Failed to trigger processing:', {
         error: error.message,
