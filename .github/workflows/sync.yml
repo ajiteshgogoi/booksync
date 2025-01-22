@@ -7,7 +7,7 @@ on:
 
 # Cancel in-progress runs on new trigger
 concurrency:
-  group: '${{ github.workflow }}-${{ github.ref }}'
+  group: 'kindle-sync'
   cancel-in-progress: true
 
 jobs:
