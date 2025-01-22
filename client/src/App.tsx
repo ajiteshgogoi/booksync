@@ -56,11 +56,21 @@ function App() {
   const handleSync = async () => {
     if (!file) return;
 
+    console.log('Starting sync...');
+    console.log('Initial localStorage state:', {
+      jobId: localStorage.getItem('syncJobId'),
+      syncStatus: localStorage.getItem('syncStatus'),
+      hasFileData: !!localStorage.getItem('syncFileData'),
+      fileName: localStorage.getItem('syncFileName')
+    });
+
     // Set and persist sync status
     setSyncStatus('syncing');
     localStorage.setItem('syncStatus', 'syncing');
     setErrorMessage(null);
     setIsTimeout(false);
+
+    console.log('Set sync status to syncing');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -75,14 +85,19 @@ function App() {
       if (!response.ok) throw new Error(await response.text());
 
       const { jobId } = await response.json();
+      
+      // Store sync data immediately
+      localStorage.setItem('syncJobId', jobId);
+      
       // Store file content as base64 string
       const reader = new FileReader();
       reader.onload = () => {
-        localStorage.setItem('syncJobId', jobId);
         localStorage.setItem('syncFileData', reader.result as string);
         localStorage.setItem('syncFileName', file.name);
       };
       reader.readAsDataURL(file);
+      
+      console.log('Stored new sync jobId:', jobId);
       
       // Start polling for job status
       const pollStatus = async () => {
@@ -202,15 +217,23 @@ function App() {
           'Failed to connect to Notion. Please try again.');
       }
 
+      console.log('Before auth check localStorage state:', {
+        jobId: localStorage.getItem('syncJobId'),
+        syncStatus: localStorage.getItem('syncStatus'),
+        isAuthenticated: localStorage.getItem('isAuthenticated')
+      });
+
       // First check authentication
       try {
         const authResponse = await fetch(`${apiBase}/auth/check`, {
           credentials: 'include'
         });
         if (authResponse.ok) {
+          console.log('Auth check success');
           setIsAuthenticated(true);
           localStorage.setItem('isAuthenticated', 'true');
         } else {
+          console.log('Auth check failed - clearing state');
           // Clear auth state on failed check
           setIsAuthenticated(false);
           localStorage.removeItem('isAuthenticated');
@@ -223,6 +246,7 @@ function App() {
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+        console.log('Auth error - clearing state');
         // Clear state on error
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
@@ -233,13 +257,53 @@ function App() {
         setSyncStatus('idle');
       }
 
-      // First check if we have a sync job ID
+      console.log('After auth check localStorage state:', {
+        jobId: localStorage.getItem('syncJobId'),
+        syncStatus: localStorage.getItem('syncStatus'),
+        isAuthenticated: localStorage.getItem('isAuthenticated')
+      });
+
+      console.log('Current localStorage state:', {
+        jobId: localStorage.getItem('syncJobId'),
+        syncStatus: localStorage.getItem('syncStatus'),
+        hasFileData: !!localStorage.getItem('syncFileData'),
+        fileName: localStorage.getItem('syncFileName')
+      });
+    
+      // First restore file state if available
       const jobId = localStorage.getItem('syncJobId');
       const storedSyncStatus = localStorage.getItem('syncStatus') as SyncStatus;
       const fileData = localStorage.getItem('syncFileData');
       const fileName = localStorage.getItem('syncFileName');
+    
+      console.log('Initializing with:', { jobId, storedSyncStatus });
+    
+      // Initialize sync status from storage
+      if (storedSyncStatus === 'syncing') {
+        console.log('Found stored sync status, setting to syncing');
+        setSyncStatus('syncing');
+      }
+    
+      // Restore file state before checking server
+      if (fileData && fileName) {
+        try {
+          const base64Data = fileData.split(',')[1];
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const restoredFile = new File([bytes], fileName);
+          setFile(restoredFile);
+        } catch (error) {
+          console.error('Failed to restore file:', error);
+          if (fileName) {
+            setFile(new File([], fileName));
+          }
+        }
+      }
 
-      // If we have a job ID, check server status first
+      // Then check server status if we have a job ID
       if (jobId) {
         try {
           const statusResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
@@ -258,44 +322,37 @@ function App() {
 
           const status = await statusResponse.json();
           
-          if (status.state === 'processing') {
-            // Immediately set sync status to show messages
-            setSyncStatus('syncing');
-            localStorage.setItem('syncStatus', 'syncing');
-            
-            // Restore the file state if available
-            if (fileData && fileName) {
-              try {
-                const base64Data = fileData.split(',')[1];
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
-                }
-                const restoredFile = new File([bytes], fileName);
-                setFile(restoredFile);
-              } catch (error) {
-                console.error('Failed to restore file:', error);
-                if (fileName) {
-                  setFile(new File([], fileName));
-                }
+          // First restore file state if available
+          if (fileData && fileName) {
+            try {
+              const base64Data = fileData.split(',')[1];
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
               }
-            } else {
-              // If no file data, clear sync state
-              localStorage.removeItem('syncJobId');
-              localStorage.removeItem('syncFileData');
-              localStorage.removeItem('syncFileName');
-              localStorage.removeItem('syncStatus');
-              setSyncStatus('idle');
+              const restoredFile = new File([bytes], fileName);
+              setFile(restoredFile);
+            } catch (error) {
+              console.error('Failed to restore file:', error);
+              if (fileName) {
+                setFile(new File([], fileName));
+              }
             }
           }
-          
-          // If we get here, sync is not active - clear stale state
-          localStorage.removeItem('syncJobId');
-          localStorage.removeItem('syncFileData');
-          localStorage.removeItem('syncFileName');
-          localStorage.removeItem('syncStatus');
-          setSyncStatus('idle');
+
+          if (status.state === 'processing') {
+            setSyncStatus('syncing');
+            localStorage.setItem('syncStatus', 'syncing');
+          } else {
+            // If not processing, clear ALL state
+            setFile(null);
+            setSyncStatus('idle');
+            localStorage.removeItem('syncJobId');
+            localStorage.removeItem('syncFileData');
+            localStorage.removeItem('syncFileName');
+            localStorage.removeItem('syncStatus');
+          }
         } catch (error) {
           console.error('Failed to check sync status:', error);
           // On error, assume sync is not active
@@ -310,6 +367,75 @@ function App() {
 
     // Run initialization
     initializeState().catch(console.error);
+  }, []);
+
+  // Set up polling when we have an active job
+  useEffect(() => {
+    let isCurrent = true;
+    const jobId = localStorage.getItem('syncJobId');
+    console.log('Checking for active sync on refresh, jobId:', jobId);
+    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+    if (!jobId) return;
+
+    console.log('Starting polling on page load...');
+    const pollStatus = async () => {
+      try {
+        console.log('Polling sync status for jobId:', jobId);
+        const pollResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
+          credentials: 'include'
+        });
+        
+        if (!pollResponse.ok) {
+          console.log('Poll response not ok:', pollResponse.status);
+          throw new Error('Failed to check status');
+        }
+        
+        const status = await pollResponse.json();
+        console.log('Poll response status:', status.state);
+        
+        if (status.state === 'completed' || status.state !== 'processing') {
+          console.log('Sync no longer active, cleaning up...');
+          if (isCurrent) {
+            // First update state to trigger re-render
+            setSyncStatus('idle');
+            setFile(null);
+            // Then clear storage
+            localStorage.removeItem('syncJobId');
+            localStorage.removeItem('syncFileData');
+            localStorage.removeItem('syncFileName');
+            localStorage.removeItem('syncStatus');
+          }
+          return true;
+        }
+        console.log('Sync still running, continuing to poll...');
+        return false;
+      } catch (error) {
+        console.error('Poll error:', error);
+        return true;
+      }
+    };
+
+    console.log('Running initial poll...');
+    pollStatus();
+
+    console.log('Setting up polling interval...');
+    const interval = setInterval(async () => {
+      if (!isCurrent) {
+        console.log('Component no longer current, skipping poll');
+        return;
+      }
+      const shouldStop = await pollStatus();
+      if (shouldStop && interval) {
+        console.log('Clearing polling interval');
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => {
+      console.log('Cleaning up polling effect');
+      isCurrent = false;
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
   // Save sync status to localStorage whenever it changes
@@ -367,7 +493,7 @@ function App() {
                     type="file"
                     accept=".txt"
                     onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'queued'}
                     className="hidden"
                   />
                   Upload My Clippings.txt
@@ -399,19 +525,19 @@ function App() {
                   </button>
 
 {(syncStatus === 'syncing' || syncStatus === 'queued' || syncStatus === 'parsing') && (
-                    <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
-                      <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                        <div className="text-[#5a463a] font-semibold text-lg">
-                          ⏳ Sync is running in the background
-                        </div>
-                        <div className="text-sm text-[#5a463a] mt-2 space-y-1">
-                          <div>• You can safely close this page</div>
-                          <div>• Sync will continue server-side</div>
-                          <div>• You'll see results in Notion when complete</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                     <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
+                       <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
+                         <div className="text-[#5a463a] font-semibold text-lg">
+                           ⏳ Sync is running in the background
+                         </div>
+                         <div className="text-sm text-[#5a463a] mt-2 space-y-1">
+                           <div>• You can safely close this page</div>
+                           <div>• Sync will continue server-side</div>
+                           <div>• You'll see results in Notion when complete</div>
+                         </div>
+                       </div>
+                     </div>
+                   )}
 
                   {syncStatus === 'success' && (
                     <div className="mt-4 p-4 bg-[#e8f5e9] text-[#2e7d32] rounded-md font-serif text-center">
