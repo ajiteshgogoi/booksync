@@ -169,35 +169,6 @@ function App() {
     }
   };
 
-  const handleLogin = () => {
-    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-    window.location.href = `${apiBase}/auth/notion`;
-  };
-
-  const handleDisconnect = async () => {
-    try {
-      const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-      const response = await fetch(`${apiBase}/auth/disconnect`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-      
-      if (!response.ok) throw new Error('Failed to disconnect');
-      
-      setIsAuthenticated(false);
-      localStorage.removeItem('isAuthenticated');
-      setFile(null);
-      setErrorMessage(null);
-      setSyncStatus('idle');
-      localStorage.removeItem('syncJobId');
-      localStorage.removeItem('syncFileData');
-      localStorage.removeItem('syncFileName');
-      localStorage.removeItem('syncStatus');
-      // Reset state
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to disconnect');
-    }
-  };
 
   useEffect(() => {
     // Initialize application state
