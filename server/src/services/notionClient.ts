@@ -326,9 +326,15 @@ export async function updateNotionDatabase(
       throw new Error('Database ID not found');
     }
 
-    // Update or create pages for each book
+    // Process all highlights for each book without updating sync dates
     for (const book of Object.values(books)) {
-      await updateOrCreateBookPage(databaseId, book, onProgress);
+      await processBookHighlights(databaseId, book, onProgress);
+    }
+
+    // After ALL highlights are processed, update the sync dates for all books
+    const currentTime = new Date();
+    for (const book of Object.values(books)) {
+      await updateBookSyncDate(databaseId, book.title, currentTime);
     }
   } catch (error) {
     console.error('Error updating Notion database:', error);
@@ -336,7 +342,36 @@ export async function updateNotionDatabase(
   }
 }
 
-async function updateOrCreateBookPage(
+async function updateBookSyncDate(
+  databaseId: string,
+  bookTitle: string,
+  syncDate: Date
+) {
+  // Find the book page
+  const { results } = await notion.databases.query({
+    database_id: databaseId,
+    filter: {
+      property: 'Title',
+      title: {
+        equals: bookTitle
+      }
+    }
+  });
+
+  if (results.length > 0) {
+    // Update only the Last Synced date
+    await notion.pages.update({
+      page_id: results[0].id,
+      properties: {
+        'Last Synced': {
+          date: { start: syncDate.toISOString() }
+        }
+      }
+    });
+  }
+}
+
+async function processBookHighlights(
   databaseId: string,
   book: NotionBookPage,
   onProgress?: () => void
@@ -344,12 +379,10 @@ async function updateOrCreateBookPage(
   if (!databaseId) throw new Error('Database ID not found');
   
   try {
-    // Check if page already exists and get last highlight date
+    // Check if page already exists and get last sync date
     let existingPageId: string | undefined;
-    let lastSyncDate = new Date(0);
-
-    // Get the initial lastSyncDate before processing any highlights
     let initialLastSyncDate = new Date(0);
+    
     const { results } = await notion.databases.query({
       database_id: databaseId,
       filter: {
@@ -381,18 +414,13 @@ async function updateOrCreateBookPage(
       return;
     }
 
-    // Update book object with filtered highlights
-    book.highlights = newHighlights;
-
     // Update lastHighlighted to be the newest highlight date
     const newestHighlightDate = newHighlights.reduce((newest, highlight) => {
       const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
       return highlightDate > newest ? highlightDate : newest;
     }, new Date(0));
-    
-    book.lastHighlighted = newestHighlightDate;
 
-    // Create or update the page (without updating last sync date yet)
+    // Create or update the page (without updating Last Synced)
     let pageId: string;
     if (existingPageId) {
       const coverUrl = await getBookCoverUrl(book.title, book.author);
@@ -413,10 +441,10 @@ async function updateOrCreateBookPage(
             rich_text: [{ text: { content: book.author } }]
           },
           Highlights: {
-            number: book.highlights.length
+            number: newHighlights.length
           },
           'Last Highlighted': {
-            date: { start: book.lastHighlighted.toISOString() }
+            date: { start: newestHighlightDate.toISOString() }
           }
         }
       });
@@ -443,15 +471,11 @@ async function updateOrCreateBookPage(
           },
           Highlights: {
             type: 'number',
-            number: book.highlights.length
+            number: newHighlights.length
           },
           'Last Highlighted': {
             type: 'date',
-            date: { start: book.lastHighlighted.toISOString() }
-          },
-          'Last Synced': {
-            type: 'date',
-            date: { start: new Date().toISOString() }
+            date: { start: newestHighlightDate.toISOString() }
           }
         }
       });
@@ -461,7 +485,7 @@ async function updateOrCreateBookPage(
     let addedCount = 0;
     
     try {
-      for (const highlight of book.highlights) {
+      for (const highlight of newHighlights) {
         try {
           // Update progress for every highlight processed
           onProgress?.();
@@ -532,7 +556,7 @@ async function updateOrCreateBookPage(
         }
       }
 
-      console.log(`Added ${addedCount} new highlights for "${book.title}" since last sync at ${lastSyncDate.toLocaleString()}`);
+      console.log(`Added ${addedCount} new highlights for "${book.title}"`);
     } catch (error) {
       console.error('Error processing highlights:', error);
       throw error;
