@@ -153,9 +153,17 @@ function App() {
       // Set timeout check
       const timeout = setTimeout(() => {
         setIsTimeout(true);
-        // Sync is taking longer than expected
-        setErrorMessage('Sync is still running. You can safely close this page and check back later.');
-      }, 60000);
+        // Different messages for prod vs local
+        setErrorMessage(
+          import.meta.env.PROD
+            ? 'Your highlights are being processed in batches by our background system. ' +
+              'This happens every 30 minutes and can handle any file size. ' +
+              'You can safely close this page - highlights will appear in Notion as they are processed.'
+            : 'Sync is still running on your local server. ' +
+              'Large files may take some time to process. ' +
+              'You can safely close this page - highlights will appear in Notion as they are processed.'
+        );
+      }, import.meta.env.PROD ? 60000 : 30000); // Shorter timeout locally
 
       // Cleanup interval on component unmount
       return () => {
@@ -529,8 +537,19 @@ function App() {
                          </div>
                          <div className="text-sm text-[#5a463a] mt-2 space-y-1">
                            <div>• You can safely close this page</div>
-                           <div>• {syncStatus === 'queued' ? 'Processing will begin shortly' : 'Sync will continue server-side'}</div>
-                           <div>• You'll see results in Notion when complete</div>
+                           {import.meta.env.PROD ? (
+                             <>
+                               <div>• {syncStatus === 'queued' ? 'Processing will begin in next background run' : 'Processing large files in batches'}</div>
+                               <div>• Background processing runs every 30 minutes</div>
+                               <div>• You'll see results in Notion as highlights are processed</div>
+                             </>
+                           ) : (
+                             <>
+                               <div>• {syncStatus === 'queued' ? 'Processing will begin shortly' : 'Processing your highlights'}</div>
+                               <div>• Local server processes continuously</div>
+                               <div>• You'll see results in Notion soon</div>
+                             </>
+                           )}
                          </div>
                        </div>
                      </div>
