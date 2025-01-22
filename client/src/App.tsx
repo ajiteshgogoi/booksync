@@ -588,7 +588,7 @@ function App() {
         <div id="kofi-widget-container"></div>
       </div>
 
-      <footer className="mt-8 py-4 border-t border-gray-100 relative z-20">
+      <footer className="mt-8 py-4 relative z-20">
         <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-2">
             <a 
               href="https://ko-fi.com/gogoi" 
