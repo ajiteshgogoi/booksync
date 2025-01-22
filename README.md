@@ -27,6 +27,11 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Sync status persistence
   - Clean, intuitive interface
 
+## Prerequisites
+
+- Node.js v18 or higher
+- Redis v6 or higher (for caching and queue management)
+
 ## Setup
 
 1. Clone the repository
@@ -35,25 +40,32 @@ git clone https://github.com/yourusername/libsync.git
 cd libsync
 ```
 
-2. Set up Notion Integration
+2. Set up Redis
+   - Install Redis on your system (if not already installed)
+   - Start Redis server locally or use a cloud service like Redis Labs
+   - Note down your Redis connection URL
+
+3. Set up Notion Integration
    - Go to https://www.notion.so/my-integrations
    - Create a new integration
    - Set the redirect URI to `http://localhost:3001/auth/notion/callback`
    - Copy the OAuth client ID and secret
 
-3. Set up environment variables
+4. Set up environment variables
 ```bash
 # In server/.env
 NOTION_OAUTH_CLIENT_ID=your_client_id
 NOTION_OAUTH_CLIENT_SECRET=your_client_secret
 NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
 CLIENT_URL=http://localhost:5173
+REDIS_URL=redis://localhost:6379  # Or your Redis connection URL
+REDIS_TTL=86400                   # Cache TTL in seconds (24 hours)
 
 # In client/.env
 VITE_API_URL=http://localhost:3001
 ```
 
-4. Install dependencies and start servers
+5. Install dependencies and start servers
 ```bash
 # Install server dependencies
 cd server
@@ -66,7 +78,7 @@ npm install
 npm run dev
 ```
 
-5. Visit http://localhost:5173 in your browser
+6. Visit http://localhost:5173 in your browser
 
 ## How It Works
 
@@ -181,16 +193,64 @@ server/
    NOTION_OAUTH_CLIENT_SECRET=your_client_secret
    NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
    CLIENT_URL=https://your-vercel-url.vercel.app
+   REDIS_URL=your_redis_connection_url
+   REDIS_TTL=86400
    ```
 
 4. Update client environment:
    - Create `.env.production` in client directory
    - Set `VITE_API_URL=https://your-vercel-url.vercel.app`
 
-5. Deploy:
+5. Configure vercel.json:
+   ```json
+   {
+     "version": 2,
+     "builds": [
+       {
+         "src": "client/package.json",
+         "use": "@vercel/static-build",
+         "config": { "distDir": "dist" }
+       },
+       {
+         "src": "server/src/index.ts",
+         "use": "@vercel/node"
+       }
+     ],
+     "routes": [
+       { "src": "/api/(.*)", "dest": "server/src/index.ts" },
+       { "src": "/(.*)", "dest": "client/dist/$1" }
+     ]
+   }
+   ```
+
+6. Deploy:
    ```bash
    vercel
    ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Redis Connection Issues**
+   - Ensure Redis server is running (`redis-cli ping` should return 'PONG')
+   - Check if REDIS_URL is correct in environment variables
+   - For cloud Redis, verify network access and authentication
+
+2. **Notion OAuth Errors**
+   - Verify redirect URI matches exactly in both Notion integration settings and environment variables
+   - Ensure all required environment variables are set
+   - Check if Notion integration has required capabilities enabled
+
+3. **Sync Not Starting**
+   - Verify Redis connection
+   - Check server logs for any rate limiting messages
+   - Ensure My Clippings.txt file is correctly formatted
+
+4. **Build Errors**
+   - Ensure Node.js version is 18 or higher
+   - Clear node_modules and package-lock.json, then run npm install again
+   - Check for TypeScript compilation errors
 
 ## Contributing
 
