@@ -127,9 +127,11 @@ The interface provides:
    - Upload the file through the BookSync interface
    - The app will parse and queue your highlights for processing
    - Processing happens via daily Vercel Cron Job (at midnight UTC)
-   - Larger batches are processed in each run to handle daily schedule
-   - Progress is saved and can be checked anytime
-   - For immediate processing, consider upgrading to Vercel Pro
+   - Daily batch processing with fair scheduling for multiple users:
+     - Up to 10 jobs per user per day
+     - Jobs are distributed fairly across all users
+     - Progress is saved and can be checked anytime
+   - For increased processing capacity, consider upgrading to Vercel Pro
 
 3. **Organizing in Notion**
    - Highlights are organized by book

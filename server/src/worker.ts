@@ -3,8 +3,12 @@ import { processSyncJob } from './services/syncService';
 
 // Configuration for worker behavior
 const MAX_JOBS_PER_RUN = 100; // Process more jobs since we run once per day
+const MAX_JOBS_PER_USER = 10; // Limit jobs per user for fair processing
 const MAX_RUNTIME = 300000; // 5 minutes max runtime for Vercel
 const JOB_TIMEOUT = 60000; // 60 seconds max per job
+
+// Track processed users for fair distribution
+const processedUsers = new Set<string>();
 
 export async function startWorker() {
   console.log('Starting sync worker...');
@@ -20,7 +24,18 @@ export async function startWorker() {
         break;
       }
 
-      console.log('Processing job:', jobId);
+      // Extract user ID from job ID (format: sync:userId:timestamp)
+      const userId = jobId.split(':')[1];
+      
+      // Skip if we've already processed max jobs for this user
+      if (processedUsers.has(userId) &&
+          Array.from(processedUsers).filter(id => id === userId).length >= MAX_JOBS_PER_USER) {
+        console.log(`Skipping job ${jobId}: User ${userId} has reached their processing limit`);
+        continue;
+      }
+
+      console.log(`Processing job ${jobId} for user ${userId}`);
+      processedUsers.add(userId);
       jobsProcessed++;
 
       // Set up job timeout
