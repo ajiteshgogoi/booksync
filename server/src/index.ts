@@ -1,12 +1,9 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import type { Express } from 'express-serve-static-core';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
-import type { Multer } from 'multer';
-
-// Type imports
-import type { Express } from 'express-serve-static-core';
 import { startWorker } from './worker';
 
 interface User {
