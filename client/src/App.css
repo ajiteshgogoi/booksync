@@ -1,30 +1,3 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
-
-@keyframes pulseLeftRight {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
-}
-
-.pulse-horizontal {
-  animation: pulse-horizontal 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.2), rgba(90, 70, 58, 0.8), rgba(0, 0, 0, 0.2));
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-}
-
-@keyframes pulse-horizontal {
-  0%, 100% {
-    transform: scaleX(1);
-  }
-  50% {
-    transform: scaleX(1.05);
-  }
-}
