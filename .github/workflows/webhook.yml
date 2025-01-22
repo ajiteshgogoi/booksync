@@ -1,4 +1,4 @@
-name: Webhook Handler
+name: Process Highlights
 
 on:
   repository_dispatch:
@@ -9,7 +9,7 @@ permissions:
   actions: write
 
 jobs:
-  handle-webhook:
+  process-highlights:
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 1 hour timeout for file processing
 
@@ -21,6 +21,14 @@ jobs:
       NODE_ENV: production
 
     steps:
+      - name: Log Event Details
+        run: |
+          echo "Received repository_dispatch event"
+          echo "Event type: ${{ github.event.action }}"
+          echo "Has client payload: ${{ github.event.client_payload != null }}"
+          echo "Has fileContent: ${{ github.event.client_payload.fileContent != null }}"
+          echo "Has userId: ${{ github.event.client_payload.userId != null }}"
+
       - uses: actions/checkout@v3
 
       - name: Setup Node.js
@@ -32,23 +40,36 @@ jobs:
       - name: Install dependencies
         run: |
           cd server
+          echo "Installing dependencies..."
           npm ci
+          echo "Dependencies installed"
 
       - name: Build
         run: |
           cd server
+          echo "Building server..."
           npm run build
+          echo "Build complete"
 
       - name: Process File
         run: |
           cd server
+          echo "Starting file processing..."
           node --experimental-vm-modules -e "
           (async () => {
             try {
-              console.log('Starting file processing...');
+              console.log('Loading processFileContent function...');
               const { processFileContent } = await import('./build/src/services/processService.js');
-              const fileContent = '${{ toJSON(github.event.client_payload.fileContent) }}';
+              
+              console.log('Getting event payload...');
+              const fileContent = \`${{ toJSON(github.event.client_payload.fileContent) }}\`;
               const userId = '${{ github.event.client_payload.userId }}';
+              
+              console.log('Starting file processing with:', {
+                userId,
+                contentLength: fileContent.length
+              });
+              
               await processFileContent(userId, fileContent);
               console.log('File processing completed successfully');
             } catch (error) {
@@ -56,3 +77,11 @@ jobs:
               process.exit(1);
             }
           })();"
+
+      - name: Handle Completion
+        if: success()
+        run: echo "✅ File processing completed successfully"
+
+      - name: Handle Failure
+        if: failure()
+        run: echo "❌ File processing failed"

@@ -246,8 +246,12 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     // Trigger GitHub workflow in background
     try {
+      console.log('Attempting to trigger GitHub processing...');
+      console.log('File content length:', fileContent.length);
+      console.log('User ID:', userId);
+      
       await triggerProcessing(fileContent, userId);
-      console.log('Processing triggered for job:', jobId);
+      console.log('Successfully triggered GitHub processing for job:', jobId);
     } catch (error) {
       console.error('Failed to trigger processing:', error);
       await setJobStatus(jobId, {
