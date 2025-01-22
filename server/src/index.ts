@@ -220,35 +220,51 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   }
 });
 
-// Cron endpoint for processing sync jobs
-app.get(`${apiBasePath}/cron/process-sync`, async (req, res) => {
-  try {
-    // Verify the request is from Vercel Cron
-    const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
+// Cron endpoint for processing sync jobs (Vercel production only)
+if (process.env.VERCEL) {
+  app.get(`${apiBasePath}/cron/process-sync`, async (req, res) => {
+    try {
+      // Verify the request is from Vercel Cron
+      const authHeader = req.headers.authorization;
+      if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      console.log('Starting cron job for processing syncs...');
+      await startWorker();
+      
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Cron job error:', error);
+      res.status(500).json({ error: 'Failed to process sync jobs' });
     }
+  });
+}
 
-    console.log('Starting cron job for processing syncs...');
-    await startWorker();
-    
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Cron job error:', error);
-    res.status(500).json({ error: 'Failed to process sync jobs' });
-  }
-});
-
+// For local development, start the server and continuous worker
 if (!process.env.VERCEL) {
+  let workerInterval: NodeJS.Timeout;
+
   // Start the server
   app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+    
+    // Start continuous background worker for local development
+    workerInterval = setInterval(async () => {
+      try {
+        await startWorker();
+      } catch (error) {
+        console.error('Worker iteration error:', error);
+      }
+    }, 30000); // Run every 30 seconds in development
   });
 
-  // Start the background worker
-  startWorker().catch(error => {
-    console.error('Failed to start worker:', error);
-    process.exit(1);
+  // Handle shutdown
+  process.on('SIGTERM', () => {
+    console.log('Server shutting down...');
+    if (workerInterval) {
+      clearInterval(workerInterval);
+    }
   });
 }
 
