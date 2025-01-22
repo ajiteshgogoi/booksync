@@ -137,7 +137,11 @@ export async function storeOAuthToken(token: string, workspaceId: string, databa
       databaseId
     };
     await redis.set(`oauth:${workspaceId}`, JSON.stringify(tokenData), 'EX', TOKEN_TTL);
-    logger.debug('OAuth token stored', { workspaceId, databaseId });
+    logger.debug('OAuth token stored', {
+      workspaceId,
+      databaseId,
+      tokenLength: token.length
+    });
   } catch (error) {
     logger.error('Failed to store OAuth token', { workspaceId, error });
     throw error;
