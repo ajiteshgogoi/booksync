@@ -590,9 +590,9 @@ function App() {
               Automatically created by Kindle when you highlight text or add notes.
             </p>
             <ol className="list-decimal list-inside text-xs text-[#5a463a] font-serif space-y-0.5 mb-2">
-              <li>Connect Kindle via USB</li>
-              <li>Open Kindle drive</li>
-              <li>Find file in root directory</li>
+              <li>Connect Kindle via USB.</li>
+              <li>Open Kindle drive.</li>
+              <li>Find 'My Clippings.txt' in the root directory.</li>
             </ol>
             <button
               onClick={() => setShowClippingsModal(false)}
