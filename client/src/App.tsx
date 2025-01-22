@@ -569,7 +569,7 @@ function App() {
             <div className="mt-8 text-center">
               <a 
                 href="mailto:ajiteshgogoi@gmail.com?subject=BookSync Feedback" 
-                className="text-[#5a463a] font-serif text-sm underline hover:underline"
+                className="text-[#8b7355] font-serif text-sm underline hover:text-[#8b7355]"
                 target="_blank" 
                 rel="noopener noreferrer"
               >
