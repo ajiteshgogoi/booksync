@@ -10,22 +10,45 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Time-based syncing (only syncs highlights newer than last sync)
   - Automatic handling of edited highlights
   - Enhanced hash generation using book title, author and content
-  - Redis cache with 24-hour TTL for efficient duplicate checking
+  - Redis cache with multiple TTLs:
+    - Highlights: 24 hours
+    - Books: 24 hours
+    - Page IDs: 24 hours
+    - OAuth tokens: 2 hours
+  - Automatic cache invalidation for updated books
+  - Metrics collection for cache operations
 - **Efficient Syncing**
-  - Regular background processing via GitHub Actions (runs every 30 minutes)
+  - Regular background processing via GitHub Actions:
+    - Runs every 30 minutes
+    - 5 hour maximum runtime
+    - 1 hour job timeout
+    - Processes up to 1000 highlights per run
+    - Uses batches of 25 highlights for optimal performance
   - Resilient processing with automatic retries and error recovery
   - Real-time progress tracking with job status persistence
   - Intelligent batch processing with rate limiting
+  - Notion API rate limiting (10 requests per minute)
+  - OAuth token management with automatic refresh
+  - Sync metrics collection:
+    - Cache hit rate
+    - Error rate
+    - Operation count
 - **Notion Integration**
-  - OAuth integration with automatic refresh
+  - OAuth integration with automatic refresh and invalidation
   - Automatic database detection
   - Book cover fetching from multiple sources
   - Preserves all highlight metadata
+  - Rate limited API calls (10 requests per minute)
+  - Automatic retry mechanism for failed requests
+  - Detailed sync metrics collection
 - **User Experience**
   - Real-time progress bar with time estimates
   - Background processing notifications
   - Sync status persistence
   - Clean, intuitive interface
+  - Sync metrics visualization
+  - Cache management options
+  - Detailed error reporting
 
 ## Prerequisites
 
@@ -59,7 +82,12 @@ NOTION_OAUTH_CLIENT_SECRET=your_client_secret
 NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
 CLIENT_URL=http://localhost:5173
 REDIS_URL=redis://localhost:6379  # Or your Redis connection URL
-REDIS_TTL=86400                   # Cache TTL in seconds (24 hours)
+REDIS_TTL=86400                   # Default cache TTL in seconds (24 hours)
+REDIS_HIGHLIGHT_TTL=86400         # Highlight cache TTL
+REDIS_BOOK_TTL=86400              # Book cache TTL
+REDIS_PAGE_TTL=86400              # Page ID cache TTL
+REDIS_OAUTH_TTL=7200              # OAuth token cache TTL
+NOTION_RATE_LIMIT=10              # API calls per minute
 
 # In client/.env
 VITE_API_URL=http://localhost:3001
@@ -88,15 +116,24 @@ When you upload My Clippings.txt, the parser:
 - Removes duplicates and overlapping content using enhanced hash generation
 - Preserves metadata (location, timestamp)
 - Handles multi-line highlights and special characters
-- Uses Redis cache with 24-hour TTL for efficient duplicate checking
+- Uses Redis cache with multiple TTLs:
+  - Highlights: 24 hours
+  - Books: 24 hours
+  - Page IDs: 24 hours
+  - OAuth tokens: 2 hours
 
 ### 2. Queue Layer
 For reliable processing:
 - Each sync is queued with a unique job ID in Redis
 - Progress is tracked across sessions with lastProcessedIndex
-- Processing handled by GitHub Actions workflow (runs every 30 minutes)
+- Processing handled by GitHub Actions workflow:
+  - Runs every 30 minutes
+  - 5 hour maximum runtime
+  - 1 hour job timeout
+  - Processes up to 1000 highlights per run
+  - Uses batches of 25 highlights for optimal performance
 - Automatic retries with exponential backoff
-- Efficient batch processing with no timeout limits
+- Rate limiting for Notion API (10 requests per minute)
 - Support for large highlight files (thousands of entries)
 
 ### 3. Sync Layer
@@ -105,6 +142,12 @@ During synchronization:
 - Only processes highlights newer than last sync
 - Updates both 'Last Highlighted' and 'Last Synced' dates
 - Chunks large highlights to meet Notion's limits
+- Maintains OAuth tokens with automatic refresh
+- Tracks sync metrics:
+  - Cache hit rate
+  - Error rate
+  - Operation count
+- Automatic cache invalidation for updated books
 
 ### 4. UI Layer
 The interface provides:
@@ -113,6 +156,7 @@ The interface provides:
 - Current operation status
 - Background processing notifications
 - Error handling with retry options
+- Sync metrics visualization
 
 ## Usage
 
