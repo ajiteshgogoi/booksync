@@ -10,31 +10,31 @@ concurrency:
   group: 'kindle-sync'
   cancel-in-progress: true
 
+permissions:
+  actions: write
+  checks: write
+  contents: read
+  deployments: write
+  id-token: write
+  issues: write
+  packages: write
+  pages: write
+  pull-requests: write
+  repository-projects: write
+  security-events: write
+  statuses: write
+
+env:
+  REDIS_URL: ${{ secrets.REDIS_URL }}
+  NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+  NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+  NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
+  NODE_ENV: production
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 300  # 5 hour timeout
-    
-    permissions:
-      actions: write
-      checks: write
-      contents: read
-      deployments: write
-      id-token: write
-      issues: write
-      packages: write
-      pages: write
-      pull-requests: write
-      repository-projects: write
-      security-events: write
-      statuses: write
-
-    env:
-      REDIS_URL: ${{ secrets.REDIS_URL }}
-      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
-      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-      NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
-      NODE_ENV: production
 
     steps:
       - uses: actions/checkout@v3

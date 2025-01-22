@@ -29,7 +29,9 @@ declare global {
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 type SyncHandler = (req: Request, res: Response) => void;
-import { processSyncJob, queueSyncJob, getSyncStatus } from './services/syncService.js';
+import { processSyncJob, getSyncStatus } from './services/syncService.js';
+import { setJobStatus } from './services/redisService.js';
+import { triggerProcessing } from './services/githubService.js';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
 import axios from 'axios';
@@ -223,25 +225,36 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     const userId = req.user?.id || 'default-user-id';
     
-    // Start queuing process but don't await it
-    const queuePromise = queueSyncJob(userId, fileContent);
+    // Start by creating a job ID
+    const jobId = `sync:${userId}:${Date.now()}`;
     
-    // Return immediately with preliminary response
-    res.json({
-      success: true,
-      message: 'Sync starting. Your highlights will be processed in batches by our background system.',
-      status: 'queuing',
-      nextRun: '30 minutes',
-      info: 'Background processing occurs every 30 minutes. You can safely close this page - progress is automatically saved.'
+    // Set initial status in Redis
+    await setJobStatus(jobId, {
+      state: 'queued',
+      progress: 0,
+      message: 'Uploading highlights for processing',
+      total: 0
     });
 
-    // Complete queuing in background
+    // Return immediate response with job ID
+    res.json({
+      success: true,
+      jobId,
+      message: 'Upload received. Processing will begin shortly.',
+      info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
+    });
+
+    // Trigger GitHub workflow in background
     try {
-      const jobId = await queuePromise;
-      console.log('Job queued successfully:', jobId);
+      await triggerProcessing(fileContent, userId);
+      console.log('Processing triggered for job:', jobId);
     } catch (error) {
-      console.error('Background queue error:', error);
-      // Don't throw - response already sent
+      console.error('Failed to trigger processing:', error);
+      await setJobStatus(jobId, {
+        state: 'failed',
+        message: 'Failed to start processing. Please try again.',
+        progress: 0
+      });
     }
   } catch (error) {
     console.error('Sync error:', error);

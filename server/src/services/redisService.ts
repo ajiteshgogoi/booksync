@@ -44,7 +44,7 @@ export const JOB_TTL = 60 * 60 * 24; // 24 hours
 
 // Job status types
 export type JobStatus = {
-  state: 'pending' | 'processing' | 'completed' | 'failed';
+  state: 'pending' | 'processing' | 'completed' | 'failed' | 'queued';
   progress?: number;
   message?: string;
   result?: any;

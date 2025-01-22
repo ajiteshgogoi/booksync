@@ -1,0 +1,58 @@
+name: Webhook Handler
+
+on:
+  repository_dispatch:
+    types: [process_highlights]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  handle-webhook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # 1 hour timeout for file processing
+
+    env:
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+      NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd server
+          npm ci
+
+      - name: Build
+        run: |
+          cd server
+          npm run build
+
+      - name: Process File
+        run: |
+          cd server
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              console.log('Starting file processing...');
+              const { processFileContent } = await import('./build/src/services/processService.js');
+              const fileContent = '${{ toJSON(github.event.client_payload.fileContent) }}';
+              const userId = '${{ github.event.client_payload.userId }}';
+              await processFileContent(userId, fileContent);
+              console.log('File processing completed successfully');
+            } catch (error) {
+              console.error('Failed to process file:', error);
+              process.exit(1);
+            }
+          })();"
