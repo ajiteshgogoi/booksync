@@ -43,8 +43,8 @@ jobs:
           # Set environment variables for GitHub Actions
           export MAX_RUNTIME='18000000'  # 5 hours
           export JOB_TIMEOUT='3600000'   # 1 hour
-          export BATCH_SIZE='10'         # Larger batches
-          export MAX_HIGHLIGHTS_PER_RUN='100'  # Process more per run
+          export BATCH_SIZE='25'         # Match syncService.ts GitHub Actions batch size
+          export MAX_HIGHLIGHTS_PER_RUN='1000'  # Match syncService.ts GitHub Actions limit
 
           echo "Starting worker process..."
           node --experimental-vm-modules -e "
@@ -56,8 +56,8 @@ jobs:
               
               process.env.MAX_RUNTIME = '18000000';  // 5 hours
               process.env.JOB_TIMEOUT = '3600000';   // 1 hour
-              process.env.BATCH_SIZE = '10';         // Larger batches
-              process.env.MAX_HIGHLIGHTS_PER_RUN = '100';  // Process more per run
+              process.env.BATCH_SIZE = '25';         // Match syncService.ts GitHub Actions batch size
+              process.env.MAX_HIGHLIGHTS_PER_RUN = '1000';  // Match syncService.ts GitHub Actions limit
               
               console.log('Starting worker with environment:', {
                 MAX_RUNTIME: process.env.MAX_RUNTIME,
