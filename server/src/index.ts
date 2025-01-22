@@ -1,7 +1,12 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
+import type { Multer } from 'multer';
+
+// Type imports
+import type { Express } from 'express-serve-static-core';
 import { startWorker } from './worker';
 
 interface User {
@@ -11,6 +16,18 @@ interface User {
 interface CustomRequest extends Request {
   user?: User;
   file?: Express.Multer.File;
+}
+
+declare global {
+  namespace Express {
+    namespace Multer {
+      interface File {
+        buffer: Buffer;
+        mimetype: string;
+        size: number;
+      }
+    }
+  }
 }
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -187,7 +204,7 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
 });
 
 // Sync endpoint for uploading MyClippings.txt
-app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res) => {
+app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
