@@ -12,24 +12,24 @@ import {
 
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
-
-// Check if running in GitHub Actions
 const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';
 
-// Use environment variables or defaults
-const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ||
-  (isGitHubAction ? '10' :      // Larger batches for GitHub Actions
-   isProd ? '3' : '10'));       // Small for Vercel, normal for local
+// Optimize settings based on environment
+const BATCH_SIZE = isGitHubAction ? 25 : // Large batches in GitHub Actions
+                  isProd ? 3 : // Small batches in Vercel
+                  10;  // Normal batches locally
 
-const BATCH_DELAY = isGitHubAction ? 100 :    // Normal delay for GitHub Actions
-                   isProd ? 10 : 100;         // Minimal for Vercel, normal for local
+const BATCH_DELAY = isGitHubAction ? 200 : // Normal delay in GitHub Actions
+                   isProd ? 10 : // Minimal delay in Vercel
+                   100;  // Normal delay locally
 
-const MAX_RETRIES = isGitHubAction ? 3 :      // More retries for GitHub Actions
-                   isProd ? 1 : 3;            // Minimal for Vercel, normal for local
+const MAX_RETRIES = isGitHubAction ? 3 : // More retries in GitHub Actions
+                   isProd ? 1 : // Single retry in Vercel
+                   3;   // Normal retries locally
 
-const MAX_HIGHLIGHTS_PER_RUN = parseInt(process.env.MAX_HIGHLIGHTS_PER_RUN ||
-  (isGitHubAction ? '100' :     // Process more in GitHub Actions
-   isProd ? '15' : 'Infinity')); // Limited for Vercel, unlimited for local
+const MAX_HIGHLIGHTS_PER_RUN = isGitHubAction ? 1000 : // Process up to 1000 in GitHub Actions
+                              isProd ? 15 : // Limited in Vercel
+                              Infinity; // No limit locally
 
 export async function queueSyncJob(
   databaseId: string,
@@ -186,6 +186,7 @@ export async function processSyncJob(
         }
       }
 
+      // Add delay between batches to avoid overwhelming Notion API
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
     }
 
@@ -208,11 +209,10 @@ export async function processSyncJob(
       await addJobToQueue(jobId);
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Sync failed';
     const currentStatus = await getJobStatus(jobId);
     await setJobStatus(jobId, {
       state: 'failed',
-      message: errorMessage,
+      message: error instanceof Error ? error.message : 'Sync failed',
       lastProcessedIndex: currentStatus?.lastProcessedIndex || 0
     });
     throw error;

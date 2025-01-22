@@ -2,25 +2,38 @@ import { getRedis, getNextJob, setJobStatus, getJobStatus, addJobToQueue, JobSta
 import { processSyncJob } from './services/syncService';
 
 // Configuration for worker behavior
-// Check if running in GitHub Actions
 const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';
 const isProd = process.env.NODE_ENV === 'production';
 
-// Use environment variables or defaults
-const MAX_JOBS_PER_RUN = isGitHubAction ? 100 : (isProd ? 25 : Infinity);
-const MAX_JOBS_PER_USER = isGitHubAction ? 20 : (isProd ? 3 : Infinity);
-const MAX_RUNTIME = parseInt(process.env.MAX_RUNTIME ||
-  (isGitHubAction ? '18000000' :  // 5 hours for GitHub Actions
-   isProd ? '50000' : '3600000')); // 50s for Vercel, 1h for local
-const JOB_TIMEOUT = parseInt(process.env.JOB_TIMEOUT ||
-  (isGitHubAction ? '3600000' :   // 1 hour for GitHub Actions
-   isProd ? '45000' : '300000')); // 45s for Vercel, 5m for local
+// Environment-specific limits
+const MAX_JOBS_PER_RUN = isGitHubAction ? 200 :   // Process more jobs in GitHub Actions
+                        isProd ? 25 : Infinity;   // Limited in Vercel, unlimited locally
+                        
+const MAX_JOBS_PER_USER = isGitHubAction ? 50 :   // More jobs per user in GitHub Actions
+                         isProd ? 3 : Infinity;   // Limited in Vercel, unlimited locally
+                         
+const MAX_RUNTIME = isGitHubAction ? 21000000 :   // ~6 hours in GitHub Actions
+                   isProd ? 50000 :              // Under 1 minute in Vercel
+                   3600000;                      // 1 hour locally
+                   
+const JOB_TIMEOUT = isGitHubAction ? 3600000 :    // 1 hour per job in GitHub Actions
+                   isProd ? 45000 :              // 45s in Vercel
+                   300000;                       // 5 mins locally
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
 
 export async function startWorker() {
   console.log('Starting sync worker...');
+  console.log('Environment:', {
+    isGitHubAction,
+    isProd,
+    MAX_JOBS_PER_RUN,
+    MAX_JOBS_PER_USER,
+    MAX_RUNTIME,
+    JOB_TIMEOUT
+  });
+  
   const startTime = Date.now();
   let jobsProcessed = 0;
 
@@ -62,28 +75,27 @@ export async function startWorker() {
         console.log('Job completed successfully:', jobId);
       } catch (error) {
         console.error('Error processing job:', jobId, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         const status = await getJobStatus(jobId);
         
         if (error instanceof Error && error.message === 'Job timeout') {
           // If job timed out, requeue it to continue from last processed index
           await setJobStatus(jobId, {
-            state: 'pending' as const,
+            state: 'pending',
             message: 'Job timed out - will continue in next run',
             lastProcessedIndex: status?.lastProcessedIndex || 0
           });
           await addJobToQueue(jobId);
-        } else if (errorMessage.includes('Notion')) {
+        } else if (error instanceof Error && error.message.includes('Notion')) {
           await setJobStatus(jobId, {
-            state: 'failed' as const,
+            state: 'failed',
             message: 'Failed to sync with Notion. Please ensure you have copied the Kindle Highlights template and granted necessary permissions.',
             lastProcessedIndex: status?.lastProcessedIndex || 0
           });
         } else {
           // For other errors, mark as failed but preserve progress
           await setJobStatus(jobId, {
-            state: 'failed' as const,
-            message: errorMessage,
+            state: 'failed',
+            message: error instanceof Error ? error.message : 'Unknown error',
             lastProcessedIndex: status?.lastProcessedIndex || 0
           });
         }
@@ -121,7 +133,7 @@ async function processJobWithStatus(jobId: string): Promise<void> {
 
   // Mark as completed
   const completedStatus: JobStatus = {
-    state: 'completed' as const,
+    state: 'completed',
     progress: 100,
     message: 'Successfully synced all highlights to Notion'
   };
