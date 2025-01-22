@@ -61,7 +61,7 @@ function generateState() {
          Math.random().toString(36).substring(2, 15);
 }
 
-// Health check endpoint
+// Health check endpoint //
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
