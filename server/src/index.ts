@@ -119,7 +119,7 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
   const storedState = req.cookies.oauth_state;
 
   if (!code || !state || state !== storedState) {
-    return res.status(400).json({ error: 'Invalid OAuth state' });
+    return res.redirect(`${process.env.CLIENT_URL}?error=Invalid OAuth state`);
   }
 
   try {
@@ -139,7 +139,7 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req, res) => {
     res.redirect(`${process.env.CLIENT_URL}?auth=success`);
   } catch (error) {
     console.error('OAuth callback error:', error);
-    res.status(500).json({ error: 'Failed to complete OAuth flow' });
+    res.redirect(`${process.env.CLIENT_URL}?error=Failed to complete OAuth flow`);
   }
 });
 

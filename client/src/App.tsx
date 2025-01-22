@@ -174,46 +174,78 @@ function App() {
   };
 
   useEffect(() => {
-    const checkAuthAndSync = async () => {
+    // Initialize application state
+    const initializeState = async () => {
+      const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+      
+      // Check URL parameters for auth status
+      const searchParams = new URLSearchParams(window.location.search);
+      const authResult = searchParams.get('auth');
+      const error = searchParams.get('error');
+      
+      // Clear URL parameters regardless of result
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      if (authResult === 'success') {
+        setIsAuthenticated(true);
+        localStorage.setItem('isAuthenticated', 'true');
+      } else if (authResult === 'error' || error) {
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        setErrorMessage(error === 'Invalid OAuth state' ?
+          'Connection to Notion was canceled. Please try again.' :
+          'Failed to connect to Notion. Please try again.');
+      }
+
+      // First check authentication
       try {
-        const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-        
-        // First check sync status if jobId exists
-        const jobId = localStorage.getItem('syncJobId');
-        if (jobId) {
-          // Set syncing state immediately if we have a jobId
-          setSyncStatus('syncing');
-          setIsTimeout(true);
-          
-          // Restore file from localStorage if available
-          const fileData = localStorage.getItem('syncFileData');
-          if (fileData) {
+        const authResponse = await fetch(`${apiBase}/auth/check`, {
+          credentials: 'include'
+        });
+        if (authResponse.ok) {
+          setIsAuthenticated(true);
+          localStorage.setItem('isAuthenticated', 'true');
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      }
+
+      // Then check for active sync
+      const jobId = localStorage.getItem('syncJobId');
+      if (jobId) {
+        // Set sync state immediately
+        setSyncStatus('syncing');
+        setIsTimeout(true);
+
+        // Restore file if available
+        const fileData = localStorage.getItem('syncFileData');
+        if (fileData) {
+          try {
             const base64Data = fileData.split(',')[1];
             const binaryString = atob(base64Data);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
               bytes[i] = binaryString.charCodeAt(i);
             }
-            const file = new File(
+            setFile(new File(
               [bytes],
               localStorage.getItem('syncFileName') || 'My Clippings.txt'
-            );
-            setFile(file);
-          } else {
+            ));
+          } catch (error) {
+            console.error('Failed to restore file:', error);
             setFile(new File([], 'My Clippings.txt'));
           }
-          
-          // Now check the actual status
+        }
+
+        // Check sync status
+        try {
           const syncResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
             credentials: 'include'
           });
           
           if (syncResponse.ok) {
             const status = await syncResponse.json();
-            if (status.state === 'processing') {
-              setIsAuthenticated(true); // Assume authenticated if sync is in progress
-              return; // Skip auth check since we're already syncing
-            } else if (status.state === 'completed') {
+            if (status.state === 'completed') {
               setSyncStatus('success');
               localStorage.removeItem('syncJobId');
               localStorage.removeItem('syncFileData');
@@ -222,27 +254,20 @@ function App() {
               setSyncStatus('error');
               setErrorMessage(status.error || 'Sync failed');
               localStorage.removeItem('syncJobId');
+              localStorage.removeItem('syncFileData');
+              localStorage.removeItem('syncFileName');
             }
+            // Keep syncing state if still processing
           }
+        } catch (error) {
+          console.error('Sync status check failed:', error);
+          // Keep syncing state on error
         }
-
-        // Check authentication only if no sync in progress
-        const authResponse = await fetch(`${apiBase}/auth/check`, {
-          credentials: 'include'
-        });
-        if (authResponse.ok) setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Initialization check failed:', error);
       }
     };
 
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('auth') === 'success') {
-      setIsAuthenticated(true);
-      localStorage.setItem('isAuthenticated', 'true');
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    checkAuthAndSync();
+    // Run initialization
+    initializeState().catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -284,20 +309,23 @@ function App() {
               <p className="mt-2 text-[#5a463a] font-serif text-center">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
               <div className="mt-4">
-                <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif ${
-                  syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}>
-                  <input
-                    type="file"
-                    accept=".txt"
-                    onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'}
-                    className="hidden"
-                  />
-                  Upload My Clippings.txt
-                </label>
+                {syncStatus !== 'syncing' && (
+                  <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif ${
+                    syncStatus === 'parsing' || syncStatus === 'success' || syncStatus === 'queued'
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}>
+                    <input
+                      type="file"
+                      accept=".txt"
+                      onChange={handleFileChange}
+                      disabled={syncStatus === 'parsing' || syncStatus === 'success' || syncStatus === 'queued'}
+                      className="hidden"
+                    />
+                    Upload My Clippings.txt
+                  </label>
+                )}
+
               </div>
 
               {errorMessage && !isTimeout && (
