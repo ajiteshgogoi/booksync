@@ -206,12 +206,12 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
 export async function isHighlightCached(databaseId: string, title: string, highlight: any): Promise<boolean> {
   try {
     const redis = await getRedis();
-    const key = `highlight:${databaseId}:${title}:${highlight.location}`;
+    const key = `highlight:${databaseId}:${title}:${highlight.hash}`;
     const exists = await redis.exists(key);
     logger.debug('Highlight cache check', {
       databaseId,
       title,
-      location: highlight.location,
+      hash: highlight.hash,
       cached: exists === 1
     });
     return exists === 1;
@@ -228,12 +228,12 @@ export async function isHighlightCached(databaseId: string, title: string, highl
 export async function cacheHighlight(databaseId: string, title: string, highlight: any): Promise<void> {
   try {
     const redis = await getRedis();
-    const key = `highlight:${databaseId}:${title}:${highlight.location}`;
+    const key = `highlight:${databaseId}:${title}:${highlight.hash}`;
     await redis.set(key, JSON.stringify(highlight), 'EX', HIGHLIGHT_TTL);
     logger.debug('Highlight cached', {
       databaseId,
       title,
-      location: highlight.location
+      hash: highlight.hash
     });
   } catch (error) {
     logger.error('Failed to cache highlight', {

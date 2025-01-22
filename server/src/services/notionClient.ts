@@ -1,4 +1,5 @@
-import { Client } from '@notionhq/client';
+import { Client, isFullPage, isFullDatabase } from '@notionhq/client';
+import type { GetPageResponse, PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import axios from 'axios';
 import {
   getRedis,
@@ -47,10 +48,12 @@ export interface Highlight {
   location: string;
   date: Date;
   hash: string;
+  version: number;
+  lastModified?: Date;
 }
 
-function generateHighlightHash(highlight: string[], location: string): string {
-  const content = highlight.join('\n\n') + location;
+function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
+  const content = highlight.join('\n\n') + location + bookTitle + author;
   return createHash('sha256').update(content).digest('hex');
 }
 
@@ -143,11 +146,12 @@ export async function findKindleHighlightsDatabase() {
       const db = await notion.databases.retrieve({ database_id: result.id });
       const props = db.properties;
       
-      if (props.Title?.type === 'title' &&
-          props.Author?.type === 'rich_text' &&
-          props.Highlights?.type === 'number' &&
-          props['Last Highlighted']?.type === 'date' &&
-          props['Last Synced']?.type === 'date') {
+          if (props.Title?.type === 'title' &&
+              props.Author?.type === 'rich_text' &&
+              props.Highlights?.type === 'number' &&
+              props['Last Highlighted']?.type === 'date' &&
+              props['Last Synced']?.type === 'date' &&
+              props['Highlight Hash']?.type === 'rich_text') {
         databaseId = result.id;
         break;
       }
@@ -345,6 +349,34 @@ export async function updateNotionDatabase(
 }
 
 async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> {
+  try {
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    
+    if (!isFullPage(page)) {
+      console.warn('Received partial page response, falling back to block scanning');
+      return new Set();
+    }
+
+    const hashProperty = page.properties['Highlight Hash'];
+    
+    if (hashProperty?.type === 'rich_text' && 
+        Array.isArray(hashProperty.rich_text) && 
+        hashProperty.rich_text[0]?.type === 'text' && 
+        hashProperty.rich_text[0].plain_text) {
+      try {
+        const hashes = JSON.parse(hashProperty.rich_text[0].plain_text);
+        if (Array.isArray(hashes)) {
+          return new Set(hashes);
+        }
+      } catch (error) {
+        console.error('Error parsing highlight hashes:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Error retrieving page:', error);
+  }
+  
+  // Fallback to scanning blocks if hash property is missing/invalid
   const hashes = new Set<string>();
   let hasMore = true;
   let startCursor: string | undefined = undefined;
@@ -443,6 +475,13 @@ async function updateOrCreateBookPage(
           },
           'Last Highlighted': {
             date: { start: book.lastHighlighted.toISOString() }
+          },
+          'Highlight Hash': {
+            rich_text: [{ 
+              text: { 
+                content: JSON.stringify(book.highlights.map(h => h.hash))
+              } 
+            }]
           }
         }
       });
@@ -478,6 +517,14 @@ async function updateOrCreateBookPage(
           'Last Synced': {
             type: 'date',
             date: { start: new Date().toISOString() }
+          },
+          'Highlight Hash': {
+            type: 'rich_text',
+            rich_text: [{ 
+              text: { 
+                content: JSON.stringify(book.highlights.map(h => h.hash))
+              } 
+            }]
           }
         }
       });

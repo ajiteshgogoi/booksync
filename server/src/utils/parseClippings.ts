@@ -1,9 +1,17 @@
+import { createHash } from 'crypto';
+
 export interface Highlight {
   bookTitle: string;
   author: string;
   highlight: string[];
   location: string;
   date: Date;
+  hash: string;
+}
+
+function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
+  const content = highlight.join('\n\n') + location + bookTitle + author;
+  return createHash('sha256').update(content).digest('hex');
 }
 
 // Split text into chunks of maxLength, ensuring chunks end at sentence boundaries
@@ -116,13 +124,15 @@ export function parseClippings(fileContent: string): Highlight[] {
       if (!highlightGroups.has(groupKey)) {
         highlightGroups.set(groupKey, []);
       }
-      highlightGroups.get(groupKey)!.push({
+      const highlight = {
         bookTitle,
         author,
         highlight: highlightChunks,
         location,
-        date
-      });
+        date,
+        hash: generateHighlightHash(highlightChunks, location, bookTitle, author)
+      };
+      highlightGroups.get(groupKey)!.push(highlight);
     } catch (error) {
       console.error('Error parsing entry:', error);
       continue;
@@ -135,10 +145,10 @@ export function parseClippings(fileContent: string): Highlight[] {
     const uniqueHighlights = new Set<string>();
     
     for (const highlight of group) {
-      const isDuplicate = uniqueHighlights.has(`${highlight.highlight.join(' ')}|${highlight.location}`);
+      const isDuplicate = uniqueHighlights.has(highlight.hash);
       
       if (!isDuplicate) {
-        uniqueHighlights.add(`${highlight.highlight.join(' ')}|${highlight.location}`);
+        uniqueHighlights.add(highlight.hash);
         highlights.push(highlight);
       }
     }
