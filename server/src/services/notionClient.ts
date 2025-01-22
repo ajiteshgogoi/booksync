@@ -38,12 +38,20 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
   }
 }
 
+import { createHash } from 'crypto';
+
 export interface Highlight {
   bookTitle: string;
   author: string;
   highlight: string[];
   location: string;
   date: Date;
+  hash: string;
+}
+
+function generateHighlightHash(highlight: string[], location: string): string {
+  const content = highlight.join('\n\n') + location;
+  return createHash('sha256').update(content).digest('hex');
 }
 
 export interface NotionBookPage {
@@ -336,6 +344,43 @@ export async function updateNotionDatabase(
   }
 }
 
+async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> {
+  const hashes = new Set<string>();
+  let hasMore = true;
+  let startCursor: string | undefined = undefined;
+
+  while (hasMore) {
+    const response = await notion.blocks.children.list({
+      block_id: pageId,
+      start_cursor: startCursor,
+      page_size: 100
+    });
+
+    for (const block of response.results) {
+      if (block.object !== 'block' || !('type' in block)) continue;
+      
+      if (block.type === 'paragraph' && 'paragraph' in block && block.paragraph) {
+        const richText = block.paragraph.rich_text;
+        if (Array.isArray(richText)) {
+          const hashText = richText.find((rt) => 
+            rt.type === 'text' && rt.plain_text?.startsWith('🔑 Hash: ')
+          );
+          
+          if (hashText?.plain_text) {
+            const hash = hashText.plain_text.replace('🔑 Hash: ', '');
+            hashes.add(hash);
+          }
+        }
+      }
+    }
+
+    hasMore = response.has_more;
+    startCursor = response.next_cursor ?? undefined;
+  }
+
+  return hashes;
+}
+
 async function updateOrCreateBookPage(
   databaseId: string,
   book: NotionBookPage,
@@ -359,6 +404,11 @@ async function updateOrCreateBookPage(
     if (results.length > 0) {
       existingPageId = results[0].id;
     }
+
+    // Get existing highlight hashes if page exists
+    const existingHashes = existingPageId ? 
+      await getExistingHighlightHashes(existingPageId) : 
+      new Set<string>();
 
     // Update lastHighlighted to be the newest highlight date
     const newestHighlightDate = book.highlights.reduce((newest, highlight) => {
