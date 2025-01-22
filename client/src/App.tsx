@@ -85,91 +85,67 @@ function App() {
 
       if (!response.ok) throw new Error(await response.text());
 
-      const { jobId } = await response.json();
-      console.log('Received jobId:', jobId);
+      const data = await response.json();
+      console.log('Sync response:', data);
       
-      // Update state to syncing now that we have a jobId
-      setSyncStatus('syncing');
-      localStorage.setItem('syncStatus', 'syncing');
+      // Start in queued state
+      setSyncStatus('queued');
+      localStorage.setItem('syncStatus', 'queued');
       
-      // Store sync data
-      localStorage.setItem('syncJobId', jobId);
+      // Show initial info message
+      setErrorMessage(data.info || 'Your highlights are queued for processing');
       
-      // Store file content as base64 string
+      // Store that we're waiting for next processing run
+      localStorage.setItem('syncStatus', 'queued');
+      localStorage.removeItem('syncJobId');
+      
+      // Store file metadata
       const reader = new FileReader();
       reader.onload = () => {
         localStorage.setItem('syncFileData', reader.result as string);
         localStorage.setItem('syncFileName', file.name);
+        localStorage.setItem('syncTime', new Date().toISOString());
       };
       reader.readAsDataURL(file);
       
-      console.log('Updated sync status to syncing with jobId:', jobId);
+      console.log('File queued for processing');
       
-      // Start polling for job status
-      const pollStatus = async () => {
-        try {
-          const statusResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
-            credentials: 'include'
-          });
-          
-          if (!statusResponse.ok) throw new Error('Failed to check status');
-          
-          const status = await statusResponse.json();
-          
-          if (status.progress) {
-            // Update progress
+      // In production, no need to poll immediately since processing happens in GitHub Actions
+      if (import.meta.env.PROD) {
+        // Set timeout to show background processing message
+        const timeout = setTimeout(() => {
+          setIsTimeout(true);
+          setErrorMessage(
+            'Your highlights are queued for processing. ' +
+            'Processing happens every 30 minutes through our background system. ' +
+            'You can safely close this page - your highlights will appear in Notion gradually as they are processed.'
+          );
+        }, 3000); // Show message after 3 seconds
+
+        return () => clearTimeout(timeout);
+      } else {
+        // In development, poll for status
+        const pollInterval = setInterval(async () => {
+          try {
+            const status = await fetch(`${apiBase}/sync/status`, {
+              credentials: 'include'
+            }).then(res => res.json());
+
+            if (status.state === 'completed') {
+              setSyncStatus('success');
+              clearInterval(pollInterval);
+            } else if (status.state === 'failed') {
+              setSyncStatus('error');
+              setErrorMessage(status.message || 'Sync failed');
+              clearInterval(pollInterval);
+            }
+          } catch (error) {
+            console.error('Poll error:', error);
           }
-          
-          if (status.state === 'completed') {
-            setSyncStatus('success');
-            // Sync completed
-            return true;
-          }
-          
-          if (status.state === 'failed') {
-            throw new Error(status.error || 'Sync failed');
-          }
-          
-          // Continue polling
-          return false;
-        } catch (error) {
-          setSyncStatus('error');
-          setErrorMessage(error instanceof Error ? error.message : 'Failed to check sync status');
-          // Error occurred
-          return true;
-        }
-      };
+        }, 1000);
 
-      // Initial poll
-      if (await pollStatus()) return;
-
-      // Set up interval polling
-      const interval = setInterval(async () => {
-        if (await pollStatus()) {
-          clearInterval(interval);
-        }
-      }, 1000);
-
-      // Set timeout check
-      const timeout = setTimeout(() => {
-        setIsTimeout(true);
-        // Different messages for prod vs local
-        setErrorMessage(
-          import.meta.env.PROD
-            ? 'Your highlights are being processed in batches by our background system. ' +
-              'This happens every 30 minutes and can handle any file size. ' +
-              'You can safely close this page - highlights will appear in Notion as they are processed.'
-            : 'Sync is still running on your local server. ' +
-              'Large files may take some time to process. ' +
-              'You can safely close this page - highlights will appear in Notion as they are processed.'
-        );
-      }, import.meta.env.PROD ? 60000 : 30000); // Shorter timeout locally
-
-      // Cleanup interval on component unmount
-      return () => {
-        clearInterval(interval);
-        clearTimeout(timeout);
-      };
+        return () => clearInterval(pollInterval);
+      }
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
@@ -539,14 +515,17 @@ function App() {
                            <div>• You can safely close this page</div>
                            {import.meta.env.PROD ? (
                              <>
-                               <div>• {syncStatus === 'queued' ? 'Processing will begin in next background run' : 'Processing large files in batches'}</div>
-                               <div>• Background processing runs every 30 minutes</div>
-                               <div>• You'll see results in Notion as highlights are processed</div>
+                               <div>• {syncStatus === 'queued' ? 'Processing will begin in next background run' : 'Processing in batches'}</div>
+                               <div>• Our background system runs every 30 minutes</div>
+                               <div>• Can process up to 1000 highlights per run</div>
+                               <div>• Progress is saved between runs</div>
+                               <div>• You'll see results in Notion as batches complete</div>
                              </>
                            ) : (
                              <>
                                <div>• {syncStatus === 'queued' ? 'Processing will begin shortly' : 'Processing your highlights'}</div>
                                <div>• Local server processes continuously</div>
+                               <div>• No timeout limits locally</div>
                                <div>• You'll see results in Notion soon</div>
                              </>
                            )}

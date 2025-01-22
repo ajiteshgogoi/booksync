@@ -203,14 +203,27 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     }
 
     const userId = req.user?.id || 'default-user-id';
-    const jobId = await queueSyncJob(userId, fileContent);
     
-    // Return success with job ID
+    // Start queuing process but don't await it
+    const queuePromise = queueSyncJob(userId, fileContent);
+    
+    // Return immediately with preliminary response
     res.json({
       success: true,
-      message: 'Sync job started. Your highlights will be processed in the background.',
-      jobId
+      message: 'Sync starting. Your highlights will be processed in batches by our background system.',
+      status: 'queuing',
+      nextRun: '30 minutes',
+      info: 'Background processing occurs every 30 minutes. You can safely close this page - progress is automatically saved.'
     });
+
+    // Complete queuing in background
+    try {
+      const jobId = await queuePromise;
+      console.log('Job queued successfully:', jobId);
+    } catch (error) {
+      console.error('Background queue error:', error);
+      // Don't throw - response already sent
+    }
   } catch (error) {
     console.error('Sync error:', error);
     res.status(500).json({
