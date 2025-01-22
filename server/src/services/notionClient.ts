@@ -537,29 +537,39 @@ async function updateOrCreateBookPage(
           const highlightText = highlight.highlight.join('\n\n');
           const chunks = splitAtSentences(highlightText, 2000);
           
-          return chunks.map((chunk, index) => ({
-            object: 'block' as const,
-            type: 'paragraph' as const,
-            paragraph: {
-              rich_text: [
-                {
-                  type: 'text' as const,
-                  text: {
-                    content: chunk
-                  }
-                },
-                ...(index === chunks.length - 1 ? [{
-                  type: 'text' as const,
-                  text: {
-                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${(highlight.date instanceof Date ? highlight.date : new Date(highlight.date)).toLocaleString()}`
+          return [
+            ...chunks.map((chunk, index) => ({
+              object: 'block' as const,
+              type: 'paragraph' as const,
+              paragraph: {
+                rich_text: [
+                  {
+                    type: 'text' as const,
+                    text: {
+                      content: chunk
+                    }
                   },
-                  annotations: {
-                    color: 'gray' as const
-                  }
-                }] : [])
-              ]
+                  ...(index === chunks.length - 1 ? [{
+                    type: 'text' as const,
+                    text: {
+                      content: `\n📍 Location: ${highlight.location} | 📅 Added: ${(highlight.date instanceof Date ? highlight.date : new Date(highlight.date)).toLocaleString()}`
+                    },
+                    annotations: {
+                      color: 'gray' as const
+                    }
+                  }] : [])
+                ]
+              }
+            })),
+            // Add an empty paragraph block after each highlight
+            {
+              object: 'block' as const,
+              type: 'paragraph' as const,
+              paragraph: {
+                rich_text: []
+              }
             }
-          }));
+          ];
         });
 
         if (batchBlocks.length > 0) {
