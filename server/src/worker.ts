@@ -14,11 +14,11 @@ const MAX_JOBS_PER_USER = isGitHubAction ? 50 :   // More jobs per user in GitHu
                          
 const MAX_RUNTIME = isGitHubAction ? 21000000 :   // ~6 hours in GitHub Actions
                    isProd ? 50000 :              // Under 1 minute in Vercel
-                   3600000;                      // 1 hour locally
+                   0;                            // No runtime limit locally
                    
 const JOB_TIMEOUT = isGitHubAction ? 3600000 :    // 1 hour per job in GitHub Actions
                    isProd ? 45000 :              // 45s in Vercel
-                   300000;                       // 5 mins locally
+                   0;                            // No timeout locally
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
