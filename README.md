@@ -59,8 +59,8 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/libsync.git
-cd libsync
+git clone https://github.com/ajiteshgogoi/booksync.git
+cd booksync
 ```
 
 2. Set up Redis
