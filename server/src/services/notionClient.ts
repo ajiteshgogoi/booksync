@@ -376,41 +376,27 @@ async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> 
     console.error('Error retrieving page:', error);
   }
   
-  // Fallback to scanning blocks if hash property is missing/invalid
-  const hashes = new Set<string>();
-  let hasMore = true;
-  let startCursor: string | undefined = undefined;
-
-  while (hasMore) {
-    const response = await notion.blocks.children.list({
-      block_id: pageId,
-      start_cursor: startCursor,
-      page_size: 100
-    });
-
-    for (const block of response.results) {
-      if (block.object !== 'block' || !('type' in block)) continue;
-      
-      if (block.type === 'paragraph' && 'paragraph' in block && block.paragraph) {
-        const richText = block.paragraph.rich_text;
-        if (Array.isArray(richText)) {
-          const hashText = richText.find((rt) => 
-            rt.type === 'text' && rt.plain_text?.startsWith('🔑 Hash: ')
-          );
-          
-          if (hashText?.plain_text) {
-            const hash = hashText.plain_text.replace('🔑 Hash: ', '');
-            hashes.add(hash);
-          }
-        }
-      }
-    }
-
-    hasMore = response.has_more;
-    startCursor = response.next_cursor ?? undefined;
+  if (!isFullPage(page)) {
+    return new Set();
   }
 
-  return hashes;
+  const hashProperty = page.properties['Highlight Hash'];
+  
+  if (hashProperty?.type === 'rich_text' &&
+      Array.isArray(hashProperty.rich_text) &&
+      hashProperty.rich_text[0]?.type === 'text' &&
+      hashProperty.rich_text[0].plain_text) {
+    try {
+      const hashes = JSON.parse(hashProperty.rich_text[0].plain_text);
+      if (Array.isArray(hashes)) {
+        return new Set(hashes);
+      }
+    } catch (error) {
+      console.error('Error parsing highlight hashes:', error);
+    }
+  }
+  
+  return new Set();
 }
 
 async function updateOrCreateBookPage(
@@ -455,6 +441,13 @@ async function updateOrCreateBookPage(
     if (existingPageId) {
       const coverUrl = await getBookCoverUrl(book.title, book.author);
       
+      // Get current highlight count
+      const existingPage = await notion.pages.retrieve({ page_id: existingPageId });
+      let currentCount = 0;
+      if (isFullPage(existingPage) && existingPage.properties.Highlights.type === 'number') {
+        currentCount = existingPage.properties.Highlights.number || 0;
+      }
+
       const updatedPage = await notion.pages.update({
         page_id: existingPageId,
         icon: coverUrl ? {
@@ -471,16 +464,16 @@ async function updateOrCreateBookPage(
             rich_text: [{ text: { content: book.author } }]
           },
           Highlights: {
-            number: book.highlights.length
+            number: currentCount + book.highlights.filter(h => !existingHashes.has(h.hash)).length
           },
           'Last Highlighted': {
             date: { start: book.lastHighlighted.toISOString() }
           },
           'Highlight Hash': {
-            rich_text: [{ 
-              text: { 
+            rich_text: [{
+              text: {
                 content: JSON.stringify(book.highlights.map(h => h.hash))
-              } 
+              }
             }]
           }
         }
@@ -531,39 +524,45 @@ async function updateOrCreateBookPage(
       pageId = newPage.id;
     }
 
+    // Helper function to split text at sentence boundaries
+    const splitAtSentences = (text: string, maxLength: number): string[] => {
+      const sentences = text.split(/(?<=[.!?])\s+/);
+      const chunks: string[] = [];
+      let currentChunk = '';
+      
+      for (const sentence of sentences) {
+        if ((currentChunk + sentence).length <= maxLength) {
+          currentChunk += (currentChunk ? ' ' : '') + sentence;
+        } else {
+          if (currentChunk) chunks.push(currentChunk);
+          currentChunk = sentence;
+        }
+      }
+      
+      if (currentChunk) chunks.push(currentChunk);
+      return chunks;
+    };
+
     let addedCount = 0;
+    const batchSize = 100; // Notion API limit per request
     
     try {
-      for (const highlight of book.highlights) {
-        try {
-          // Update progress for every highlight processed
-          onProgress?.();
-
-          // Helper function to split text at sentence boundaries
-          const splitAtSentences = (text: string, maxLength: number): string[] => {
-            const sentences = text.split(/(?<=[.!?])\s+/);
-            const chunks: string[] = [];
-            let currentChunk = '';
-            
-            for (const sentence of sentences) {
-              if ((currentChunk + sentence).length <= maxLength) {
-                currentChunk += (currentChunk ? ' ' : '') + sentence;
-              } else {
-                if (currentChunk) chunks.push(currentChunk);
-                currentChunk = sentence;
-              }
-            }
-            
-            if (currentChunk) chunks.push(currentChunk);
-            return chunks;
-          };
-
-          // Split highlight into chunks of <= 2000 characters at sentence boundaries
+      // Filter out existing highlights first
+      const newHighlights = book.highlights.filter(h => !existingHashes.has(h.hash));
+      
+      // Process highlights in batches
+      for (let i = 0; i < newHighlights.length; i += batchSize) {
+        // Update progress for every batch processed
+        onProgress?.();
+        
+        const batchHighlights = newHighlights.slice(i, i + batchSize);
+        
+        // Create all blocks for this batch
+        const batchBlocks = batchHighlights.flatMap(highlight => {
           const highlightText = highlight.highlight.join('\n\n');
           const chunks = splitAtSentences(highlightText, 2000);
           
-          // Create blocks for each chunk
-          const blocks = chunks.map((chunk, index) => ({
+          return chunks.map((chunk, index) => ({
             object: 'block' as const,
             type: 'paragraph' as const,
             paragraph: {
@@ -586,22 +585,17 @@ async function updateOrCreateBookPage(
               ]
             }
           }));
+        });
 
+        if (batchBlocks.length > 0) {
           const result = await notion.blocks.children.append({
             block_id: pageId,
-            children: blocks
+            children: batchBlocks
           });
 
-          if (!result || !result.results || result.results.length === 0) {
-            console.error('Failed to append highlight blocks:', highlight.location);
-            continue;
-          }
-
           if (result && result.results && result.results.length > 0) {
-            addedCount++;
+            addedCount += batchHighlights.length;
           }
-        } catch (error) {
-          console.error('Error processing highlight:', highlight.location, error);
         }
       }
 
