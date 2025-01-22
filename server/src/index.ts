@@ -220,6 +220,25 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   }
 });
 
+// Cron endpoint for processing sync jobs
+app.get(`${apiBasePath}/cron/process-sync`, async (req, res) => {
+  try {
+    // Verify the request is from Vercel Cron
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    console.log('Starting cron job for processing syncs...');
+    await startWorker();
+    
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Cron job error:', error);
+    res.status(500).json({ error: 'Failed to process sync jobs' });
+  }
+});
+
 if (!process.env.VERCEL) {
   // Start the server
   app.listen(port, () => {

@@ -11,8 +11,9 @@ import {
 } from './redisService';
 
 // Configuration
-const BATCH_SIZE = 25; // Number of highlights per batch
-const BATCH_DELAY = 500; // 500ms delay between batches
+const BATCH_SIZE = 10; // Reduced batch size for faster processing
+const BATCH_DELAY = 100; // Reduced delay between batches
+const MAX_RETRIES = 3; // Maximum number of retries for failed batches
 
 export async function queueSyncJob(
   databaseId: string,
@@ -88,52 +89,67 @@ export async function processSyncJob(
 
       const batch = highlights.slice(i, i + BATCH_SIZE);
       
-      // Process batch of highlights
+      // Process batch of highlights with retry logic
       if (batch.length > 0) {
-        try {
-          console.debug(`Processing batch of ${batch.length} highlights`);
-          
-          // Verify all highlights have required fields
-          const invalidHighlights = batch.filter(h =>
-            !h.databaseId || !h.bookTitle || !h.highlight || !h.location || !h.date
-          );
-          
-          if (invalidHighlights.length > 0) {
-            console.error('Found invalid highlights:', invalidHighlights);
-            throw new Error('Some highlights are missing required fields');
-          }
+        let retryCount = 0;
+        let success = false;
 
-          // Verify all highlights have the same databaseId
-          const dbId = batch[0].databaseId;
-          if (!batch.every(h => h.databaseId === dbId)) {
-            throw new Error('Batch contains highlights from multiple databases');
-          }
+        while (!success && retryCount < MAX_RETRIES) {
+          try {
+            console.debug(`Processing batch of ${batch.length} highlights (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+            
+            // Verify all highlights have required fields
+            const invalidHighlights = batch.filter(h =>
+              !h.databaseId || !h.bookTitle || !h.highlight || !h.location || !h.date
+            );
+            
+            if (invalidHighlights.length > 0) {
+              console.error('Found invalid highlights:', invalidHighlights);
+              throw new Error('Some highlights are missing required fields');
+            }
 
-          console.debug(`Updating Notion database with ${batch.length} highlights`);
-          await updateNotionDatabase(batch);
-          
-          // Update progress
-          processed += batch.length;
-          const progress = Math.round((processed / total) * 100);
-          
-          // Update job status
-          await setJobStatus(jobId, {
-            state: 'processing',
-            progress,
-            message: `Processing ${processed}/${total} highlights`
-          });
-          
-          // Call progress callback if provided
-          if (onProgress) {
-            await onProgress(progress, `Processing ${processed}/${total} highlights`);
+            // Verify all highlights have the same databaseId
+            const dbId = batch[0].databaseId;
+            if (!batch.every(h => h.databaseId === dbId)) {
+              throw new Error('Batch contains highlights from multiple databases');
+            }
+
+            console.debug(`Updating Notion database with ${batch.length} highlights`);
+            await updateNotionDatabase(batch);
+            
+            // Update progress
+            processed += batch.length;
+            const progress = Math.round((processed / total) * 100);
+            
+            // Update job status
+            await setJobStatus(jobId, {
+              state: 'processing',
+              progress,
+              message: `Processing ${processed}/${total} highlights`
+            });
+            
+            // Call progress callback if provided
+            if (onProgress) {
+              await onProgress(progress, `Processing ${processed}/${total} highlights`);
+            }
+
+            success = true;
+          } catch (error) {
+            retryCount++;
+            console.error(`Error syncing highlights to Notion (attempt ${retryCount}/${MAX_RETRIES}):`, error);
+            
+            if (retryCount === MAX_RETRIES) {
+              await setJobStatus(jobId, {
+                state: 'failed',
+                message: `Failed to sync highlights to Notion after ${MAX_RETRIES} attempts`
+              });
+              throw error;
+            }
+            
+            // Wait before retrying (exponential backoff)
+            const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
           }
-        } catch (error) {
-          console.error('Error syncing highlights to Notion:', error);
-          await setJobStatus(jobId, {
-            state: 'failed',
-            message: 'Failed to sync highlights to Notion'
-          });
-          throw error;
         }
       }
 

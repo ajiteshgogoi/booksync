@@ -12,8 +12,8 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Enhanced hash generation using book title, author and content
   - Redis cache with 24-hour TTL for efficient duplicate checking
 - **Efficient Syncing**
-  - Background processing for large libraries
-  - Continues syncing even if browser is closed
+  - Background processing via Vercel Cron Jobs
+  - Resilient processing with automatic retries
   - Real-time progress tracking
   - Automatic rate limiting
 - **Notion Integration**
@@ -60,6 +60,7 @@ NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
 CLIENT_URL=http://localhost:5173
 REDIS_URL=redis://localhost:6379  # Or your Redis connection URL
 REDIS_TTL=86400                   # Cache TTL in seconds (24 hours)
+CRON_SECRET=your_cron_secret     # Required for Vercel Cron authentication
 
 # In client/.env
 VITE_API_URL=http://localhost:3001
@@ -94,8 +95,9 @@ When you upload My Clippings.txt, the parser:
 For reliable processing:
 - Each sync is queued with a unique job ID
 - Progress is tracked across sessions
-- Background processing continues if browser closes
-- Automatic rate limiting and retries
+- Processing handled by Vercel Cron Jobs
+- Automatic retries and exponential backoff
+- Batch processing with timeouts
 
 ### 3. Sync Layer
 During synchronization:
@@ -123,8 +125,8 @@ The interface provides:
    - Connect your Kindle to your computer
    - Find "My Clippings.txt" in your Kindle's documents folder
    - Upload the file through the BookSync interface
-   - The app will parse and start syncing your highlights
-   - You can close the browser - sync will continue in background
+   - The app will parse and queue your highlights for processing
+   - Processing happens via Vercel Cron Jobs every 2 minutes
    - Return anytime to check progress
 
 3. **Organizing in Notion**
@@ -195,13 +197,14 @@ server/
    CLIENT_URL=https://your-vercel-url.vercel.app
    REDIS_URL=your_redis_connection_url
    REDIS_TTL=86400
+   CRON_SECRET=your_cron_secret_here # Required for Vercel Cron authentication
    ```
 
 4. Update client environment:
    - Create `.env.production` in client directory
    - Set `VITE_API_URL=https://your-vercel-url.vercel.app`
 
-5. Configure vercel.json:
+5. Configure vercel.json with cron jobs:
    ```json
    {
      "version": 2,
@@ -219,6 +222,12 @@ server/
      "routes": [
        { "src": "/api/(.*)", "dest": "server/src/index.ts" },
        { "src": "/(.*)", "dest": "client/dist/$1" }
+     ],
+     "crons": [
+       {
+         "path": "/api/cron/process-sync",
+         "schedule": "*/2 * * * *"
+       }
      ]
    }
    ```
@@ -242,10 +251,11 @@ server/
    - Ensure all required environment variables are set
    - Check if Notion integration has required capabilities enabled
 
-3. **Sync Not Starting**
-   - Verify Redis connection
-   - Check server logs for any rate limiting messages
-   - Ensure My Clippings.txt file is correctly formatted
+3. **Sync Processing Issues**
+   - Check if CRON_SECRET is properly set in Vercel environment variables
+   - Monitor Vercel Cron job logs for any errors
+   - Verify Redis connection and job queue state
+   - Check for rate limiting or timeout issues
 
 4. **Build Errors**
    - Ensure Node.js version is 18 or higher
