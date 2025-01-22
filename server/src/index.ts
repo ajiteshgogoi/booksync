@@ -75,8 +75,24 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
     }
 
     // Test repository access
-    const response = await axios.get(
+    const repoResponse = await axios.get(
       'https://api.github.com/repos/ajiteshgogoi/booksync',
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    // Test repository_dispatch permission with a small payload
+    const dispatchResponse = await axios.post(
+      'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      {
+        event_type: 'test_dispatch',
+        client_payload: { test: true }
+      },
       {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
@@ -89,7 +105,8 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
     res.json({
       success: true,
       repoAccess: true,
-      repoName: response.data.full_name,
+      repoName: repoResponse.data.full_name,
+      dispatchPermission: dispatchResponse.status === 204,
       tokenInfo: {
         present: true,
         length: token.length,
