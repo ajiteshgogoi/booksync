@@ -61,27 +61,23 @@ jobs:
           cd server
           echo "Starting file processing..."
           node --experimental-vm-modules -e "
-          (async () => {
-            try {
-              console.log('Loading processFileContent function...');
-              const { processFileContent } = await import('./build/src/services/processService.js');
-              
-              console.log('Getting event payload...');
-              const fileContent = \`${{ toJSON(github.event.client_payload.fileContent) }}\`;
-              const userId = '${{ github.event.client_payload.userId }}';
-              
-              console.log('Starting file processing with:', {
-                userId,
-                contentLength: fileContent.length
-              });
-              
-              await processFileContent(userId, fileContent);
-              console.log('File processing completed successfully');
-            } catch (error) {
-              console.error('Failed to process file:', error);
-              process.exit(1);
-            }
-          })();"
+          const { processFileContent } = await import('./build/src/services/processService.js');
+          const fileContent = JSON.stringify(${{ toJSON(github.event.client_payload.fileContent) }});
+          const userId = '${{ github.event.client_payload.userId }}';
+          
+          console.log('Starting file processing with:', {
+            userId,
+            contentLength: fileContent.length
+          });
+          
+          try {
+            await processFileContent(userId, fileContent);
+            console.log('File processing completed successfully');
+          } catch (error) {
+            console.error('Failed to process file:', error);
+            process.exit(1);
+          }
+          "
 
   test-webhook:
     if: github.event.action == 'process_highlights_test'
