@@ -210,86 +210,93 @@ function App() {
         if (authResponse.ok) {
           setIsAuthenticated(true);
           localStorage.setItem('isAuthenticated', 'true');
+        } else {
+          // Clear auth state on failed check
+          setIsAuthenticated(false);
+          localStorage.removeItem('isAuthenticated');
+          // Also clear any sync state since auth is required
+          localStorage.removeItem('syncJobId');
+          localStorage.removeItem('syncFileData');
+          localStorage.removeItem('syncFileName');
+          localStorage.removeItem('syncStatus');
+          setSyncStatus('idle');
         }
       } catch (error) {
         console.error('Auth check failed:', error);
+        // Clear state on error
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('syncJobId');
+        localStorage.removeItem('syncFileData');
+        localStorage.removeItem('syncFileName');
+        localStorage.removeItem('syncStatus');
+        setSyncStatus('idle');
       }
 
-      // Restore sync state if available
+      // First check if we have a sync job ID
       const jobId = localStorage.getItem('syncJobId');
       const storedSyncStatus = localStorage.getItem('syncStatus') as SyncStatus;
       const fileData = localStorage.getItem('syncFileData');
       const fileName = localStorage.getItem('syncFileName');
 
-      // If we have either a job ID or sync status, restore the sync state
-      if (jobId || storedSyncStatus === 'syncing') {
-        console.debug('Restoring sync state:', { jobId, storedSyncStatus });
-        
-        // Set timeout state for long-running syncs
-        setIsTimeout(true);
-        
-        // Always restore the sync status if available
-        if (storedSyncStatus) {
-          console.debug('Setting sync status to:', storedSyncStatus);
-          setSyncStatus(storedSyncStatus);
-        } else if (jobId) {
-          // Default to syncing if we have a job but no status
-          console.debug('Defaulting sync status to syncing');
-          setSyncStatus('syncing');
-          localStorage.setItem('syncStatus', 'syncing');
-        }
-
-        // Restore file if we have the data
-        if (fileData && fileName) {
-          console.debug('Restoring file data');
-          try {
-            const base64Data = fileData.split(',')[1];
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            const restoredFile = new File([bytes], fileName);
-            setFile(restoredFile);
-          } catch (error) {
-            console.error('Failed to restore file:', error);
-            if (fileName) {
-              setFile(new File([], fileName));
-            }
+      // If we have a job ID, check server status first
+      if (jobId) {
+        try {
+          const statusResponse = await fetch(`${apiBase}/sync/status/${jobId}`, {
+            credentials: 'include'
+          });
+          
+          if (!statusResponse.ok || statusResponse.status === 207) {
+            // Job no longer exists or multi-status response - clear stale state
+            localStorage.removeItem('syncJobId');
+            localStorage.removeItem('syncFileData');
+            localStorage.removeItem('syncFileName');
+            localStorage.removeItem('syncStatus');
+            setSyncStatus('idle');
+            return;
           }
-        }
 
-        // Check sync status immediately if we have a job ID
-        if (jobId) {
-          try {
-            const response = await fetch(`${apiBase}/sync/status/${jobId}`, {
-              credentials: 'include'
-            });
+          const status = await statusResponse.json();
+          
+          if (status.state === 'processing') {
+            // Sync is still active - restore state
+            setSyncStatus('syncing');
+            localStorage.setItem('syncStatus', 'syncing');
             
-            if (response.ok) {
-              const status = await response.json();
-              console.debug('Retrieved sync status:', status);
-              
-              if (status.state === 'completed') {
-                setSyncStatus('success');
-                localStorage.setItem('syncStatus', 'success');
-                localStorage.removeItem('syncJobId');
-                localStorage.removeItem('syncFileData');
-                localStorage.removeItem('syncFileName');
-              } else if (status.state === 'failed') {
-                setSyncStatus('error');
-                setErrorMessage(status.error || 'Sync failed');
-                localStorage.removeItem('syncJobId');
-                localStorage.removeItem('syncFileData');
-                localStorage.removeItem('syncFileName');
-                localStorage.removeItem('syncStatus');
+            if (fileData && fileName) {
+              try {
+                const base64Data = fileData.split(',')[1];
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const restoredFile = new File([bytes], fileName);
+                setFile(restoredFile);
+              } catch (error) {
+                console.error('Failed to restore file:', error);
+                if (fileName) {
+                  setFile(new File([], fileName));
+                }
               }
-              // Keep syncing state if still processing
             }
-          } catch (error) {
-            console.error('Failed to check sync status:', error);
-            // Keep syncing state on error to allow retrying
+            return;
           }
+          
+          // If we get here, sync is not active - clear stale state
+          localStorage.removeItem('syncJobId');
+          localStorage.removeItem('syncFileData');
+          localStorage.removeItem('syncFileName');
+          localStorage.removeItem('syncStatus');
+          setSyncStatus('idle');
+        } catch (error) {
+          console.error('Failed to check sync status:', error);
+          // On error, assume sync is not active
+          localStorage.removeItem('syncJobId');
+          localStorage.removeItem('syncFileData');
+          localStorage.removeItem('syncFileName');
+          localStorage.removeItem('syncStatus');
+          setSyncStatus('idle');
         }
       }
     };
@@ -344,22 +351,20 @@ function App() {
               <p className="mt-2 text-[#5a463a] font-serif text-center">Connect your Kindle and upload 'My Clippings.txt' to get started.</p>
 
               <div className="mt-4">
-                {syncStatus !== 'syncing' && (
-                  <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif ${
-                    syncStatus === 'parsing' || syncStatus === 'success' || syncStatus === 'queued'
-                      ? 'opacity-50 cursor-not-allowed'
-                      : ''
-                  }`}>
-                    <input
-                      type="file"
-                      accept=".txt"
-                      onChange={handleFileChange}
-                      disabled={syncStatus === 'parsing' || syncStatus === 'success' || syncStatus === 'queued'}
-                      className="hidden"
-                    />
-                    Upload My Clippings.txt
-                  </label>
-                )}
+                <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md cursor-pointer transition-colors font-serif ${
+                  syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'
+                    ? 'opacity-50 cursor-not-allowed'
+                    : ''
+                }`}>
+                  <input
+                    type="file"
+                    accept=".txt"
+                    onChange={handleFileChange}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'syncing' || syncStatus === 'success' || syncStatus === 'queued'}
+                    className="hidden"
+                  />
+                  Upload My Clippings.txt
+                </label>
 
               </div>
 
