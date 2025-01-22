@@ -49,13 +49,12 @@ jobs:
             exit 1
           fi
           
-      - name: Run sync process
+      - name: Create runner script
         run: |
           cd server
-          echo "Starting worker process..."
-          node -e "
+          echo "const path = require('path');
           require('dotenv').config();
-          const { startWorker } = require('./build/src/worker.js');
+          const { startWorker } = require(path.join(process.cwd(), 'build/src/worker.js'));
           
           // Override timeout settings for GitHub Actions
           process.env.MAX_RUNTIME = '18000000';  // 5 hours
@@ -66,4 +65,10 @@ jobs:
           startWorker().catch(err => {
             console.error('Worker failed:', err);
             process.exit(1);
-          });"
+          });" > runner.js
+
+      - name: Run sync process
+        run: |
+          cd server
+          echo "Starting worker process..."
+          node runner.js
