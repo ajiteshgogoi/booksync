@@ -272,28 +272,41 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
 // Sync endpoint for uploading MyClippings.txt
 app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res: Response) => {
   try {
+    console.log('\n=== Sync Request Received ===');
+    
     if (!req.file) {
+      console.log('No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    console.log('File received:', {
+      size: req.file.size,
+      mimeType: req.file.mimetype
+    });
+
     if (!Buffer.isBuffer(req.file.buffer)) {
+      console.error('Invalid file format - buffer missing');
       throw new Error('Invalid file format');
     }
     
     const fileContent = req.file.buffer.toString('utf-8');
     if (typeof fileContent !== 'string') {
+      console.error('Failed to convert file content to string');
       throw new Error('Failed to convert file content to string');
     }
 
     // Validate file content
     if (!fileContent.includes('==========')) {
+      console.error('Invalid My Clippings file format');
       throw new Error('Invalid My Clippings file format');
     }
 
     const userId = req.user?.id || 'default-user-id';
+    console.log('Processing for user:', userId);
     
     // Start by creating a job ID
     const jobId = `sync:${userId}:${Date.now()}`;
+    console.log('Created job ID:', jobId);
     
     // Set initial status in Redis
     await setJobStatus(jobId, {
@@ -302,13 +315,11 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       message: 'Uploading highlights for processing',
       total: 0
     });
+    console.log('Job status set in Redis');
 
     console.log('\n=== Upload Processing Start ===');
-    console.log('File received:', {
-      size: req.file.size,
-      mimeType: req.file.mimetype,
-      contentLength: fileContent.length
-    });
+    console.log('File content length:', fileContent.length);
+    console.log('Preview:', fileContent.slice(0, 200));
     
     // Return immediate response with job ID
     res.json({
@@ -327,6 +338,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN
       });
       
+      console.log('Calling triggerProcessing...');
       await triggerProcessing(fileContent, userId);
       console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
     } catch (error: any) {
