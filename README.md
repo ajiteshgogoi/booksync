@@ -17,22 +17,23 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
     - OAuth tokens: 2 hours
   - Automatic cache invalidation for updated books
   - Metrics collection for cache operations
-- **Efficient Syncing**
-  - Regular background processing via GitHub Actions:
-    - Runs every 30 minutes
-    - 5 hour maximum runtime
-    - 1 hour job timeout
+- **Efficient and Protected Syncing**
+  - Fair usage background processing:
+    - Runs every 30 minutes via GitHub Actions
+    - Limited to 2 uploads per user per run
     - Processes up to 1000 highlights per run
-    - Uses batches of 25 highlights for optimal performance
-  - Resilient processing with automatic retries and error recovery
-  - Real-time progress tracking with job status persistence
-  - Intelligent batch processing with rate limiting
-  - Notion API rate limiting (10 requests per minute)
-  - OAuth token management with automatic refresh
-  - Sync metrics collection:
-    - Cache hit rate
-    - Error rate
-    - Operation count
+    - Uses batches of 25 for optimal performance
+    - Newer uploads take priority over older ones
+  - Smart resource management:
+    - Instant duplicate detection saves processing time
+    - Only processes new or modified highlights
+    - Automatic continuation for large files
+    - 5 hour maximum runtime per workflow
+  - Protected against abuse:
+    - Rate limiting (10 Notion API requests/minute)
+    - Shared 2000 minutes/month fairly distributed
+    - Upload validation and format checking
+    - Per-user upload limits prevent resource monopoly
 - **Notion Integration**
   - OAuth integration with automatic refresh and invalidation
   - Automatic database detection
@@ -189,30 +190,21 @@ The interface provides:
    - Upload the file through the BookSync interface
    - The app will parse and queue your highlights for processing
    - Processing happens via GitHub Actions workflow (runs every 30 minutes)
-   - Efficient batch processing with no timeout limits:
-     - Can handle thousands of highlights
-     - Processes up to 1000 highlights per run
-     - Uses batches of 25 highlights for optimal performance
-     - Progress is saved and can be checked anytime
-     - Automatic continuation from last processed position
-   - Fair multi-user handling:
-     - Multiple users can upload files simultaneously
-     - Each upload is immediately accepted and queued with a unique job ID
-     - Queue preserves upload order for fair processing
-   - Smart background processing:
-     - GitHub Actions workflow runs every 30 minutes to process the queue
-     - Only one workflow runs at a time (newer runs cancel older ones)
-     - Each workflow can process up to 1000 highlights
-     - If your upload isn't processed in one run, it continues in the next
-   - Abuse prevention:
-     - Limit of 50 jobs per user per workflow run
+   - Fair usage limits:
+     - Maximum 2 uploads per user every 30 minutes
+     - Process 1000 highlights per run in batches of 25
+     - 24-hour job storage ensures large file completion
+     - Progress saved after each batch
+   - Smart processing:
+     - Continues from last position after interruptions
+     - Instant duplicate detection via content hash
+     - Safe to close browser - progress persists
+     - Large files (5000+ highlights) process across runs
+   - Protected multi-user system:
      - Notion API rate limiting (10 requests/minute)
-     - Users re-uploading already synced highlights only waste their own job quota
-     - System automatically skips users who exceed their job limit
-   - Efficient resource usage:
-     - 2000 GitHub Actions minutes/month shared across all users
-     - Each workflow can use up to 300 minutes (5 hours)
-     - Per-user limits prevent any single user from consuming all resources
+     - 2000 monthly GitHub minutes shared fairly
+     - New workflow runs cancel old ones but jobs continue
+     - Re-uploading same content only affects your quota
 
 3. **Organizing in Notion**
    - Highlights are organized by book
