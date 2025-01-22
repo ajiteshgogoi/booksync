@@ -7,14 +7,15 @@ export async function triggerProcessing(
   console.log('\n=== GitHub Processing Trigger Start ===');
   
   try {
-    // Get GitHub token
-    const githubToken = process.env.GITHUB_ACCESS_TOKEN;
+    // Get GitHub token - check both local and Vercel env vars
+    const githubToken = process.env.GITHUB_ACCESS_TOKEN || process.env.VERCEL_GITHUB_TOKEN;
     console.log('Token validation:', {
       present: !!githubToken,
       length: githubToken?.length,
-      format: githubToken?.startsWith('ghp_') ? 'Fine-grained token' : 
-             githubToken?.length === 40 ? 'Classic token' : 
-             'Unknown format'
+      format: githubToken?.startsWith('ghp_') ? 'Fine-grained token' :
+             githubToken?.length === 40 ? 'Classic token' :
+             'Unknown format',
+      source: process.env.GITHUB_ACCESS_TOKEN ? 'local' : 'vercel'
     });
 
     if (!githubToken) {
