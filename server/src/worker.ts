@@ -2,9 +2,9 @@ import { getRedis, getNextJob, setJobStatus, getJobStatus, JobStatus } from './s
 import { processSyncJob } from './services/syncService';
 
 // Configuration for worker behavior
-const MAX_JOBS_PER_RUN = 3; // Maximum number of jobs to process in one cron run
-const MAX_RUNTIME = 45000; // 45 seconds max runtime to avoid timeout
-const JOB_TIMEOUT = 30000; // 30 seconds max per job
+const MAX_JOBS_PER_RUN = 100; // Process more jobs since we run once per day
+const MAX_RUNTIME = 300000; // 5 minutes max runtime for Vercel
+const JOB_TIMEOUT = 60000; // 60 seconds max per job
 
 export async function startWorker() {
   console.log('Starting sync worker...');

@@ -12,10 +12,10 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Enhanced hash generation using book title, author and content
   - Redis cache with 24-hour TTL for efficient duplicate checking
 - **Efficient Syncing**
-  - Background processing via Vercel Cron Jobs
-  - Resilient processing with automatic retries
-  - Real-time progress tracking
-  - Automatic rate limiting
+  - Daily background processing via Vercel Cron Jobs (runs at midnight UTC)
+  - Resilient processing with automatic retries and error recovery
+  - Real-time progress tracking with job status persistence
+  - Intelligent batch processing with rate limiting
 - **Notion Integration**
   - OAuth integration with automatic refresh
   - Automatic database detection
@@ -126,8 +126,10 @@ The interface provides:
    - Find "My Clippings.txt" in your Kindle's documents folder
    - Upload the file through the BookSync interface
    - The app will parse and queue your highlights for processing
-   - Processing happens via Vercel Cron Jobs every 2 minutes
-   - Return anytime to check progress
+   - Processing happens via daily Vercel Cron Job (at midnight UTC)
+   - Larger batches are processed in each run to handle daily schedule
+   - Progress is saved and can be checked anytime
+   - For immediate processing, consider upgrading to Vercel Pro
 
 3. **Organizing in Notion**
    - Highlights are organized by book
