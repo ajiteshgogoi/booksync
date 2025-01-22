@@ -521,7 +521,7 @@ function App() {
 {(syncStatus === 'syncing' || syncStatus === 'queued' || syncStatus === 'parsing') && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                         <div className="text-[#1a120b] font-semibold text-lg pulse-horizontal">
+                         <div className="text-gray-900 font-semibold text-lg pulse-horizontal">
                            {syncStatus === 'queued' ?
                              '⏳ Preparing to sync...' :
                              '⏳ Sync is running in the background'
