@@ -554,7 +554,7 @@ function App() {
                     });
                     window.location.href = '/';
                   }}
-                  className={`mt-4 mx-auto block bg-[#dc2626] hover:bg-[#b91c1c] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif shadow-md hover:shadow-lg ${
+                  className={`mt-4 mx-auto block bg-[#991b1b] hover:bg-[#7f1d1d] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif shadow-md hover:shadow-lg ${
                     ['parsing', 'syncing', 'queued'].includes(syncStatus)
                       ? 'opacity-50 cursor-not-allowed'
                       : ''
