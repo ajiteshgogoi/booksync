@@ -48,14 +48,28 @@ jobs:
 
           echo "Starting worker process..."
           node --experimental-vm-modules -e "
-          import('./build/src/worker.js').then(({startWorker}) => {
-            process.env.MAX_RUNTIME = '18000000';  // 5 hours
-            process.env.JOB_TIMEOUT = '3600000';   // 1 hour
-            process.env.BATCH_SIZE = '10';         // Larger batches
-            process.env.MAX_HIGHLIGHTS_PER_RUN = '100';  // Process more per run
-            
-            startWorker().catch(err => {
-              console.error('Worker failed:', err);
+          (async () => {
+            try {
+              console.log('Importing worker module...');
+              const { startWorker } = await import('./build/src/worker.js');
+              console.log('Worker module imported successfully');
+              
+              process.env.MAX_RUNTIME = '18000000';  // 5 hours
+              process.env.JOB_TIMEOUT = '3600000';   // 1 hour
+              process.env.BATCH_SIZE = '10';         // Larger batches
+              process.env.MAX_HIGHLIGHTS_PER_RUN = '100';  // Process more per run
+              
+              console.log('Starting worker with environment:', {
+                MAX_RUNTIME: process.env.MAX_RUNTIME,
+                JOB_TIMEOUT: process.env.JOB_TIMEOUT,
+                BATCH_SIZE: process.env.BATCH_SIZE,
+                MAX_HIGHLIGHTS_PER_RUN: process.env.MAX_HIGHLIGHTS_PER_RUN
+              });
+              
+              await startWorker();
+              console.log('Worker completed successfully');
+            } catch (error) {
+              console.error('Failed to run worker:', error);
               process.exit(1);
-            });
-          });"
+            }
+          })();"

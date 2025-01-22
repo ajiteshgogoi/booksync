@@ -23,7 +23,7 @@ const JOB_TIMEOUT = isGitHubAction ? 3600000 :    // 1 hour per job in GitHub Ac
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
 
-export async function startWorker() {
+export const startWorker = async () => {
   console.log('Starting sync worker...');
   console.log('Environment:', {
     isGitHubAction,
