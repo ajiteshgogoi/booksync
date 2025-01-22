@@ -1,4 +1,5 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
+import type { Redis as RedisType } from 'ioredis';
 
 // Simple console logger implementation
 const logger = {
@@ -9,9 +10,9 @@ const logger = {
 };
 
 // Initialize Redis client
-let _redis: Redis | null = null;
+let _redis: RedisType | null = null;
 
-async function initializeRedis(): Promise<Redis> {
+async function initializeRedis(): Promise<RedisType> {
   try {
     if (!process.env.REDIS_URL) {
       throw new Error('Missing Redis configuration in environment variables');
@@ -36,7 +37,7 @@ async function initializeRedis(): Promise<Redis> {
   }
 }
 
-export async function getRedis(): Promise<Redis> {
+export async function getRedis(): Promise<RedisType> {
   if (!_redis) {
     _redis = await initializeRedis();
   }

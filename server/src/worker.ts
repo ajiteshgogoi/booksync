@@ -1,5 +1,5 @@
-import { getRedis, getNextJob, setJobStatus, getJobStatus, addJobToQueue, JobStatus } from './services/redisService';
-import { processSyncJob } from './services/syncService';
+import { getRedis, getNextJob, setJobStatus, getJobStatus, addJobToQueue, JobStatus } from './services/redisService.js';
+import { processSyncJob } from './services/syncService.js';
 
 // Configuration for worker behavior
 const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';

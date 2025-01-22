@@ -4,7 +4,7 @@ import type { Express } from 'express-serve-static-core';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
-import { startWorker } from './worker';
+import { startWorker } from './worker.js';
 
 interface User {
   id: string;
@@ -29,9 +29,9 @@ declare global {
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 type SyncHandler = (req: Request, res: Response) => void;
-import { processSyncJob, queueSyncJob, getSyncStatus } from './services/syncService';
-import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient';
-import { parseClippings } from './utils/parseClippings';
+import { processSyncJob, queueSyncJob, getSyncStatus } from './services/syncService.js';
+import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient.js';
+import { parseClippings } from './utils/parseClippings.js';
 import axios from 'axios';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';

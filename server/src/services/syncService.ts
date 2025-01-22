@@ -1,5 +1,5 @@
-import { parseClippings } from '../utils/parseClippings';
-import { updateNotionDatabase } from './notionClient';
+import { parseClippings } from '../utils/parseClippings.js';
+import { updateNotionDatabase } from './notionClient.js';
 import {
   getRedis,
   checkRateLimit,
@@ -8,7 +8,7 @@ import {
   JOB_TTL,
   setJobStatus,
   JobStatus
-} from './redisService';
+} from './redisService.js';
 
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';

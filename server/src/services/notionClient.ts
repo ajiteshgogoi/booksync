@@ -1,5 +1,22 @@
 import { Client, isFullPage, isFullDatabase } from '@notionhq/client';
-import type { GetPageResponse, PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
+
+// Define necessary types locally
+type PageObjectResponse = {
+  id: string;
+  object: 'page';
+  properties: {
+    [key: string]: {
+      type: string;
+      id?: string;
+      title?: Array<{ text: { content: string } }>;
+      rich_text?: Array<{ text: { content: string } }>;
+      number?: number;
+      [key: string]: any;
+    };
+  };
+};
+
+type GetPageResponse = PageObjectResponse;
 import axios from 'axios';
 import {
   getRedis,
@@ -7,7 +24,7 @@ import {
   getOAuthToken as getRedisOAuthToken,
   refreshOAuthToken as refreshRedisOAuthToken,
   deleteOAuthToken as deleteRedisOAuthToken
-} from './redisService';
+} from './redisService.js';
 
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
   try {
