@@ -21,59 +21,42 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Try a minimal test dispatch first
-    console.log('\nSending test dispatch...');
-    const testPayload = {
-      event_type: 'process_highlights_test',
+    // Prepare the payload
+    const payload = {
+      event_type: 'process_highlights',
       client_payload: {
-        test: true,
+        fileContent,
+        userId,
         timestamp: new Date().toISOString()
       }
     };
 
-    console.log('Test payload:', testPayload);
+    console.log('\nPreparing GitHub dispatch:', {
+      url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      payloadSize: JSON.stringify(payload).length,
+      contentLength: fileContent.length
+    });
 
+    // Send the dispatch request
     try {
-      const testResponse = await axios.post(
-        'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-        testPayload,
-        {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `token ${githubToken}`, // Changed from Bearer to token
-            'User-Agent': 'BookSync-App',
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      console.log('Test dispatch response:', {
-        status: testResponse.status,
-        statusText: testResponse.statusText,
-        headers: testResponse.headers
-      });
-
-      // If test succeeded, proceed with actual data
-      console.log('\nSending actual dispatch with file content...');
       const response = await axios.post(
         'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-        {
-          event_type: 'process_highlights',
-          client_payload: {
-            fileContent,
-            userId,
-            timestamp: new Date().toISOString()
-          }
-        },
+        payload,
         {
           headers: {
             'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `token ${githubToken}`, // Changed from Bearer to token
+            'Authorization': `token ${githubToken}`,
             'User-Agent': 'BookSync-App',
             'Content-Type': 'application/json'
           }
         }
       );
+
+      console.log('\nGitHub API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      });
 
       if (response.status === 204) {
         console.log('\n✅ Successfully triggered GitHub workflow');
