@@ -453,12 +453,12 @@ function App() {
             <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
             <p className="mt-2 text-gray-600">First, copy the <a href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a" target="_blank" rel="noopener noreferrer" className="text-[#8b7355] underline hover:underline">Kindle Highlights Template</a> to your Notion workspace.</p>
             <p className="text-gray-600">Then connect to Notion and allow access.</p>
-              <span
-                onClick={() => setShowClippingsModal(true)}
-                className="text-[#8b7355] underline cursor-pointer"
+              <button
+                onClick={() => window.location.href = `${apiBase}/auth/notion`}
+                className="mt-4 bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
               >
-                My Clippings.txt
-              </span>
+                Connect to Notion
+              </button>
           </div>
         ) : (
           <>
@@ -546,10 +546,17 @@ function App() {
 
               {syncStatus !== 'syncing' && syncStatus !== 'success' && (
                 <button
-                  onClick={() => setShowClippingsModal(true)}
-                  className="text-[#8b7355] underline cursor-pointer"
+                  onClick={async () => {
+                    localStorage.removeItem('isAuthenticated');
+                    await fetch(`${apiBase}/auth/disconnect`, {
+                      method: 'POST',
+                      credentials: 'include'
+                    });
+                    window.location.href = '/';
+                  }}
+                  className="mt-4 mx-auto block bg-[#dc2626] hover:bg-[#b91c1c] text-white font-medium px-6 py-2 rounded-md transition-all duration-200 hover:shadow-md font-serif"
                 >
-                  My Clippings.txt
+                  Disconnect Notion
                 </button>
               )}
             </div>
