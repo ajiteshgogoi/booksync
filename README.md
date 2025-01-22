@@ -214,8 +214,11 @@ The application uses a hybrid deployment approach for optimal performance:
    - Add the following secrets:
      ```
      REDIS_URL=your_redis_connection_url
-     NOTION_API_KEY=your_notion_api_key
+     NOTION_OAUTH_CLIENT_ID=your_client_id
+     NOTION_OAUTH_CLIENT_SECRET=your_client_secret
+     NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
      ```
+   Note: Use the same Notion OAuth credentials as your Vercel deployment
 
 4. Update client environment:
    - Create `.env.production` in client directory

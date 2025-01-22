@@ -12,7 +12,9 @@ jobs:
 
     env:
       REDIS_URL: ${{ secrets.REDIS_URL }}
-      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+      NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
       NODE_ENV: production
 
     steps:
