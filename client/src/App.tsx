@@ -455,7 +455,7 @@ function App() {
             <p className="text-gray-600">Then connect to Notion and allow access.</p>
               <span
                 onClick={() => setShowClippingsModal(true)}
-                className="text-[#8b7355] underline cursor-pointer hover:text-[#6b5a46]"
+                className="text-[#8b7355] underline cursor-pointer"
               >
                 My Clippings.txt
               </span>
@@ -466,12 +466,13 @@ function App() {
               <h2 className="text-2xl font-bold text-[#3d2b1f] font-serif text-center">Sync Your Highlights</h2>
               <p className="mt-2 text-[#5a463a] font-serif text-center">
                 Connect your Kindle and upload{' '}
-                <button 
-                  onClick={() => setShowClippingsModal(true)}
-                  className="text-[#8b7355] underline hover:underline"
+                <a
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setShowClippingsModal(true); }}
+                  className="text-[#8b7355] hover:text-[#8b7355] underline"
                 >
                   My Clippings.txt
-                </button>{' '}
+                </a>{' '}
                 to get started.
               </p>
 
@@ -546,7 +547,7 @@ function App() {
               {syncStatus !== 'syncing' && syncStatus !== 'success' && (
                 <button
                   onClick={() => setShowClippingsModal(true)}
-                  className="text-[#8b7355] underline cursor-pointer hover:text-[#6b5a46]"
+                  className="text-[#8b7355] underline cursor-pointer"
                 >
                   My Clippings.txt
                 </button>
@@ -568,8 +569,8 @@ function App() {
       </main>
 
       {showClippingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-2 max-w-[240px] w-full border border-[#e0d6c2]">
+        <div role="dialog" className="fixed inset-0 bg-black bg-opacity-50 z-50 grid place-items-center">
+          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-4 max-w-sm w-full mx-4 border border-[#e0d6c2] relative">
             <h2 className="text-lg font-bold text-[#3d2b1f] font-serif mb-1">
               About My Clippings.txt
             </h2>
