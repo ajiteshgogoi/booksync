@@ -263,7 +263,7 @@ function App() {
             setSyncStatus('syncing');
             localStorage.setItem('syncStatus', 'syncing');
             
-            // Then restore the file state
+            // Restore the file state if available
             if (fileData && fileName) {
               try {
                 const base64Data = fileData.split(',')[1];
@@ -274,22 +274,20 @@ function App() {
                 }
                 const restoredFile = new File([bytes], fileName);
                 setFile(restoredFile);
-                return;
               } catch (error) {
                 console.error('Failed to restore file:', error);
                 if (fileName) {
                   setFile(new File([], fileName));
-                  return;
                 }
               }
+            } else {
+              // If no file data, clear sync state
+              localStorage.removeItem('syncJobId');
+              localStorage.removeItem('syncFileData');
+              localStorage.removeItem('syncFileName');
+              localStorage.removeItem('syncStatus');
+              setSyncStatus('idle');
             }
-            // If no file data, clear sync state
-            localStorage.removeItem('syncJobId');
-            localStorage.removeItem('syncFileData');
-            localStorage.removeItem('syncFileName');
-            localStorage.removeItem('syncStatus');
-            setSyncStatus('idle');
-            return;
           }
           
           // If we get here, sync is not active - clear stale state
