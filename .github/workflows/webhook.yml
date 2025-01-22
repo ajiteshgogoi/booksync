@@ -57,7 +57,7 @@ jobs:
 
       - name: Process File
         env:
-          FILE_CONTENT: ${{ toJSON(github.event.client_payload.fileContent) }}
+          FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
           USER_ID: ${{ github.event.client_payload.userId }}
         run: |
           cd server
