@@ -4,66 +4,96 @@ export async function triggerProcessing(
   fileContent: string,
   userId: string
 ): Promise<void> {
+  console.log('\n=== GitHub Processing Trigger Start ===');
+  
   try {
-    console.log('Starting GitHub processing trigger...');
-    
-    // Get GitHub token from environment
+    // Get and validate GitHub token
     const githubToken = process.env.GITHUB_ACCESS_TOKEN;
+    console.log('Token validation:', {
+      present: !!githubToken,
+      length: githubToken?.length,
+      format: githubToken?.startsWith('ghp_') ? 'Fine-grained token' : 
+             githubToken?.length === 40 ? 'Classic token' : 
+             'Unknown format'
+    });
+
     if (!githubToken) {
-      console.error('GitHub access token not found in environment variables');
       throw new Error('GitHub access token not configured');
     }
-    console.log('GitHub token found');
 
-    // Log the request we're about to make
-    console.log('Preparing GitHub API request:', {
-      url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-      eventType: 'process_highlights',
-      payloadSize: fileContent.length,
-      userId
-    });
-
-    // Create repository dispatch event
-    const response = await axios.post(
-      'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-      {
-        event_type: 'process_highlights',
-        client_payload: {
-          fileContent,
-          userId
+    // Test API connection first
+    try {
+      console.log('\nTesting GitHub API connection...');
+      const testResponse = await axios.get(
+        'https://api.github.com/repos/ajiteshgogoi/booksync',
+        {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `Bearer ${githubToken}`,
+            'User-Agent': 'BookSync-App'
+          }
         }
-      },
-      {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${githubToken}`,
-          'User-Agent': 'BookSync-App'  // Required by GitHub API
-        }
-      }
-    ).catch(error => {
-      // Log detailed error information
-      console.error('GitHub API Error:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        error: error.message
+      );
+      console.log('Repository access test successful:', {
+        status: testResponse.status,
+        repoName: testResponse.data?.full_name
       });
-      throw error;
-    });
-
-    console.log('GitHub API Response:', {
-      status: response.status,
-      statusText: response.status === 204 ? 'No Content (Success)' : response.statusText
-    });
-
-    if (response.status !== 204) {
-      console.error('Unexpected response status:', response.status);
-      throw new Error(`Failed to trigger processing: ${response.status}`);
+    } catch (testError: any) {
+      console.error('Repository access test failed:', {
+        status: testError.response?.status,
+        message: testError.response?.data?.message || testError.message
+      });
+      throw new Error(`GitHub API access test failed: ${testError.response?.data?.message || testError.message}`);
     }
 
-    console.log('Successfully triggered GitHub processing');
+    // Prepare dispatch request
+    const payload = {
+      event_type: 'process_highlights',
+      client_payload: {
+        fileContent,
+        userId
+      }
+    };
+
+    console.log('\nSending dispatch request:', {
+      url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      eventType: payload.event_type,
+      contentLength: fileContent.length
+    });
+
+    // Send the actual request
+    try {
+      const response = await axios.post(
+        'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+        payload,
+        {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `Bearer ${githubToken}`,
+            'User-Agent': 'BookSync-App',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.status === 204) {
+        console.log('\n✅ Successfully triggered GitHub workflow');
+      } else {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+    } catch (dispatchError: any) {
+      console.error('\nDispatch request failed:', {
+        status: dispatchError.response?.status,
+        message: dispatchError.response?.data?.message || dispatchError.message,
+        documentation: dispatchError.response?.data?.documentation_url
+      });
+      throw dispatchError;
+    }
+
   } catch (error) {
-    console.error('Error in triggerProcessing:', error);
+    console.error('\n❌ Error in triggerProcessing:', error);
     throw error;
+  } finally {
+    console.log('\n=== GitHub Processing Trigger End ===\n');
   }
 }

@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import type { Express } from 'express-serve-static-core';
 import cors from 'cors';
+import axios from 'axios';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { startWorker } from './worker.js';
@@ -34,7 +35,6 @@ import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { setOAuthToken, getOAuthToken, refreshOAuthToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
-import axios from 'axios';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
@@ -64,6 +64,48 @@ function generateState() {
 // Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// Test GitHub connection
+app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
+  try {
+    const token = process.env.GITHUB_ACCESS_TOKEN;
+    if (!token) {
+      return res.status(500).json({ error: 'GitHub token not configured' });
+    }
+
+    // Test repository access
+    const response = await axios.get(
+      'https://api.github.com/repos/ajiteshgogoi/booksync',
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    res.json({
+      success: true,
+      repoAccess: true,
+      repoName: response.data.full_name,
+      tokenInfo: {
+        present: true,
+        length: token.length,
+        format: token.startsWith('ghp_') ? 'Fine-grained token' :
+                token.length === 40 ? 'Classic token' :
+                'Unknown format'
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+  }
 });
 
 // Parse endpoint to get highlight count
@@ -236,6 +278,13 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       total: 0
     });
 
+    console.log('\n=== Upload Processing Start ===');
+    console.log('File received:', {
+      size: req.file.size,
+      mimeType: req.file.mimetype,
+      contentLength: fileContent.length
+    });
+    
     // Return immediate response with job ID
     res.json({
       success: true,
@@ -246,14 +295,21 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     // Trigger GitHub workflow in background
     try {
-      console.log('Attempting to trigger GitHub processing...');
-      console.log('File content length:', fileContent.length);
-      console.log('User ID:', userId);
+      console.log('\nTrigger Details:', {
+        fileContentLength: fileContent.length,
+        userId,
+        jobId,
+        githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN
+      });
       
       await triggerProcessing(fileContent, userId);
-      console.log('Successfully triggered GitHub processing for job:', jobId);
-    } catch (error) {
-      console.error('Failed to trigger processing:', error);
+      console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
+    } catch (error: any) {
+      console.error('\n❌ Failed to trigger processing:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       await setJobStatus(jobId, {
         state: 'failed',
         message: 'Failed to start processing. Please try again.',
