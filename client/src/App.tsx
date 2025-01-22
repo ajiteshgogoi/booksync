@@ -582,21 +582,21 @@ function App() {
 
       {showClippingsModal && (
         <div role="dialog" className="fixed inset-0 bg-black bg-opacity-50 z-50 grid place-items-center">
-          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-4 max-w-sm w-full mx-4 border border-[#e0d6c2] relative">
-            <h2 className="text-lg font-bold text-[#3d2b1f] font-serif mb-1">
+          <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 max-w-md w-full mx-4 border border-[#e0d6c2] relative">
+            <h2 className="text-xl font-bold text-[#3d2b1f] font-serif mb-2">
               About My Clippings.txt
             </h2>
-            <p className="text-xs text-[#5a463a] font-serif mb-2">
+            <p className="text-sm text-[#5a463a] font-serif mb-3">
               Automatically created by Kindle when you highlight text or add notes.
             </p>
-            <ol className="list-decimal list-inside text-xs text-[#5a463a] font-serif space-y-0.5 mb-2">
-              <li>Connect Kindle via USB.</li>
-              <li>Open Kindle drive.</li>
-              <li>Find 'My Clippings.txt' in the root directory.</li>
+            <ol className="list-decimal list-inside text-sm text-[#5a463a] font-serif space-y-1 mb-3">
+              <li>Connect Kindle via USB</li>
+              <li>Open Kindle drive</li>
+              <li>Find file in root directory</li>
             </ol>
             <button
               onClick={() => setShowClippingsModal(false)}
-              className="w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white text-xs px-3 py-1 rounded-md transition-colors font-serif"
+              className="w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white text-sm px-4 py-2 rounded-md transition-colors font-serif"
             >
               Close
             </button>
