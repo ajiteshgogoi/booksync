@@ -1,6 +1,57 @@
-import { splitText } from './textUtils';
-import { HighlightDeduplicator } from './deduplicationUtils';
-import { Highlight } from '../types';
+export interface Highlight {
+  bookTitle: string;
+  author: string;
+  highlight: string[];
+  location: string;
+  date: Date;
+}
+
+// Split text into chunks of maxLength, ensuring chunks end at sentence boundaries
+function splitText(text: string, maxLength = 2000): string[] {
+  const chunks: string[] = [];
+  let currentChunk = '';
+  
+  // Split text into sentences using common punctuation
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  
+  for (const sentence of sentences) {
+    // If adding this sentence would exceed maxLength, finalize current chunk
+    if (currentChunk.length + sentence.length + 1 > maxLength) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      
+      // If a single sentence is too long, split it at spaces
+      if (sentence.length > maxLength) {
+        let words = sentence.split(' ');
+        let currentLine = '';
+        
+        for (const word of words) {
+          if (currentLine.length + word.length + 1 > maxLength) {
+            chunks.push(currentLine.trim());
+            currentLine = '';
+          }
+          currentLine += (currentLine ? ' ' : '') + word;
+        }
+        
+        if (currentLine) {
+          chunks.push(currentLine.trim());
+        }
+      } else {
+        currentChunk = sentence;
+      }
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentence;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks;
+}
 
 export function parseClippings(fileContent: string): Highlight[] {
   console.log('Starting to parse clippings file');
@@ -78,22 +129,17 @@ export function parseClippings(fileContent: string): Highlight[] {
     }
   }
 
-  // Process each group with fuzzy deduplication
   for (const group of highlightGroups.values()) {
-    // Sort by date, newest first
     group.sort((a, b) => b.date.getTime() - a.date.getTime());
     
-    const deduplicator = new HighlightDeduplicator();
+    const uniqueHighlights = new Set<string>();
     
     for (const highlight of group) {
-      if (!deduplicator.isDuplicate(highlight)) {
-        deduplicator.add(highlight);
+      const isDuplicate = uniqueHighlights.has(`${highlight.highlight.join(' ')}|${highlight.location}`);
+      
+      if (!isDuplicate) {
+        uniqueHighlights.add(`${highlight.highlight.join(' ')}|${highlight.location}`);
         highlights.push(highlight);
-      } else {
-        console.debug('Skipping duplicate highlight:', {
-          content: highlight.highlight.join(' '),
-          location: highlight.location
-        });
       }
     }
   }

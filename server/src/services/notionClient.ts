@@ -1,9 +1,5 @@
 import { Client } from '@notionhq/client';
-import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import axios from 'axios';
-import { areSimilarTexts } from '../utils/fuzzyMatching';
-import { normalizeText } from '../utils/textUtils';
-import { splitText } from '../utils/textUtils';
 import {
   getRedis,
   storeOAuthToken,
@@ -42,7 +38,22 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
   }
 }
 
-import { Highlight, NotionBookPage } from '../types';
+export interface Highlight {
+  bookTitle: string;
+  author: string;
+  highlight: string[];
+  location: string;
+  date: Date;
+}
+
+export interface NotionBookPage {
+  title: string;
+  author: string;
+  highlights: Highlight[];
+  lastHighlighted: Date;
+  lastSynced: Date;
+  pageId?: string;
+}
 
 // Initialize Notion client
 let notion: Client;
@@ -299,8 +310,7 @@ export async function updateNotionDatabase(
       // Create a new highlight object with the proper Date
       const processedHighlight = {
         ...highlight,
-        date: highlightDate,
-        location: highlight.location || '0'
+        date: highlightDate
       };
       acc[highlight.bookTitle].highlights.push(processedHighlight);
       
@@ -318,19 +328,9 @@ export async function updateNotionDatabase(
     }
 
     // First process all highlights for each book without updating sync dates
-    if (!databaseId || typeof databaseId !== 'string') {
-      throw new Error('Invalid database ID');
-    }
-
-    if (!databaseId || typeof databaseId !== 'string') {
-      throw new Error('Invalid database ID');
-    }
-    if (!databaseId || typeof databaseId !== 'string') {
-      throw new Error('Invalid database ID');
-    }
     const processedBooks = await Promise.all(
       Object.values(books).map(async (book) => {
-        await processBookHighlights(databaseId, book, onProgress);
+        await processBookHighlights(databaseId as string, book, onProgress);
         return book;
       })
     );
@@ -364,17 +364,17 @@ export async function updateNotionDatabase(
 }
 
 async function processBookHighlights(
-  databaseId: string | null,
+  databaseId: string,
   book: NotionBookPage,
   onProgress?: () => void
 ) {
-  if (!databaseId) {
-    throw new Error('Database ID is required');
-  }
-
+  if (!databaseId) throw new Error('Database ID not found');
+  
   try {
-    // Check if page already exists
+    // Check if page already exists and get last sync date
     let existingPageId: string | undefined;
+    let initialLastSyncDate = new Date(0);
+    
     const { results } = await notion.databases.query({
       database_id: databaseId,
       filter: {
@@ -387,104 +387,22 @@ async function processBookHighlights(
 
     if (results.length > 0) {
       existingPageId = results[0].id;
-    }
-// Get existing highlights from Notion
-const existingHighlights = new Map<string, { id: string; content: string; location: string }>();
-if (!existingPageId) {
-  return existingHighlights; // Return empty map if no page exists
-}
-
-try {
-  if (!existingPageId) {
-    return existingHighlights;
-  }
-
-  const existingBlocks = await notion.blocks.children.list({
-    block_id: existingPageId,
-    page_size: 100
-  });
-
-  existingBlocks.results.forEach(block => {
-    if (block.object === 'block' && 'type' in block && block.type === 'paragraph') {
-      const paragraphBlock = block as BlockObjectResponse & { type: 'paragraph' };
-      if (paragraphBlock.paragraph?.rich_text?.[0]?.plain_text) {
-        const text = paragraphBlock.paragraph.rich_text[0].plain_text;
-        const idMatch = text.match(/\[ID:([a-f0-9-]+)\]/);
-        if (idMatch) {
-          existingHighlights.set(idMatch[1], {
-            id: idMatch[1],
-            content: text,
-            location: text.match(/📍 Location: (\d+(?:-\d+)?)/)?.[1] || ''
-          });
-        }
+      const pageData = await notion.pages.retrieve({ page_id: existingPageId });
+      const lastSyncDateStr = (pageData as any).properties?.['Last Synced']?.date?.start;
+      if (lastSyncDateStr) {
+        initialLastSyncDate = new Date(lastSyncDateStr);
       }
     }
-  });
-} catch (error) {
-  console.error('Error fetching existing blocks:', error);
-}
 
-// Filter highlights that are new based on content similarity and location
-const newHighlights = book.highlights.filter(highlight => {
-  const highlightText = highlight.highlight.join(' ');
-  const normalizedText = normalizeText(highlightText);
-  const locationBase = ((highlight.location ?? '0').split('-')[0]) || '0';
+    // Filter highlights that are newer than the initial last sync date
+    const newHighlights = book.highlights.filter(highlight => {
+      const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
+      return highlightDate > initialLastSyncDate;
+    });
 
-  // Generate unique ID from normalized content hash
-  const contentHash = require('crypto')
-    .createHash('sha1')
-    .update(normalizedText + locationBase)
-    .digest('hex');
-  highlight.id = contentHash;
-
-  // Check for exact ID match first
-  if (existingHighlights.has(highlight.id)) {
-    console.debug('Found exact match by ID:', highlight.id);
-    return false;
-  }
-
-  // If no exact match, check for similar content with nearby locations
-  for (const existingHighlight of existingHighlights.values()) {
-    const existingLocationBase = ((existingHighlight.location ?? '0').split('-')[0]) || '0';
-    const locationDiff = Math.abs(
-      parseInt(existingLocationBase) - parseInt(locationBase)
-    );
-
-    // If locations are close (within 5 positions), check content similarity and overlap
-    if (locationDiff <= 5) {
-      const similarityResult = areSimilarTexts(highlightText, existingHighlight.content);
-      if (similarityResult.similar) {
-        if (similarityResult.isSubset) {
-          // Keep the longer version
-          const isCurrentLonger = highlightText.length > existingHighlight.content.length;
-          console.debug('Found overlapping highlight:', {
-            new: highlightText,
-            existing: existingHighlight.content,
-            locationDiff,
-            keeping: isCurrentLonger ? 'new' : 'existing',
-            reason: 'length'
-          });
-          // If current highlight is longer, keep it (return true)
-          // If existing highlight is longer, skip current (return false)
-          return isCurrentLonger;
-        }
-        
-        console.debug('Found similar highlight:', {
-          new: highlightText,
-          existing: existingHighlight.content,
-          locationDiff
-        });
-        return false;
-      }
-    }
-  }
-
-  return true;
-});
-
-// If no new highlights, skip updating the page
+    // If no new highlights, skip updating the page
     if (newHighlights.length === 0) {
-      console.log(`No new highlights found for "${book.title}"`);
+      console.log(`No new highlights for "${book.title}" since ${initialLastSyncDate.toLocaleString()}`);
       return;
     }
 
@@ -496,7 +414,7 @@ const newHighlights = book.highlights.filter(highlight => {
 
     // Create or update the page (without updating Last Synced)
     let pageId: string;
-    if (existingPageId && typeof existingPageId === 'string') {
+    if (existingPageId) {
       // Store pageId for later sync date update
       book.pageId = existingPageId;
       const coverUrl = await getBookCoverUrl(book.title, book.author);
@@ -568,9 +486,28 @@ const newHighlights = book.highlights.filter(highlight => {
           // Update progress for every highlight processed
           onProgress?.();
 
+          // Helper function to split text at sentence boundaries
+          const splitAtSentences = (text: string, maxLength: number): string[] => {
+            const sentences = text.split(/(?<=[.!?])\s+/);
+            const chunks: string[] = [];
+            let currentChunk = '';
+            
+            for (const sentence of sentences) {
+              if ((currentChunk + sentence).length <= maxLength) {
+                currentChunk += (currentChunk ? ' ' : '') + sentence;
+              } else {
+                if (currentChunk) chunks.push(currentChunk);
+                currentChunk = sentence;
+              }
+            }
+            
+            if (currentChunk) chunks.push(currentChunk);
+            return chunks;
+          };
+
           // Split highlight into chunks of <= 2000 characters at sentence boundaries
           const highlightText = highlight.highlight.join('\n\n');
-          const chunks = splitText(highlightText, 2000);
+          const chunks = splitAtSentences(highlightText, 2000);
           
           // Create blocks for each chunk
           const blocks = chunks.map((chunk, index) => ({
@@ -587,7 +524,7 @@ const newHighlights = book.highlights.filter(highlight => {
                 ...(index === chunks.length - 1 ? [{
                   type: 'text' as const,
                   text: {
-                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${(highlight.date instanceof Date ? highlight.date : new Date(highlight.date)).toLocaleString()} [ID:${highlight.id}]`
+                    content: `\n📍 Location: ${highlight.location} | 📅 Added: ${(highlight.date instanceof Date ? highlight.date : new Date(highlight.date)).toLocaleString()}`
                   },
                   annotations: {
                     color: 'gray' as const
