@@ -327,17 +327,20 @@ export async function updateNotionDatabase(
       throw new Error('Database ID not found');
     }
 
-    // Process all highlights for each book without updating sync dates
-    for (const book of Object.values(books)) {
-      await processBookHighlights(databaseId, book, onProgress);
-    }
+    // First process all highlights for each book without updating sync dates
+    const processedBooks = await Promise.all(
+      Object.values(books).map(async (book) => {
+        await processBookHighlights(databaseId as string, book, onProgress);
+        return book;
+      })
+    );
 
     // After ALL highlights are processed, update sync dates in a single transaction
     const currentTime = new Date();
     try {
       // Update all books in parallel
       await Promise.all(
-        Object.values(books)
+        processedBooks
           .filter(book => !!book.pageId) // Only include books with pageId
           .map(book => 
             notion.pages.update({
