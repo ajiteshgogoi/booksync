@@ -14,11 +14,11 @@ const MAX_JOBS_PER_USER = isGitHubAction ? 2 :    // 2 uploads per user per work
                          
 const MAX_RUNTIME = isGitHubAction ? 21000000 :   // ~6 hours in GitHub Actions
                    isProd ? 50000 :              // Under 1 minute in Vercel
-                   0;                            // No runtime limit locally
+                   Infinity;                      // No runtime limit locally (changed from 0)
                    
 const JOB_TIMEOUT = isGitHubAction ? 3600000 :    // 1 hour per job in GitHub Actions
                    isProd ? 45000 :              // 45s in Vercel
-                   0;                            // No timeout locally
+                   3600000;                      // 1 hour timeout locally
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
@@ -37,10 +37,22 @@ export const startWorker = async () => {
   const startTime = Date.now();
   let jobsProcessed = 0;
 
+  // Test Redis connection first
+  try {
+    const redis = await getRedis();
+    console.log('Redis connection test:', await redis.ping());
+  } catch (error) {
+    console.error('Failed to connect to Redis:', error);
+    return;
+  }
+
   // Process jobs until we hit limits
-  while (jobsProcessed < MAX_JOBS_PER_RUN && (Date.now() - startTime) < MAX_RUNTIME) {
+  while (jobsProcessed < MAX_JOBS_PER_RUN && (MAX_RUNTIME === Infinity || (Date.now() - startTime) < MAX_RUNTIME)) {
     try {
+      console.log('Attempting to get next job...');
       const jobId = await getNextJob();
+      console.log('getNextJob result:', jobId);
+      
       if (!jobId) {
         console.log('No more jobs to process');
         break;
@@ -60,17 +72,30 @@ export const startWorker = async () => {
       processedUsers.add(userId);
       jobsProcessed++;
 
-      // Set up job timeout
-      const jobTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Job timeout')), JOB_TIMEOUT);
-      });
-
       try {
-        // Race between job processing and timeout
-        await Promise.race([
-          processJobWithStatus(jobId),
-          jobTimeout
-        ]);
+        // Check job status before processing
+        const currentStatus = await getJobStatus(jobId);
+        console.log('Current job status:', currentStatus);
+
+        if (currentStatus?.state === 'completed') {
+          console.log(`Job ${jobId} is already completed, skipping`);
+          continue;
+        }
+
+        if (isProd || isGitHubAction) {
+          // Use timeout only in production or GitHub Actions
+          const jobTimeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Job timeout')), JOB_TIMEOUT);
+          });
+
+          await Promise.race([
+            processJobWithStatus(jobId),
+            jobTimeout
+          ]);
+        } else {
+          // In local development, run without timeout
+          await processJobWithStatus(jobId);
+        }
 
         console.log('Job completed successfully:', jobId);
       } catch (error) {
@@ -139,4 +164,3 @@ async function processJobWithStatus(jobId: string): Promise<void> {
   };
   await setJobStatus(jobId, completedStatus);
 }
-
