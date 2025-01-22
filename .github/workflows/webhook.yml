@@ -24,9 +24,11 @@ jobs:
       NODE_ENV: production
 
     steps:
-      - name: Log Event Details
+      - name: Log Full Event Details
         run: |
-          echo "Received repository_dispatch event"
+          echo "=== Full Event Details ==="
+          echo "${{ toJSON(github.event) }}"
+          echo "=========================="
           echo "Event type: ${{ github.event.action }}"
           echo "Has client payload: ${{ github.event.client_payload != null }}"
           echo "Has fileContent: ${{ github.event.client_payload.fileContent != null }}"
