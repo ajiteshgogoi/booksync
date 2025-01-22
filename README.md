@@ -23,7 +23,7 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
     - Limited to 2 uploads per user per run
     - Processes up to 1000 highlights per run
     - Uses batches of 25 for optimal performance
-    - Newer uploads take priority over older ones
+    - Jobs processed in strict FIFO order (oldest first)
   - Smart resource management:
     - Instant duplicate detection saves processing time
     - Only processes new or modified highlights
