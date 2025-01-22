@@ -11,9 +11,9 @@ function App() {
     localStorage.getItem('isAuthenticated') === 'true'
   );
   const [file, setFile] = useState<File | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
-    () => (localStorage.getItem('syncStatus') as SyncStatus) || 'idle'
-  );
+  // Initialize sync state immediately from localStorage
+  const initialSyncStatus = localStorage.getItem('syncStatus') as SyncStatus || 'idle';
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(initialSyncStatus);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [isTimeout, setIsTimeout] = useState(false);
@@ -259,10 +259,11 @@ function App() {
           const status = await statusResponse.json();
           
           if (status.state === 'processing') {
-            // Sync is still active - restore state
+            // Immediately set sync status to show messages
             setSyncStatus('syncing');
             localStorage.setItem('syncStatus', 'syncing');
             
+            // Then restore the file state
             if (fileData && fileName) {
               try {
                 const base64Data = fileData.split(',')[1];
@@ -273,13 +274,21 @@ function App() {
                 }
                 const restoredFile = new File([bytes], fileName);
                 setFile(restoredFile);
+                return;
               } catch (error) {
                 console.error('Failed to restore file:', error);
                 if (fileName) {
                   setFile(new File([], fileName));
+                  return;
                 }
               }
             }
+            // If no file data, clear sync state
+            localStorage.removeItem('syncJobId');
+            localStorage.removeItem('syncFileData');
+            localStorage.removeItem('syncFileName');
+            localStorage.removeItem('syncStatus');
+            setSyncStatus('idle');
             return;
           }
           
@@ -391,7 +400,7 @@ function App() {
                      syncStatus === 'syncing' ? 'Syncing...' : 'Sync Highlights'}
                   </button>
 
-                  {syncStatus === 'syncing' && (
+{(syncStatus === 'syncing' || syncStatus === 'queued') && (
                     <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                       <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
                         <div className="text-[#5a463a] font-semibold text-lg">
