@@ -16,6 +16,7 @@
   "dependencies": {
     "@notionhq/client": "^2.2.3",
     "@types/cookie-parser": "^1.4.8",
+    "@types/string-similarity": "^4.0.2",
     "axios": "^1.7.9",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -28,7 +29,8 @@
     "multer": "^1.4.5-lts.1",
     "passport": "^0.7.0",
     "passport-notion": "^1.0.0",
-    "rate-limiter-flexible": "^2.4.1"
+    "rate-limiter-flexible": "^2.4.1",
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
