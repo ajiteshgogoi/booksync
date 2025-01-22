@@ -40,6 +40,15 @@ jobs:
           echo "Build complete. Checking build directory..."
           ls -la build/src
           
+      - name: Verify build output
+        run: |
+          cd server
+          if [ ! -f "build/src/worker.js" ]; then
+            echo "Error: worker.js not found in build directory!"
+            ls -la build/src
+            exit 1
+          fi
+          
       - name: Run sync process
         run: |
           cd server
