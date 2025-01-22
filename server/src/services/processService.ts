@@ -5,6 +5,8 @@ export async function processFileContent(
   userId: string,
   fileContent: string
 ): Promise<string> {
+  const redis = await getRedis();
+  
   try {
     console.log('Starting file processing for user:', userId);
     const jobId = `sync:${userId}:${Date.now()}`;
@@ -14,7 +16,6 @@ export async function processFileContent(
     console.log('Parsed highlights count:', highlights.length);
     
     // Use Redis pipeline for batch operations
-    const redis = await getRedis();
     const pipeline = redis.pipeline();
     
     // Store all highlights in a single pipeline
@@ -44,9 +45,17 @@ export async function processFileContent(
     await addJobToQueue(jobId);
     
     console.log('File processing completed. Job ID:', jobId);
+    
+    // Close Redis connection
+    redis.quit();
+    
     return jobId;
   } catch (error) {
     console.error('Error processing file:', error);
+    
+    // Close Redis connection on error
+    redis.quit();
+    
     throw error;
   }
 }
