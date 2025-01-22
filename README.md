@@ -7,7 +7,7 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
 - **Smart Deduplication**
   - Parser-level deduplication of overlapping highlights
   - Content + location based duplicate detection
-  - Time-based syncing (only syncs highlights newer than last sync)
+  - Hash-based syncing using SHA-256 of highlight content and metadata
   - Automatic handling of edited highlights
   - Enhanced hash generation using book title, author and content
   - Redis cache with multiple TTLs:
@@ -110,44 +110,62 @@ npm run dev
 
 ## How It Works
 
-### 1. Parser Layer
+### 1. Authentication Layer
+- Uses OAuth 2.0 for secure Notion integration
+- Implements automatic token refresh before expiration
+- Stores OAuth tokens securely in Redis with 2 hour TTL
+- Handles token revocation and re-authentication
+- Maintains separate tokens per workspace
+
+### 2. Parser Layer
 When you upload My Clippings.txt, the parser:
 - Groups highlights by book and location
-- Removes duplicates and overlapping content using enhanced hash generation
+- Generates SHA-256 hashes for each highlight using:
+  - Highlight content
+  - Location information
+  - Book title
+  - Author name
 - Preserves metadata (location, timestamp)
 - Handles multi-line highlights and special characters
 - Uses Redis cache with multiple TTLs:
-  - Highlights: 24 hours
-  - Books: 24 hours
+  - Highlight hashes: 24 hours
+  - Book metadata: 24 hours
   - Page IDs: 24 hours
-  - OAuth tokens: 2 hours
-
-### 2. Queue Layer
-For reliable processing:
-- Each sync is queued with a unique job ID in Redis
-- Progress is tracked across sessions with lastProcessedIndex
-- Processing handled by GitHub Actions workflow:
-  - Runs every 30 minutes
-  - 5 hour maximum runtime
-  - 1 hour job timeout
-  - Processes up to 1000 highlights per run
-  - Uses batches of 25 highlights for optimal performance
-- Automatic retries with exponential backoff
-- Rate limiting for Notion API (10 requests per minute)
-- Support for large highlight files (thousands of entries)
 
 ### 3. Sync Layer
 During synchronization:
-- Checks last sync time for each book in Notion
-- Only processes highlights newer than last sync
-- Updates both 'Last Highlighted' and 'Last Synced' dates
-- Chunks large highlights to meet Notion's limits
-- Maintains OAuth tokens with automatic refresh
+- Processes highlights in batches of 100
+- Implements Notion API rate limiting (10 requests per minute)
+- Automatically fetches book covers from:
+  - OpenLibrary
+  - Google Books
+- Creates or updates Notion pages with:
+  - Title
+  - Author
+  - Highlight count
+  - Last highlighted date
+  - Last synced date
+  - Highlight hash list
+- Updates highlights with:
+  - Full text content
+  - Location information
+  - Timestamp
+  - Formatting
+- Implements automatic retry with exponential backoff
 - Tracks sync metrics:
   - Cache hit rate
   - Error rate
   - Operation count
-- Automatic cache invalidation for updated books
+  - API call statistics
+
+### 4. Database Requirements
+The Notion database must have these properties:
+- Title (title)
+- Author (rich_text)
+- Highlights (number)
+- Last Highlighted (date)
+- Last Synced (date)
+- Highlight Hash (rich_text)
 
 ### 4. UI Layer
 The interface provides:
