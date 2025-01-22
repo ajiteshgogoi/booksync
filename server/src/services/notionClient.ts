@@ -13,13 +13,34 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
       throw new Error('No workspace ID in token data');
     }
 
-    // Store the token data
-    await storeOAuthToken(JSON.stringify(tokenData), workspaceId);
-    
-    // Update the client
-    _client = new Client({
+    // Get database details from the client
+    const client = new Client({
       auth: tokenData.access_token,
     });
+    
+    // Search for databases with the template name
+    const response = await client.search({
+      query: 'Kindle Highlights Template',
+      filter: {
+        property: 'object',
+        value: 'database'
+      }
+    });
+
+    if (!response.results.length) {
+      throw new Error('No Kindle Highlights database found');
+    }
+
+    // Store the token data with database ID
+    const tokenWithDatabase = {
+      ...tokenData,
+      database_id: response.results[0].id
+    };
+    
+    await storeOAuthToken(JSON.stringify(tokenWithDatabase), workspaceId);
+    
+    // Update the client
+    _client = client;
   } catch (error) {
     console.error('Failed to set OAuth token:', error);
     throw error;
@@ -105,19 +126,29 @@ interface Highlight {
   highlight: string;
   location: string;
   date: string;
-  databaseId: string;
   hash?: string;
 }
 
 export async function updateNotionDatabase(highlights: Highlight[]): Promise<void> {
   try {
     const client = await getClient();
+    const tokenData = await getOAuthToken();
+    
+    if (!tokenData) {
+      throw new Error('No OAuth token available');
+    }
+
+    const { database_id } = JSON.parse(tokenData);
+    if (!database_id) {
+      throw new Error('No database ID configured');
+    }
+
     console.log(`Updating Notion database with ${highlights.length} highlights...`);
 
     for (const highlight of highlights) {
       try {
         await client.pages.create({
-          parent: { database_id: highlight.databaseId },
+          parent: { database_id },
           properties: {
             'Book Title': {
               title: [{ text: { content: highlight.bookTitle } }]
