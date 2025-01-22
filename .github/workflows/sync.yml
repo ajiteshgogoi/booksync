@@ -47,4 +47,15 @@ jobs:
           export MAX_HIGHLIGHTS_PER_RUN='100'  # Process more per run
 
           echo "Starting worker process..."
-          npm run worker
+          node --experimental-vm-modules -e "
+          import('./build/src/worker.js').then(({startWorker}) => {
+            process.env.MAX_RUNTIME = '18000000';  // 5 hours
+            process.env.JOB_TIMEOUT = '3600000';   // 1 hour
+            process.env.BATCH_SIZE = '10';         // Larger batches
+            process.env.MAX_HIGHLIGHTS_PER_RUN = '100';  // Process more per run
+            
+            startWorker().catch(err => {
+              console.error('Worker failed:', err);
+              process.exit(1);
+            });
+          });"

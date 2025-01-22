@@ -140,8 +140,3 @@ async function processJobWithStatus(jobId: string): Promise<void> {
   await setJobStatus(jobId, completedStatus);
 }
 
-// Start the worker
-startWorker().catch(err => {
-  console.error('Failed to start worker:', err);
-  process.exit(1);
-});
