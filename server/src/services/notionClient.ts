@@ -52,7 +52,6 @@ export interface NotionBookPage {
   highlights: Highlight[];
   lastHighlighted: Date;
   lastSynced: Date;
-  pageId?: string;
 }
 
 // Initialize Notion client
@@ -332,31 +331,43 @@ export async function updateNotionDatabase(
       await processBookHighlights(databaseId, book, onProgress);
     }
 
-    // After ALL highlights are processed, update sync dates in a single transaction
+    // After ALL highlights are processed, update the sync dates for all books
     const currentTime = new Date();
-    try {
-      // Update all books in parallel
-      await Promise.all(
-        Object.values(books)
-          .filter(book => !!book.pageId) // Only include books with pageId
-          .map(book => 
-            notion.pages.update({
-              page_id: book.pageId!, // Non-null assertion since we filtered
-              properties: {
-                'Last Synced': {
-                  date: { start: currentTime.toISOString() }
-                }
-              }
-            })
-          )
-      );
-    } catch (error) {
-      console.error('Error updating sync dates:', error);
-      throw error;
+    for (const book of Object.values(books)) {
+      await updateBookSyncDate(databaseId, book.title, currentTime);
     }
   } catch (error) {
     console.error('Error updating Notion database:', error);
     throw error;
+  }
+}
+
+async function updateBookSyncDate(
+  databaseId: string,
+  bookTitle: string,
+  syncDate: Date
+) {
+  // Find the book page
+  const { results } = await notion.databases.query({
+    database_id: databaseId,
+    filter: {
+      property: 'Title',
+      title: {
+        equals: bookTitle
+      }
+    }
+  });
+
+  if (results.length > 0) {
+    // Update only the Last Synced date
+    await notion.pages.update({
+      page_id: results[0].id,
+      properties: {
+        'Last Synced': {
+          date: { start: syncDate.toISOString() }
+        }
+      }
+    });
   }
 }
 
@@ -412,8 +423,6 @@ async function processBookHighlights(
     // Create or update the page (without updating Last Synced)
     let pageId: string;
     if (existingPageId) {
-      // Store pageId for later sync date update
-      book.pageId = existingPageId;
       const coverUrl = await getBookCoverUrl(book.title, book.author);
       
       const updatedPage = await notion.pages.update({
@@ -470,8 +479,6 @@ async function processBookHighlights(
           }
         }
       });
-      // Store pageId for later sync date update
-      book.pageId = newPage.id;
       pageId = newPage.id;
     }
 
