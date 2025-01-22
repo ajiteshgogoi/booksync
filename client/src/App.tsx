@@ -584,7 +584,7 @@ function App() {
         <div role="dialog" className="fixed inset-0 bg-black bg-opacity-50 z-50 grid place-items-center">
           <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 max-w-md w-full mx-4 border border-[#e0d6c2] relative">
             <h2 className="text-xl font-bold text-[#3d2b1f] font-serif mb-2">
-              About My Clippings.txt
+              About 'My Clippings.txt'
             </h2>
             <p className="text-sm text-[#5a463a] font-serif mb-3">
               Automatically created by Kindle when you highlight text or add notes.
