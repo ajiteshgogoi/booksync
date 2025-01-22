@@ -323,6 +323,12 @@ The application uses a hybrid deployment approach for optimal performance:
 
 Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
 
+Found a bug or have feedback? Email me at ajiteshgogoi@gmail.com
+
+## Support
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-blue?style=flat-square&logo=ko-fi)](https://ko-fi.com/gogoi)
+
 ## License
 
 [MIT](LICENSE)
