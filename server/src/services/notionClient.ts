@@ -344,12 +344,8 @@ async function updateOrCreateBookPage(
   if (!databaseId) throw new Error('Database ID not found');
   
   try {
-    // Check if page already exists and get last highlight date
+    // Check if page already exists
     let existingPageId: string | undefined;
-    let lastSyncDate = new Date(0);
-
-    // Get the initial lastSyncDate before processing any highlights
-    let initialLastSyncDate = new Date(0);
     const { results } = await notion.databases.query({
       database_id: databaseId,
       filter: {
@@ -362,30 +358,10 @@ async function updateOrCreateBookPage(
 
     if (results.length > 0) {
       existingPageId = results[0].id;
-      const pageData = await notion.pages.retrieve({ page_id: existingPageId });
-      const lastSyncDateStr = (pageData as any).properties?.['Last Synced']?.date?.start;
-      if (lastSyncDateStr) {
-        initialLastSyncDate = new Date(lastSyncDateStr);
-      }
     }
-
-    // Filter highlights that are newer than the initial last sync date
-    const newHighlights = book.highlights.filter(highlight => {
-      const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
-      return highlightDate > initialLastSyncDate;
-    });
-
-    // If no new highlights, skip updating the page
-    if (newHighlights.length === 0) {
-      console.log(`No new highlights for "${book.title}" since ${initialLastSyncDate.toLocaleString()}`);
-      return;
-    }
-
-    // Update book object with filtered highlights
-    book.highlights = newHighlights;
 
     // Update lastHighlighted to be the newest highlight date
-    const newestHighlightDate = newHighlights.reduce((newest, highlight) => {
+    const newestHighlightDate = book.highlights.reduce((newest, highlight) => {
       const highlightDate = highlight.date instanceof Date ? highlight.date : new Date(highlight.date);
       return highlightDate > newest ? highlightDate : newest;
     }, new Date(0));
@@ -532,7 +508,7 @@ async function updateOrCreateBookPage(
         }
       }
 
-      console.log(`Added ${addedCount} new highlights for "${book.title}" since last sync at ${lastSyncDate.toLocaleString()}`);
+      console.log(`Added ${addedCount} highlights for "${book.title}"`);
     } catch (error) {
       console.error('Error processing highlights:', error);
       throw error;
