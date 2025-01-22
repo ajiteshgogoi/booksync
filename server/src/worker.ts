@@ -9,8 +9,8 @@ const isProd = process.env.NODE_ENV === 'production';
 const MAX_JOBS_PER_RUN = isGitHubAction ? 200 :   // Process more jobs in GitHub Actions
                         isProd ? 25 : Infinity;   // Limited in Vercel, unlimited locally
                         
-const MAX_JOBS_PER_USER = isGitHubAction ? 50 :   // More jobs per user in GitHub Actions
-                         isProd ? 3 : Infinity;   // Limited in Vercel, unlimited locally
+const MAX_JOBS_PER_USER = isGitHubAction ? 2 :    // 2 uploads per user per workflow run
+                         isProd ? 2 : Infinity;   // Limited in production, unlimited locally
                          
 const MAX_RUNTIME = isGitHubAction ? 21000000 :   // ~6 hours in GitHub Actions
                    isProd ? 50000 :              // Under 1 minute in Vercel

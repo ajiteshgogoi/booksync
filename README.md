@@ -195,7 +195,7 @@ The interface provides:
      - Uses batches of 25 highlights for optimal performance
      - Progress is saved and can be checked anytime
      - Automatic continuation from last processed position
-   - Multi-user upload handling:
+   - Fair multi-user handling:
      - Multiple users can upload files simultaneously
      - Each upload is immediately accepted and queued with a unique job ID
      - Queue preserves upload order for fair processing
@@ -204,10 +204,15 @@ The interface provides:
      - Only one workflow runs at a time (newer runs cancel older ones)
      - Each workflow can process up to 1000 highlights
      - If your upload isn't processed in one run, it continues in the next
-   - Efficient use of GitHub Actions free tier:
-     - 2000 minutes/month shared across all users
+   - Abuse prevention:
+     - Limit of 50 jobs per user per workflow run
+     - Notion API rate limiting (10 requests/minute)
+     - Users re-uploading already synced highlights only waste their own job quota
+     - System automatically skips users who exceed their job limit
+   - Efficient resource usage:
+     - 2000 GitHub Actions minutes/month shared across all users
      - Each workflow can use up to 300 minutes (5 hours)
-     - Concurrency controls ensure efficient minutes usage
+     - Per-user limits prevent any single user from consuming all resources
 
 3. **Organizing in Notion**
    - Highlights are organized by book
