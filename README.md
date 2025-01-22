@@ -93,11 +93,12 @@ When you upload My Clippings.txt, the parser:
 
 ### 2. Queue Layer
 For reliable processing:
-- Each sync is queued with a unique job ID
-- Progress is tracked across sessions
-- Processing handled by Vercel Cron Jobs
-- Automatic retries and exponential backoff
-- Batch processing with timeouts
+- Each sync is queued with a unique job ID in Redis
+- Progress is tracked across sessions with lastProcessedIndex
+- Processing handled by GitHub Actions workflow (runs every 30 minutes)
+- Automatic retries with exponential backoff
+- Efficient batch processing with no timeout limits
+- Support for large highlight files (thousands of entries)
 
 ### 3. Sync Layer
 During synchronization:
@@ -126,12 +127,13 @@ The interface provides:
    - Find "My Clippings.txt" in your Kindle's documents folder
    - Upload the file through the BookSync interface
    - The app will parse and queue your highlights for processing
-   - Processing happens via daily Vercel Cron Job (at midnight UTC)
-   - Daily batch processing with fair scheduling for multiple users:
-     - Up to 10 jobs per user per day
-     - Jobs are distributed fairly across all users
+   - Processing happens via GitHub Actions workflow (runs every 30 minutes)
+   - Efficient batch processing with no timeout limits:
+     - Can handle thousands of highlights
+     - Processes up to 100 highlights per run
      - Progress is saved and can be checked anytime
-   - For increased processing capacity, consider upgrading to Vercel Pro
+     - Automatic continuation from last processed position
+   - Free and unlimited processing using GitHub's free tier (2000 minutes/month)
 
 3. **Organizing in Notion**
    - Highlights are organized by book
@@ -181,7 +183,11 @@ server/
 
 ## Deployment
 
-### Vercel Deployment
+### Hybrid Deployment (Vercel + GitHub Actions)
+
+The application uses a hybrid deployment approach for optimal performance:
+- Frontend and API endpoints on Vercel (free tier)
+- Background sync processing on GitHub Actions (free tier)
 
 1. Push your repository to GitHub
 
@@ -201,8 +207,15 @@ server/
    CLIENT_URL=https://your-vercel-url.vercel.app
    REDIS_URL=your_redis_connection_url
    REDIS_TTL=86400
-   CRON_SECRET=your_cron_secret_here # Required for Vercel Cron authentication
    ```
+
+4. Add GitHub Repository Secrets:
+   - Go to your GitHub repository → Settings → Secrets and variables → Actions
+   - Add the following secrets:
+     ```
+     REDIS_URL=your_redis_connection_url
+     NOTION_API_KEY=your_notion_api_key
+     ```
 
 4. Update client environment:
    - Create `.env.production` in client directory

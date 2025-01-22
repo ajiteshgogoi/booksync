@@ -1,0 +1,47 @@
+name: Kindle Highlights Sync
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Run every 30 minutes
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300  # 5 hour timeout
+
+    env:
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NODE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd server
+          npm ci
+
+      - name: Run sync process
+        run: |
+          cd server
+          node -e "
+          const { startWorker } = require('./build/worker.js');
+          
+          // Override timeout settings for GitHub Actions
+          process.env.MAX_RUNTIME = '18000000';  // 5 hours
+          process.env.JOB_TIMEOUT = '3600000';   // 1 hour
+          process.env.BATCH_SIZE = '10';         // Larger batches
+          process.env.MAX_HIGHLIGHTS_PER_RUN = '100';  // Process more per run
+          
+          startWorker().catch(err => {
+            console.error('Worker failed:', err);
+            process.exit(1);
+          });"

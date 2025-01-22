@@ -13,11 +13,23 @@ import {
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
 
-// Use very conservative values in production to avoid timeouts
-const BATCH_SIZE = isProd ? 3 : 10;           // Smaller batches to ensure completion
-const BATCH_DELAY = isProd ? 10 : 100;        // Minimal delay in production
-const MAX_RETRIES = isProd ? 1 : 3;           // Single retry to avoid timeout
-const MAX_HIGHLIGHTS_PER_RUN = isProd ? 15 : Infinity; // Process fewer per run but ensure completion
+// Check if running in GitHub Actions
+const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';
+
+// Use environment variables or defaults
+const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ||
+  (isGitHubAction ? '10' :      // Larger batches for GitHub Actions
+   isProd ? '3' : '10'));       // Small for Vercel, normal for local
+
+const BATCH_DELAY = isGitHubAction ? 100 :    // Normal delay for GitHub Actions
+                   isProd ? 10 : 100;         // Minimal for Vercel, normal for local
+
+const MAX_RETRIES = isGitHubAction ? 3 :      // More retries for GitHub Actions
+                   isProd ? 1 : 3;            // Minimal for Vercel, normal for local
+
+const MAX_HIGHLIGHTS_PER_RUN = parseInt(process.env.MAX_HIGHLIGHTS_PER_RUN ||
+  (isGitHubAction ? '100' :     // Process more in GitHub Actions
+   isProd ? '15' : 'Infinity')); // Limited for Vercel, unlimited for local
 
 export async function queueSyncJob(
   databaseId: string,

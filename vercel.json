@@ -32,11 +32,5 @@
       "src": "/(.*)",
       "dest": "client/index.html"
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/process-sync",
-      "schedule": "0 0 * * *"
-    }
   ]
 }

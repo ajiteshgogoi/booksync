@@ -2,13 +2,19 @@ import { getRedis, getNextJob, setJobStatus, getJobStatus, addJobToQueue, JobSta
 import { processSyncJob } from './services/syncService';
 
 // Configuration for worker behavior
+// Check if running in GitHub Actions
+const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';
 const isProd = process.env.NODE_ENV === 'production';
 
-// Use different limits based on environment
-const MAX_JOBS_PER_RUN = isProd ? 25 : Infinity;  // Fewer jobs for more time per job
-const MAX_JOBS_PER_USER = isProd ? 3 : Infinity;  // Fewer jobs per user
-const MAX_RUNTIME = isProd ? 50000 : 3600000;     // Under 1 minute in prod for safety
-const JOB_TIMEOUT = isProd ? 45000 : 300000;      // 45 sec timeout (buffer for 60s limit)
+// Use environment variables or defaults
+const MAX_JOBS_PER_RUN = isGitHubAction ? 100 : (isProd ? 25 : Infinity);
+const MAX_JOBS_PER_USER = isGitHubAction ? 20 : (isProd ? 3 : Infinity);
+const MAX_RUNTIME = parseInt(process.env.MAX_RUNTIME ||
+  (isGitHubAction ? '18000000' :  // 5 hours for GitHub Actions
+   isProd ? '50000' : '3600000')); // 50s for Vercel, 1h for local
+const JOB_TIMEOUT = parseInt(process.env.JOB_TIMEOUT ||
+  (isGitHubAction ? '3600000' :   // 1 hour for GitHub Actions
+   isProd ? '45000' : '300000')); // 45s for Vercel, 5m for local
 
 // Track processed users for fair distribution
 const processedUsers = new Set<string>();
