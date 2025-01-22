@@ -9,6 +9,8 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Content + location based duplicate detection
   - Time-based syncing (only syncs highlights newer than last sync)
   - Automatic handling of edited highlights
+  - Enhanced hash generation using book title, author and content
+  - Redis cache with 24-hour TTL for efficient duplicate checking
 - **Efficient Syncing**
   - Background processing for large libraries
   - Continues syncing even if browser is closed
@@ -71,9 +73,10 @@ npm run dev
 ### 1. Parser Layer
 When you upload My Clippings.txt, the parser:
 - Groups highlights by book and location
-- Removes duplicates and overlapping content
+- Removes duplicates and overlapping content using enhanced hash generation
 - Preserves metadata (location, timestamp)
 - Handles multi-line highlights and special characters
+- Uses Redis cache with 24-hour TTL for efficient duplicate checking
 
 ### 2. Queue Layer
 For reliable processing:
