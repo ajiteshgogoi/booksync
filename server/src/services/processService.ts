@@ -3,7 +3,8 @@ import { addJobToQueue, setJobStatus, getRedis, JOB_TTL } from './redisService.j
 
 export async function processFileContent(
   userId: string,
-  fileContent: string
+  fileContent: string,
+  databaseId: string
 ): Promise<string> {
   const redis = await getRedis();
   
@@ -23,7 +24,7 @@ export async function processFileContent(
     highlights.forEach((highlight, i) => {
       const highlightWithDb = {
         ...highlight,
-        databaseId: userId
+        databaseId
       };
       const key = `highlights:${jobId}:${i}`;
       pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
