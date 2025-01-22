@@ -2,10 +2,6 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import type { Express } from 'express-serve-static-core';
 import cors from 'cors';
-import axios from 'axios';
-import dotenv from 'dotenv';
-import multer from 'multer';
-import { startWorker } from './worker.js';
 
 interface User {
   id: string;
@@ -18,8 +14,8 @@ interface CustomRequest extends Request {
 
 declare global {
   namespace Express {
-    namespace Multer {
-      interface File {
+    interface Multer {
+      File: {
         buffer: Buffer;
         mimetype: string;
         size: number;
@@ -27,9 +23,10 @@ declare global {
     }
   }
 }
-
-type AsyncHandler = (req: Request, res: Response) => Promise<void>;
-type SyncHandler = (req: Request, res: Response) => void;
+import axios from 'axios';
+import dotenv from 'dotenv';
+import multer from 'multer';
+import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
 import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
@@ -38,6 +35,7 @@ import { parseClippings } from './utils/parseClippings.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
+// Initialize Express app
 dotenv.config();
 
 const app = express();
@@ -61,7 +59,7 @@ function generateState() {
          Math.random().toString(36).substring(2, 15);
 }
 
-// Health check endpoint //
+// Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -74,39 +72,50 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'GitHub token not configured' });
     }
 
+    console.log('\nTesting GitHub API connection...');
+
     // Test repository access
     const repoResponse = await axios.get(
       'https://api.github.com/repos/ajiteshgogoi/booksync',
       {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `token ${token}`,
           'User-Agent': 'BookSync-App'
         }
       }
     );
 
-    // Test repository_dispatch permission with a small payload
+    console.log('Repository access successful');
+
+    // Test workflow dispatch
+    console.log('\nTesting workflow dispatch...');
     const dispatchResponse = await axios.post(
       'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
       {
-        event_type: 'test_dispatch',
-        client_payload: { test: true }
+        event_type: 'process_highlights_test',
+        client_payload: {
+          test: true,
+          timestamp: new Date().toISOString()
+        }
       },
       {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `token ${token}`,
           'User-Agent': 'BookSync-App'
         }
       }
     );
+
+    console.log('Workflow dispatch response:', dispatchResponse.status);
 
     res.json({
       success: true,
       repoAccess: true,
       repoName: repoResponse.data.full_name,
-      dispatchPermission: dispatchResponse.status === 204,
+      dispatchPermission: true,
+      testWorkflowTriggered: dispatchResponse.status === 204,
       tokenInfo: {
         present: true,
         length: token.length,
@@ -226,7 +235,6 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
 app.post(`${apiBasePath}/auth/refresh`, async (req: Request, res: Response) => {
   try {
     await refreshToken();
-    const client = await getClient();
     res.status(200).json({ status: 'Token refreshed' });
   } catch (error) {
     console.error('Token refresh error:', error);
