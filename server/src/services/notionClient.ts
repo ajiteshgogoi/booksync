@@ -99,3 +99,55 @@ export async function clearAuth(): Promise<void> {
     throw error;
   }
 }
+
+interface Highlight {
+  bookTitle: string;
+  highlight: string;
+  location: string;
+  date: string;
+  databaseId: string;
+  hash?: string;
+}
+
+export async function updateNotionDatabase(highlights: Highlight[]): Promise<void> {
+  try {
+    const client = await getClient();
+    console.log(`Updating Notion database with ${highlights.length} highlights...`);
+
+    for (const highlight of highlights) {
+      try {
+        await client.pages.create({
+          parent: { database_id: highlight.databaseId },
+          properties: {
+            'Book Title': {
+              title: [{ text: { content: highlight.bookTitle } }]
+            },
+            'Highlight': {
+              rich_text: [{ text: { content: highlight.highlight } }]
+            },
+            'Location': {
+              rich_text: [{ text: { content: highlight.location } }]
+            },
+            'Date': {
+              date: { start: highlight.date }
+            },
+            ...(highlight.hash ? {
+              'Hash': {
+                rich_text: [{ text: { content: highlight.hash } }]
+              }
+            } : {})
+          }
+        });
+        console.log(`Added highlight: ${highlight.bookTitle} (${highlight.location})`);
+      } catch (error) {
+        console.error(`Failed to add highlight: ${highlight.bookTitle}`, error);
+        throw error;
+      }
+    }
+
+    console.log('Successfully updated Notion database');
+  } catch (error) {
+    console.error('Error updating Notion database:', error);
+    throw error;
+  }
+}
