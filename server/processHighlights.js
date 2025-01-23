@@ -21,9 +21,9 @@ async function getTokenData() {
 
     const { databaseId, userId } = JSON.parse(tokenData);
     
-    // Validate database ID format (Notion database IDs are 32 char hex)
-    if (!databaseId || typeof databaseId !== 'string' || !/^[a-f0-9]{32}$/.test(databaseId)) {
-      throw new Error(`Invalid database ID format: ${databaseId}`);
+    // Validate database ID format (Notion database IDs are UUIDs)
+    if (!databaseId || typeof databaseId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(databaseId)) {
+      throw new Error(`Invalid database ID format. Expected UUID, got: ${databaseId}`);
     }
     
     if (!userId || typeof userId !== 'string') {
