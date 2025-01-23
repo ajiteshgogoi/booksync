@@ -63,9 +63,22 @@ export async function queueSyncJob(
       pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
     });
 
-    // Execute pipeline
+    // Execute pipeline with error handling
     console.debug('Executing Redis pipeline...');
-    await pipeline.exec();
+    const results = await pipeline.exec();
+    
+    // Check pipeline results for errors
+    if (!results) {
+      throw new Error('Pipeline execution failed - no results returned');
+    }
+    
+    const errors = results
+      .filter(([err]) => err)
+      .map(([err], index) => `Operation ${index}: ${err}`);
+      
+    if (errors.length > 0) {
+      throw new Error(`Pipeline errors: ${errors.join(', ')}`);
+    }
     
     await setJobStatus(jobId, {
       state: 'pending',
@@ -94,16 +107,47 @@ export async function processSyncJob(
   onProgress?: (progress: number, message: string) => Promise<void>
 ) {
   let redis;
+  let retries = 0;
+  const MAX_CONNECTION_RETRIES = 3;
+  const RETRY_DELAY = 1000;
+
+  const getRedisWithRetry = async () => {
+    for (let i = 0; i < MAX_CONNECTION_RETRIES; i++) {
+      try {
+        return await getRedis();
+      } catch (error) {
+        if (i === MAX_CONNECTION_RETRIES - 1) throw error;
+        console.warn(`Redis connection attempt ${i + 1} failed, retrying...`, error);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(2, i)));
+      }
+    }
+    throw new Error('Failed to connect to Redis after retries');
+  };
+
   try {
     console.debug(`Starting sync job processing for ${jobId}`);
-    redis = await getRedis();
+    redis = await getRedisWithRetry();
     
-    // Get current progress
-    const status = await getJobStatus(jobId);
+    // Get current progress with retry
+    let status;
+    try {
+      status = await getJobStatus(jobId);
+    } catch (error) {
+      console.error('Failed to get job status, retrying...', error);
+      redis = await getRedisWithRetry();
+      status = await getJobStatus(jobId);
+    }
     const lastProcessedIndex = status?.lastProcessedIndex || 0;
     
-    // Get all highlights
-    const highlights = await getHighlightsFromQueue(jobId);
+    // Get all highlights with retry
+    let highlights;
+    try {
+      highlights = await getHighlightsFromQueue(jobId);
+    } catch (error) {
+      console.error('Failed to get highlights from queue, retrying...', error);
+      redis = await getRedisWithRetry();
+      highlights = await getHighlightsFromQueue(jobId);
+    }
     const total = highlights.length;
     
     if (lastProcessedIndex >= total) {

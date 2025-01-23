@@ -209,20 +209,30 @@ const TOKEN_TTL = 60 * 60 * 24; // 24 hours
 
 // Queue functions
 export async function addJobToQueue(jobId: string): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     await redis.rpush(QUEUE_NAME, jobId);
     await setJobStatus(jobId, { state: 'pending' });
     logger.debug('Job added to queue', { jobId });
   } catch (error) {
     logger.error('Failed to add job to queue', { jobId, error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function getNextJob(): Promise<string | null> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     
     // First check queue length
     const queueLength = await redis.llen(QUEUE_NAME);
@@ -242,23 +252,41 @@ export async function getNextJob(): Promise<string | null> {
   } catch (error) {
     logger.error('Failed to get next job from queue', { error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     await redis.set(`job:${jobId}:status`, JSON.stringify(status), 'EX', JOB_TTL);
     logger.debug('Job status updated', { jobId, status });
   } catch (error) {
     logger.error('Failed to set job status', { jobId, error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const status = await redis.get(`job:${jobId}:status`);
     if (status) {
       logger.debug('Retrieved job status', { jobId, status: JSON.parse(status) });
@@ -268,13 +296,22 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   } catch (error) {
     logger.error('Failed to get job status', { jobId, error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 // Token management
 export async function storeOAuthToken(token: string, workspaceId: string, databaseId: string, userId: string): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const tokenData = {
       token,
       databaseId,
@@ -290,12 +327,21 @@ export async function storeOAuthToken(token: string, workspaceId: string, databa
   } catch (error) {
     logger.error('Failed to store OAuth token', { workspaceId, error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function getOAuthToken(): Promise<string | null> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const keys = await redis.keys('oauth:*');
     if (keys.length === 0) {
       logger.warn('No OAuth token found');
@@ -311,23 +357,41 @@ export async function getOAuthToken(): Promise<string | null> {
   } catch (error) {
     logger.error('Failed to get OAuth token', { error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function refreshOAuthToken(token: string, workspaceId: string): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     await redis.set(`oauth:${workspaceId}`, token, 'EX', TOKEN_TTL);
     logger.debug('OAuth token refreshed', { workspaceId });
   } catch (error) {
     logger.error('Failed to refresh OAuth token', { workspaceId, error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 export async function deleteOAuthToken(): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const keys = await redis.keys('oauth:*');
     if (keys.length > 0) {
       await redis.del(...keys);
@@ -336,13 +400,22 @@ export async function deleteOAuthToken(): Promise<void> {
   } catch (error) {
     logger.error('Failed to delete OAuth token', { error });
     throw error;
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
 // Rate limiting
 export async function checkRateLimit(databaseId: string): Promise<boolean> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const currentTime = Math.floor(Date.now() / 1000);
     const key = `rate_limit:${databaseId}:${currentTime}`;
     
@@ -360,6 +433,14 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
   } catch (error) {
     logger.error('Rate limit check failed', { databaseId, error });
     return true; // Fail open to avoid blocking requests
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
@@ -368,8 +449,9 @@ const CLEANUP_INTERVAL = 60 * 60 * 1000; // Run cleanup every hour
 
 // Function to clean up expired keys
 async function cleanupExpiredKeys(): Promise<void> {
+  let redis;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
     const patterns = [
       'job:*:status',    // Job statuses
       'oauth:*',         // OAuth tokens
@@ -390,6 +472,14 @@ async function cleanupExpiredKeys(): Promise<void> {
     logger.info('Completed Redis key cleanup');
   } catch (error) {
     logger.error('Failed to cleanup expired keys', { error });
+  } finally {
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+    }
   }
 }
 
