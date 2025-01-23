@@ -14,11 +14,18 @@ const POOL_SIZE = 5;
 const POOL_ACQUIRE_TIMEOUT = 10000; // 10 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+const CONNECTION_TIMEOUT = 30000; // 30 seconds max connection usage time
+const CONNECTION_MAX_AGE = 3600000; // 1 hour max connection age
+const CONNECTION_IDLE_TIMEOUT = 300000; // 5 minutes idle timeout
+const REAPER_INTERVAL = 60000; // Run reaper every minute
 
 interface PoolConnection {
   client: RedisType;
   inUse: boolean;
   lastUsed: number;
+  acquiredAt: number | null;
+  createdAt: number;
+  id: string;
 }
 
 class RedisPool {
@@ -77,12 +84,30 @@ class RedisPool {
   private async initializePool(): Promise<void> {
     for (let i = 0; i < POOL_SIZE; i++) {
       const client = await this.createClient();
+      const now = Date.now();
       this.pool.push({
         client,
         inUse: false,
-        lastUsed: Date.now()
+        lastUsed: now,
+        acquiredAt: null,
+        createdAt: now,
+        id: `conn-${now}-${i}`
       });
     }
+  }
+
+  private static instance: RedisPool | null = null;
+
+  public static getInstance(): RedisPool {
+    if (!RedisPool.instance) {
+      RedisPool.instance = new RedisPool();
+    }
+    return RedisPool.instance;
+  }
+
+  constructor() {
+    // Start the connection reaper when pool is created
+    this.startConnectionReaper();
   }
 
   public async acquire(): Promise<RedisType> {
@@ -91,41 +116,74 @@ class RedisPool {
       await this.initializePool();
     }
 
-    // Find available connection
-    const availableConnection = this.pool.find(conn => !conn.inUse);
-    if (availableConnection) {
-      availableConnection.inUse = true;
-      availableConnection.lastUsed = Date.now();
+    const now = Date.now();
 
-      // Verify connection is working
-      try {
-        await availableConnection.client.ping();
-        return availableConnection.client;
-      } catch (error) {
-        // Connection failed, create new one
-        availableConnection.client = await this.createClient();
-        return availableConnection.client;
+    // First pass: look for available valid connections
+    for (const connection of this.pool) {
+      if (!connection.inUse && !this.isConnectionStale(connection)) {
+        if (await this.validateConnection(connection)) {
+          connection.inUse = true;
+          connection.lastUsed = now;
+          connection.acquiredAt = now;
+          return connection.client;
+        } else {
+          // Connection invalid, replace it
+          await this.replaceConnection(connection);
+        }
       }
     }
 
-    // No available connections, wait for one
+    // Second pass: force release stale connections if all are in use
+    const staleConnection = this.pool.find(conn =>
+      conn.inUse &&
+      conn.acquiredAt &&
+      now - conn.acquiredAt > CONNECTION_TIMEOUT
+    );
+
+    if (staleConnection) {
+      await this.forceRelease(staleConnection);
+      staleConnection.inUse = true;
+      staleConnection.lastUsed = now;
+      staleConnection.acquiredAt = now;
+      return staleConnection.client;
+    }
+
+    // Wait for a connection with timeout
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error('Timeout waiting for available Redis connection'));
+      const timeoutId = setTimeout(async () => {
+        // On timeout, try to force release the longest-held connection
+        const oldestConnection = this.pool
+          .filter(conn => conn.inUse && conn.acquiredAt)
+          .sort((a, b) => (a.acquiredAt || 0) - (b.acquiredAt || 0))[0];
+
+        if (oldestConnection) {
+          try {
+            await this.forceRelease(oldestConnection);
+            oldestConnection.inUse = true;
+            oldestConnection.lastUsed = Date.now();
+            oldestConnection.acquiredAt = Date.now();
+            resolve(oldestConnection.client);
+          } catch (error: any) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            reject(new Error('Failed to acquire Redis connection: ' + errorMessage));
+          }
+        } else {
+          reject(new Error('Timeout waiting for available Redis connection'));
+        }
       }, POOL_ACQUIRE_TIMEOUT);
 
       const checkPool = async () => {
-        const conn = this.pool.find(conn => !conn.inUse);
-        if (conn) {
+        const availableConn = this.pool.find(conn => !conn.inUse);
+        if (availableConn) {
           clearTimeout(timeoutId);
-          conn.inUse = true;
-          conn.lastUsed = Date.now();
-          try {
-            await conn.client.ping();
-            resolve(conn.client);
-          } catch (error) {
-            conn.client = await this.createClient();
-            resolve(conn.client);
+          availableConn.inUse = true;
+          availableConn.lastUsed = now;
+          availableConn.acquiredAt = now;
+          if (await this.validateConnection(availableConn)) {
+            resolve(availableConn.client);
+          } else {
+            await this.replaceConnection(availableConn);
+            resolve(availableConn.client);
           }
         } else {
           setTimeout(checkPool, 100);
@@ -136,12 +194,89 @@ class RedisPool {
     });
   }
 
+  private async validateConnection(connection: PoolConnection): Promise<boolean> {
+    try {
+      await connection.client.ping();
+      return true;
+    } catch (error) {
+      logger.warn(`Connection validation failed for ${connection.id}:`, error);
+      return false;
+    }
+  }
+
+  private isConnectionStale(connection: PoolConnection): boolean {
+    const now = Date.now();
+    // Check if connection is too old
+    if (now - connection.createdAt > CONNECTION_MAX_AGE) {
+      return true;
+    }
+    // Check if connection has been idle too long
+    if (!connection.inUse && now - connection.lastUsed > CONNECTION_IDLE_TIMEOUT) {
+      return true;
+    }
+    // Check if connection has been in use too long
+    if (connection.inUse && connection.acquiredAt &&
+        now - connection.acquiredAt > CONNECTION_TIMEOUT) {
+      return true;
+    }
+    return false;
+  }
+
+  private async replaceConnection(connection: PoolConnection): Promise<void> {
+    try {
+      await connection.client.quit();
+    } catch (error) {
+      logger.warn(`Error closing stale connection ${connection.id}:`, error);
+    }
+
+    const now = Date.now();
+    const index = this.pool.indexOf(connection);
+    if (index !== -1) {
+      const newClient = await this.createClient();
+      this.pool[index] = {
+        client: newClient,
+        inUse: false,
+        lastUsed: now,
+        acquiredAt: null,
+        createdAt: now,
+        id: `conn-${now}-${index}`
+      };
+    }
+  }
+
+  private startConnectionReaper(): void {
+    setInterval(async () => {
+      logger.debug('Running connection reaper...');
+      for (const connection of this.pool) {
+        // Skip connections that are in use and not timed out
+        if (connection.inUse &&
+            (!connection.acquiredAt ||
+             Date.now() - connection.acquiredAt <= CONNECTION_TIMEOUT)) {
+          continue;
+        }
+
+        if (this.isConnectionStale(connection) || !await this.validateConnection(connection)) {
+          logger.info(`Replacing stale connection ${connection.id}`);
+          await this.replaceConnection(connection);
+        }
+      }
+    }, REAPER_INTERVAL);
+  }
+
   public release(client: RedisType): void {
     const connection = this.pool.find(conn => conn.client === client);
     if (connection) {
       connection.inUse = false;
       connection.lastUsed = Date.now();
+      connection.acquiredAt = null;
     }
+  }
+
+  public async forceRelease(connection: PoolConnection): Promise<void> {
+    if (!connection.inUse) return;
+
+    logger.warn(`Force releasing connection ${connection.id}`);
+    await this.replaceConnection(connection);
   }
 
   public async cleanup(): Promise<void> {
@@ -159,19 +294,41 @@ class RedisPool {
   }
 }
 
-// Create Redis pool instance
-const redisPool = new RedisPool();
+// Create Redis pool instance using singleton pattern
+const redisPool = RedisPool.getInstance();
 
-// Get Redis client from pool
+// Get Redis client from pool with auto-release wrapper
 export async function getRedis(): Promise<RedisType> {
   try {
     logger.debug('=== Redis Client Request ===');
     const client = await redisPool.acquire();
     logger.debug('Redis client acquired from pool');
-    return client;
+
+    // Wrap the client to ensure automatic release after operations
+    const handler: ProxyHandler<RedisType> = {
+      get(target: RedisType, prop: string | symbol) {
+        const original = Reflect.get(target, prop);
+        if (typeof original === 'function') {
+          return async function(this: any, ...args: unknown[]) {
+            try {
+              const result = await original.apply(this === proxy ? target : this, args);
+              return result;
+            } catch (error) {
+              redisPool.release(target);
+              throw error;
+            }
+          };
+        }
+        return original;
+      }
+    };
+
+    const proxy = new Proxy(client, handler);
+    return proxy;
   } catch (error) {
-    logger.error('Failed to acquire Redis client:', error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Failed to acquire Redis client:', { error: errorMessage });
+    throw new Error(`Failed to acquire Redis client: ${errorMessage}`);
   }
 }
 
