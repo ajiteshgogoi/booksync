@@ -1,0 +1,39 @@
+name: Process Highlights
+
+on:
+  repository_dispatch:
+    types: [process_highlights]
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+
+    env:
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+      GITHUB_ACTIONS: true
+      NODE_ENV: production
+      FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Process highlights
+        working-directory: server
+        run: node processHighlights.js
