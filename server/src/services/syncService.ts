@@ -40,41 +40,53 @@ export async function queueSyncJob(
   databaseId: string,
   fileContent: string
 ): Promise<string> {
-  console.debug('Starting sync job for database:', databaseId);
-  const jobId = `sync:${databaseId}:${Date.now()}`;
-  const highlights = await parseClippings(fileContent);
-  console.debug('Parsed highlights count:', highlights.length);
-  const redis = await getRedis();
-  console.debug('Redis client initialized');
-  
-  // Use Redis pipeline for batch operations
-  const pipeline = redis.pipeline();
-  
-  // Store all highlights in a single pipeline
-  console.debug('Storing highlights in pipeline...');
-  highlights.forEach((highlight, i) => {
-    const highlightWithDb = {
-      ...highlight,
-      databaseId
-    };
-    const key = `highlights:${jobId}:${i}`;
-    pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
-  });
+  let redis;
+  try {
+    console.debug('Starting sync job for database:', databaseId);
+    const jobId = `sync:${databaseId}:${Date.now()}`;
+    const highlights = await parseClippings(fileContent);
+    console.debug('Parsed highlights count:', highlights.length);
+    redis = await getRedis();
+    console.debug('Redis client initialized');
+    
+    // Use Redis pipeline for batch operations
+    const pipeline = redis.pipeline();
+    
+    // Store all highlights in a single pipeline
+    console.debug('Storing highlights in pipeline...');
+    highlights.forEach((highlight, i) => {
+      const highlightWithDb = {
+        ...highlight,
+        databaseId
+      };
+      const key = `highlights:${jobId}:${i}`;
+      pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
+    });
 
-  // Execute pipeline
-  console.debug('Executing Redis pipeline...');
-  await pipeline.exec();
-  
-  await setJobStatus(jobId, {
-    state: 'pending',
-    progress: 0,
-    message: 'Job queued',
-    total: highlights.length,
-    lastProcessedIndex: 0
-  });
-  
-  await addJobToQueue(jobId);
-  return jobId;
+    // Execute pipeline
+    console.debug('Executing Redis pipeline...');
+    await pipeline.exec();
+    
+    await setJobStatus(jobId, {
+      state: 'pending',
+      progress: 0,
+      message: 'Job queued',
+      total: highlights.length,
+      lastProcessedIndex: 0
+    });
+    
+    await addJobToQueue(jobId);
+    return jobId;
+  } finally {
+    // Clean up Redis connection
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        console.error('Error while closing Redis connection:', quitError);
+      }
+    }
+  }
 }
 
 export async function processSyncJob(
@@ -222,6 +234,15 @@ export async function processSyncJob(
       lastProcessedIndex: currentStatus?.lastProcessedIndex || 0
     });
     throw error;
+  } finally {
+    // Clean up Redis connection
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        console.error('Error while closing Redis connection:', quitError);
+      }
+    }
   }
 }
 
