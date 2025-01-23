@@ -83,19 +83,17 @@ jobs:
             exit 1
           fi
 
-          # Verify content exists
-          if [[ -z "$CONTENT" ]]; then
-            echo "::error::No content extracted from gist"
-            exit 1
-          fi
-          
-          echo "Content length: ${#CONTENT} characters"
+          # Save content to temp file
+          TEMP_FILE=$(mktemp)
+          echo "$CONTENT" > "$TEMP_FILE"
+          echo "Content saved to temp file: $TEMP_FILE"
 
       - name: Process File
         run: |
           cd server
           echo "Starting file processing..."
-          echo "$CONTENT" | node --experimental-vm-modules processHighlights.js
+          FILE_CONTENT="$(cat $TEMP_FILE)" node --experimental-vm-modules processHighlights.js
+          rm -f $TEMP_FILE
 
       - name: Cleanup Gist
         if: always()  # Run even if previous steps fail
