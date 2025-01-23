@@ -9,16 +9,16 @@ const logger = {
   debug: (message: string, data?: any) => console.debug(`[DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : ''),
 };
 
-// Connection pool configuration - optimized for serverless
-const POOL_SIZE = process.env.VERCEL ? 2 : 5; // Increased pool size
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Increased timeouts
-const MAX_RETRIES = process.env.VERCEL ? 2 : 3; // Increased retries
-const RETRY_DELAY = 500; // Increased retry delay
-const CONNECTION_TIMEOUT = 15000; // Increased to 15s max connection usage time
-const CONNECTION_MAX_AGE = 300000; // Increased to 5m max connection age
-const CONNECTION_IDLE_TIMEOUT = 30000; // Increased to 30s idle timeout
-const REAPER_INTERVAL = 15000; // Run reaper every 15s instead of 30s
-const MAX_CONNECTION_WAITERS = 10; // Maximum number of connection waiters
+// Connection pool configuration - optimized for Redis Cloud free tier
+const POOL_SIZE = process.env.VERCEL ? 2 : 3; // Reduced pool size
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Keep existing timeouts
+const MAX_RETRIES = process.env.VERCEL ? 2 : 3; // Keep existing retries
+const RETRY_DELAY = 500; // Keep existing retry delay
+const CONNECTION_TIMEOUT = 15000; // Keep existing max connection usage time
+const CONNECTION_MAX_AGE = 300000; // Keep existing max connection age
+const CONNECTION_IDLE_TIMEOUT = 30000; // Keep existing idle timeout
+const REAPER_INTERVAL = 15000; // Keep existing reaper interval
+const MAX_CONNECTION_WAITERS = 5; // Reduced maximum number of connection waiters
 
 interface PoolConnection {
   client: RedisType;
@@ -31,6 +31,7 @@ interface PoolConnection {
 
 class RedisPool {
   private pool: PoolConnection[] = [];
+  private sharedConnections: PoolConnection[] = [];
   private connectionPromises: Map<number, Promise<RedisType>> = new Map();
   private connectionWaiters: number = 0;
   private connectionStats = {
@@ -131,6 +132,9 @@ class RedisPool {
   }
 
   constructor() {
+    // Initialize shared connections array
+    this.sharedConnections = [];
+    
     // Start the connection reaper when pool is created
     this.startConnectionReaper();
 
@@ -436,7 +440,8 @@ class RedisPool {
 
   public async cleanup(): Promise<void> {
     // Close all connections
-    for (const conn of this.pool) {
+    const connections = [...this.pool, ...this.sharedConnections];
+    for (const conn of connections) {
       if (conn.client) {
         try {
           await conn.client.quit();
@@ -446,6 +451,40 @@ class RedisPool {
       }
     }
     this.pool = [];
+    this.sharedConnections = [];
+  }
+
+  public async getSharedConnection(): Promise<RedisType> {
+    if (this.sharedConnections.length > 0) {
+      const conn = this.sharedConnections.pop()!;
+      conn.inUse = true;
+      conn.lastUsed = Date.now();
+      conn.acquiredAt = Date.now();
+      return conn.client;
+    }
+    return await this.acquire();
+  }
+
+  public releaseSharedConnection(client: RedisType): void {
+    const connection = this.pool.find(conn => conn.client === client);
+    if (connection) {
+      connection.inUse = false;
+      connection.lastUsed = Date.now();
+      connection.acquiredAt = null;
+      this.sharedConnections.push(connection);
+    }
+  }
+
+  private startConnectionMonitor(): void {
+    setInterval(() => {
+      logger.info('Connection pool status', {
+        totalConnections: this.pool.length,
+        inUse: this.pool.filter(c => c.inUse).length,
+        sharedConnections: this.sharedConnections.length,
+        waiters: this.connectionWaiters,
+        stats: this.connectionStats
+      });
+    }, 30000); // Log every 30 seconds
   }
 }
 
