@@ -1,9 +1,22 @@
 import dotenv from 'dotenv';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  HeadObjectCommandOutput
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+import { logger } from '../utils/logger.js';
 
 dotenv.config();
+
+export interface R2ObjectInfo {
+  size: number;
+  lastModified?: Date;
+  contentType?: string;
+}
 
 const R2_ENDPOINT = process.env.R2_ENDPOINT;
 const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY_ID;
@@ -89,6 +102,74 @@ export async function streamFile(fileName: string): Promise<Readable> {
     }
   } catch (error) {
     console.error('Error streaming file from R2:', error);
+    throw error;
+  }
+}
+
+export async function getObjectInfo(key: string): Promise<R2ObjectInfo | null> {
+  try {
+    const command = new HeadObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+    
+    return {
+      size: response.ContentLength || 0,
+      lastModified: response.LastModified,
+      contentType: response.ContentType
+    };
+  } catch (error) {
+    if ((error as any)?.name === 'NotFound') {
+      return null;
+    }
+    logger.error('Error getting object info from R2:', error);
+    throw error;
+  }
+}
+
+export async function downloadObject(key: string): Promise<Buffer> {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+    
+    if (!response.Body) {
+      throw new Error('No file content received from R2');
+    }
+
+    // Convert the readable stream to a buffer
+    const chunks: Buffer[] = [];
+    const stream = response.Body as Readable;
+    
+    return new Promise((resolve, reject) => {
+      stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      stream.on('error', (err) => reject(err));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+  } catch (error) {
+    logger.error('Error downloading object from R2:', error);
+    throw error;
+  }
+}
+
+export async function uploadObject(key: string, data: Buffer | string): Promise<void> {
+  try {
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      Body: data,
+      ContentType: 'text/plain', // Set appropriate content type
+    });
+
+    await s3Client.send(command);
+    logger.debug('Successfully uploaded object to R2', { key });
+  } catch (error) {
+    logger.error('Error uploading object to R2:', error);
     throw error;
   }
 }

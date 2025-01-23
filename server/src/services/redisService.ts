@@ -9,17 +9,17 @@ const logger = {
   debug: (message: string, data?: any) => console.debug(`[DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : ''),
 };
 
-// Connection pool configuration - optimized for Redis Cloud free tier
-const POOL_SIZE = process.env.VERCEL ? 2 : 3; // Reduced pool size
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Keep existing timeouts
-const MAX_RETRIES = process.env.VERCEL ? 2 : 3; // Keep existing retries
-const RETRY_DELAY = 500; // Keep existing retry delay
-const CONNECTION_TIMEOUT = 15000; // Keep existing max connection usage time
-const CONNECTION_MAX_AGE = 300000; // Keep existing max connection age
-const CONNECTION_IDLE_TIMEOUT = 30000; // Keep existing idle timeout
-const REAPER_INTERVAL = 15000; // Keep existing reaper interval
-const MAX_CONNECTION_WAITERS = 5; // Reduced maximum number of connection waiters
+// Connection pool configuration - optimized for Redis Cloud free tier (30 max connections)
+const POOL_SIZE = process.env.VERCEL ? 5 : 8; // Conservative pool size to leave room for RedisInsight and other connections
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 2000 : 5000; // Moderate timeouts
+const MAX_RETRIES = process.env.VERCEL ? 2 : 3; // Moderate retries
+const RETRY_DELAY = 1000; // Keep increased retry delay
 
+const CONNECTION_TIMEOUT = 20000; // Moderate connection timeout
+const CONNECTION_MAX_AGE = 300000; // Back to 5 minutes to encourage connection recycling
+const CONNECTION_IDLE_TIMEOUT = 30000; // Back to 30 seconds for idle timeout
+const REAPER_INTERVAL = 15000; // More frequent reaping
+const MAX_CONNECTION_WAITERS = 10; // Conservative number of waiters
 interface PoolConnection {
   client: RedisType;
   inUse: boolean;
@@ -57,15 +57,15 @@ class RedisPool {
     }
 
     const options = {
-      maxRetriesPerRequest: 1, // Reduced from 3
-      connectTimeout: 5000, // Reduced from 10000
+      maxRetriesPerRequest: 2, // Conservative retries to avoid connection spam
+      connectTimeout: 8000, // Moderate connect timeout
       retryStrategy(times: number) {
         logger.debug(`Redis retry attempt ${times}`);
         if (times > MAX_RETRIES) {
           logger.error('Max Redis retries reached');
           return null;
         }
-        const delay = Math.min(times * RETRY_DELAY, 1000); // Reduced max delay from 3000ms
+        const delay = Math.min(times * RETRY_DELAY, 3000); // Moderate max delay
         logger.debug(`Redis retry in ${delay}ms`);
         return delay;
       },
@@ -79,12 +79,13 @@ class RedisPool {
         }
         return false;
       },
-      enableOfflineQueue: true, // Enable offline queue to handle temporary connection issues
+      enableAutoPipelining: true, // Add pipelining to optimize connection usage
+      enableOfflineQueue: false, // Disable offline queue to fail fast on errors
       enableReadyCheck: true, // Add ready check to ensure connection is valid
-      commandTimeout: 5000, // Timeout for individual commands
-      socketInitialDelay: 1000, // Initial delay before reconnecting
-      maxLoadingRetryTime: 30000, // Max time to wait for Redis to load data
-      autoResendUnfulfilledCommands: true // Automatically resend commands that failed due to connection issues
+      commandTimeout: 8000, // Increased timeout for commands
+      socketInitialDelay: 2000, // Increased initial delay before reconnecting
+      maxLoadingRetryTime: 15000, // Reduced max time to wait for Redis to load data
+      autoResendUnfulfilledCommands: false // Don't auto-resend failed commands
     };
 
     const redis = new Redis(process.env.REDIS_URL, options);
@@ -527,8 +528,10 @@ export async function getRedis(): Promise<RedisType> {
   }
 }
 
-// Queue configuration
-export const QUEUE_NAME = 'sync_jobs';
+// Stream configuration
+export const STREAM_NAME = 'sync_jobs_stream';
+export const CONSUMER_GROUP = 'sync_processors';
+export const CONSUMER_NAME = `consumer-${process.pid}`;
 export const JOB_TTL = 60 * 60 * 24; // 24 hours
 
 // Job status types
@@ -540,40 +543,105 @@ export type JobStatus = {
   total?: number;
   lastCheckpoint?: number;
   completedAt?: number;
-  lastProcessedIndex?: number;  // Track the last processed highlight index
+  lastProcessedIndex?: number;
 };
+
+// Initialize stream and consumer group
+export async function initializeStream(existingRedis?: RedisType): Promise<void> {
+  const redis = existingRedis || await getRedis();
+  try {
+    // Create consumer group if it doesn't exist
+    try {
+      await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '0', 'MKSTREAM');
+      logger.info('Created new consumer group', { group: CONSUMER_GROUP });
+    } catch (err: any) {
+      // Ignore if group already exists
+      if (!err.message.includes('BUSYGROUP')) {
+        throw err;
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to initialize stream', error);
+    throw error;
+  }
+}
 
 // Queue functions
 export async function addJobToQueue(jobId: string, existingRedis?: RedisType): Promise<void> {
   const redis = existingRedis || await getRedis();
   try {
-    await redis.rpush(QUEUE_NAME, jobId);
+    // Add job to stream with job details
+    const jobData = {
+      jobId,
+      timestamp: Date.now().toString()
+    };
+    
+    await redis.xadd(STREAM_NAME, '*', ...Object.entries(jobData).flat());
     await setJobStatus(jobId, { state: 'pending' }, redis);
-    logger.debug('Job added to queue', { jobId });
+    logger.debug('Job added to stream', { jobId });
   } catch (error) {
-    logger.error('Failed to add job to queue', { jobId, error });
+    logger.error('Failed to add job to stream', { jobId, error });
     throw error;
   }
 }
 
-export async function getNextJob(existingRedis?: RedisType): Promise<string | null> {
+// Define types for Redis stream responses
+type RedisStreamMessage = [string, string[]]; // [messageId, [field1, value1, field2, value2, ...]]
+type RedisStreamEntry = [string, RedisStreamMessage[]]; // [streamName, messages[]]
+type RedisStreamResponse = RedisStreamEntry[];
+
+export async function getNextJob(existingRedis?: RedisType): Promise<{ jobId: string; messageId: string } | null> {
   const redis = existingRedis || await getRedis();
   try {
-    const queueLength = await redis.llen(QUEUE_NAME);
-    logger.debug('Current queue length', { queueLength });
+    // Read next message from stream using consumer group
+    const results = await redis.xreadgroup(
+      'GROUP',
+      CONSUMER_GROUP,
+      CONSUMER_NAME,
+      'STREAMS',
+      STREAM_NAME,
+      '>'
+    ) as RedisStreamResponse | null;
 
-    const allJobs = await redis.lrange(QUEUE_NAME, 0, -1);
-    logger.debug('All jobs in queue', { jobs: allJobs });
-
-    const jobId = await redis.lpop(QUEUE_NAME);
-    if (jobId) {
-      logger.debug('Retrieved next job from queue', { jobId });
-    } else {
-      logger.debug('No jobs available in queue');
+    if (!results || !results[0] || !results[0][1] || !results[0][1][0]) {
+      logger.debug('No new jobs available');
+      return null;
     }
-    return jobId;
+
+    const [[_streamName, messages]] = results;
+    const [messageId, fields] = messages[0];
+
+    // Convert fields array to object for easier access
+    const fieldObj: Record<string, string> = {};
+    for (let i = 0; i < fields.length; i += 2) {
+      fieldObj[fields[i]] = fields[i + 1];
+    }
+
+    if (!fieldObj.jobId) {
+      logger.error('Invalid message format - missing jobId', { messageId, fields });
+      return null;
+    }
+    
+    logger.debug('Retrieved next job from stream', {
+      messageId,
+      jobId: fieldObj.jobId
+    });
+
+    return { jobId: fieldObj.jobId, messageId };
   } catch (error) {
-    logger.error('Failed to get next job from queue', { error });
+    logger.error('Failed to get next job from stream', { error });
+    throw error;
+  }
+}
+
+// Acknowledge job completion
+export async function acknowledgeJob(messageId: string, existingRedis?: RedisType): Promise<void> {
+  const redis = existingRedis || await getRedis();
+  try {
+    await redis.xack(STREAM_NAME, CONSUMER_GROUP, messageId);
+    logger.debug('Acknowledged job completion', { messageId });
+  } catch (error) {
+    logger.error('Failed to acknowledge job', { messageId, error });
     throw error;
   }
 }
