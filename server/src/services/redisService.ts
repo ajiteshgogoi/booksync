@@ -60,8 +60,12 @@ class RedisPool {
         }
         return false;
       },
-      enableOfflineQueue: false, // Disable offline queue to prevent connection buildup
-      enableReadyCheck: true // Add ready check to ensure connection is valid
+      enableOfflineQueue: true, // Enable offline queue to handle temporary connection issues
+      enableReadyCheck: true, // Add ready check to ensure connection is valid
+      commandTimeout: 5000, // Timeout for individual commands
+      socketInitialDelay: 1000, // Initial delay before reconnecting
+      maxLoadingRetryTime: 30000, // Max time to wait for Redis to load data
+      autoResendUnfulfilledCommands: true // Automatically resend commands that failed due to connection issues
     };
 
     const redis = new Redis(process.env.REDIS_URL, options);
