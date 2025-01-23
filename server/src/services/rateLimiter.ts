@@ -70,7 +70,9 @@ class RateLimiter {
       );
       const remainingUploads = Math.max(0, this.limit - record.count);
 
-      if (remainingUploads < this.limit) {
+      if (remainingUploads === 0) {
+        console.log(`[RateLimiter] Upload limit reached. Try again in ${remainingTime} minutes`);
+      } else if (remainingUploads < this.limit) {
         console.log(`[RateLimiter] ${remainingUploads} uploads remaining. Reset in ${remainingTime} minutes`);
       }
 

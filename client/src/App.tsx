@@ -72,9 +72,6 @@ function App() {
       return;
     }
 
-    setSyncStatus('queued');
-    setErrorMessage(null);
-
     const formData = new FormData();
     formData.append('file', file);
 
@@ -89,14 +86,21 @@ function App() {
         const errorData = await response.json();
         if (errorData.code === 'RATE_LIMIT_EXCEEDED') {
           const remainingTime = Math.ceil(errorData.remainingTime / 60);
-          throw new Error(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+          setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+          setSyncStatus('idle');
+          return;
         }
         throw new Error(errorData.message || await response.text());
       }
 
-      await response.json();
+      const syncResponse = await response.json();
+      if (syncResponse.status === 'queued') {
+        setSyncStatus('queued');
+        setErrorMessage(null);
+      } else {
+        setSyncStatus('idle');
+      }
     } catch (error) {
-      setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
     }
   };
@@ -231,15 +235,14 @@ function App() {
                 </label>
               </div>
 
-              {errorMessage && (
-                <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif text-center">
-                  ❌ {errorMessage}
-                </div>
-              )}
-
-              {file && (
-                <>
-                  {highlightCount > 0 && (
+                  {errorMessage && (
+                    <div className="mt-4 p-4 bg-[#ffebee] text-[#c62828] rounded-md font-serif text-center">
+                      ❌ {errorMessage}
+                    </div>
+                  )}
+                  {file && (
+                    <>
+                      {highlightCount > 0 && (
                     <div className="mt-4 text-[#4a7c59] text-center font-serif">
                       Found {highlightCount} highlights
                     </div>
@@ -254,7 +257,7 @@ function App() {
                      syncStatus === 'queued' ? 'In Queue...' : 'Sync Highlights'}
                   </button>
 
-                  {(syncStatus === 'queued') && (
+                  {syncStatus === 'queued' && !errorMessage && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
                          <div className="text-[#3d2b1f] font-semibold text-lg relative overflow-hidden">
