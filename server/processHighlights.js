@@ -57,8 +57,9 @@ async function main() {
     }
 
     // Transform filename to match R2 format
-    // Use the input filename directly as it should already be in the correct R2 format
-    const r2FileName = inputFileName;
+    // Extract timestamp from the environment variable or use current timestamp
+    const envTimestamp = process.env.TIMESTAMP || Date.now().toString();
+    const r2FileName = `clippings-default-user-id-${envTimestamp}.txt`;
 
     debug('Starting file processing:', { inputFileName, r2FileName });
 
