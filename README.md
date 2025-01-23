@@ -136,14 +136,23 @@ When you upload My Clippings.txt, the parser:
   - Highlight hashes: 24 hours
   - Book metadata: 24 hours
   - Page IDs: 24 hours
+- Memory-efficient batch processing:
+  - Processes entries in configurable batches (default 100)
+  - Reduces memory usage for large files
+  - Shows progress per batch
+  - Maintains full validation and deduplication
 
 ### 3. Sync Layer
 During synchronization:
 - Processes highlights in batches of 100
 - Implements Notion API rate limiting (10 requests per minute)
 - Automatically fetches book covers from:
-  - OpenLibrary
-  - Google Books
+  - OpenLibrary (with retry mechanism)
+  - Google Books (with retry mechanism)
+- Implements robust retry mechanism:
+  - Exponential backoff with jitter
+  - Configurable retry attempts (default 3)
+  - Smart delay between retries (1s, 2s, 4s with randomization)
 - Creates or updates Notion pages with:
   - Title
   - Author
