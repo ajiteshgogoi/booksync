@@ -20,6 +20,10 @@ class InMemoryStore {
   clear(): void {
     this.store.clear();
   }
+
+  getAll(): { [key: string]: any } {
+    return Object.fromEntries(this.store.entries());
+  }
 }
 
 export { InMemoryStore };
