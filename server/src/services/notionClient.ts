@@ -143,8 +143,8 @@ export async function updateNotionDatabase(highlights: Highlight[]): Promise<voi
       throw new Error('No OAuth token available');
     }
 
-    const { database_id } = JSON.parse(tokenData);
-    if (!database_id) {
+    const { databaseId } = JSON.parse(tokenData);
+    if (!databaseId) {
       throw new Error('No database ID configured');
     }
 
@@ -153,7 +153,7 @@ export async function updateNotionDatabase(highlights: Highlight[]): Promise<voi
     for (const highlight of highlights) {
       try {
         await client.pages.create({
-          parent: { database_id },
+          parent: { database_id: databaseId },
           properties: {
             'Book Title': {
               title: [{ text: { content: highlight.bookTitle } }]
