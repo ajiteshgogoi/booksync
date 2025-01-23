@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import { processFileContent } from './build/src/services/processService.js';
-import { RedisService } from './build/src/services/redisService.js';
+import { RedisService, redisPool } from './build/src/services/redisService.js';
 import { streamFile } from './build/src/services/r2Service.js';
 
 dotenv.config();
 
-// Debug helper
-const debug = (...args) => console.log('[Debug]', ...args);
+// Debug helper with timestamp
+const debug = (...args) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[Debug ${timestamp}]`, ...args);
+};
 
 async function getTokenData() {
+  debug('Initializing Redis service...');
+  const redis = await RedisService.init();
+  debug('Redis service initialized');
+  
   try {
-    const redis = global.redisService || await RedisService.init();
+    debug('Searching for OAuth keys...');
     const keys = await redis.keys('oauth:*');
     
     if (keys.length === 0) {
@@ -21,11 +28,13 @@ async function getTokenData() {
     debug('Found OAuth keys:', keys);
     
     // Get the first workspace's token data
+    debug('Retrieving token data...');
     const tokenData = await redis.get(keys[0]);
     if (!tokenData) {
       throw new Error('Failed to retrieve token data from Redis');
     }
 
+    debug('Parsing token data...');
     const tokenDataObj = JSON.parse(tokenData);
     
     // Validate database ID format (Notion database IDs are UUIDs)
@@ -40,7 +49,8 @@ async function getTokenData() {
     debug('Retrieved token data:', tokenDataObj);
     return {
       databaseId: tokenDataObj.databaseId,
-      userId: tokenDataObj.userId
+      userId: tokenDataObj.userId,
+      redis // Return redis instance for cleanup
     };
   } catch (error) {
     console.error('Error retrieving token data:', error);
@@ -49,22 +59,18 @@ async function getTokenData() {
 }
 
 async function main() {
+  let redisInstance = null;
+  
   try {
-    const inputFileName = process.env.FILE_NAME;
-    
-    if (!inputFileName) {
-      throw new Error('Missing required environment variable: FILE_NAME');
-    }
-
-    // Transform filename to match R2 format
-    // Use the R2 filename provided from the frontend upload
+    debug('Starting main process...');
+    const fileName = process.env.FILE_NAME;
     const r2FileName = process.env.R2_FILE_NAME;
     
-    if (!r2FileName) {
-      throw new Error('Missing required environment variable: R2_FILE_NAME');
+    if (!fileName || !r2FileName) {
+      throw new Error(`Missing required environment variables: ${!fileName ? 'FILE_NAME' : ''} ${!r2FileName ? 'R2_FILE_NAME' : ''}`);
     }
 
-    debug('Starting file processing:', { inputFileName, r2FileName });
+    debug('Environment variables validated:', { fileName, r2FileName });
 
     // Stream file from R2
     debug('Streaming file from R2...');
@@ -84,7 +90,8 @@ async function main() {
     });
 
     debug('Getting token data...');
-    const { databaseId, userId } = await getTokenData();
+    const { databaseId, userId, redis } = await getTokenData();
+    redisInstance = redis;
 
     debug('Starting highlights processing with:', {
       userId,
@@ -94,21 +101,49 @@ async function main() {
     });
 
     await processFileContent(userId, fileContent, databaseId);
-    console.log('File processing completed successfully');
+    debug('File processing completed successfully');
   } catch (error) {
-    console.error('Failed to process file:', error);
-    // Log detailed error information
-    if (error.response) {
-      console.error('Response error:', {
+    debug('Error occurred during processing:', {
+      message: error.message,
+      stack: error.stack,
+      responseError: error.response ? {
         status: error.response.status,
         data: error.response.data
-      });
+      } : null
+    });
+    throw error;
+  } finally {
+    if (redisInstance) {
+      debug('Cleaning up Redis instance...');
+      try {
+        await RedisService.cleanup();
+        await redisPool.cleanup();
+        debug('Redis cleanup completed');
+      } catch (cleanupError) {
+        console.error('Error during Redis cleanup:', cleanupError);
+      }
     }
-    process.exit(1);
   }
 }
 
+// Top-level error handling with proper cleanup
 main().catch(error => {
-  console.error('Unhandled error:', error);
+  console.error('Fatal error:', {
+    message: error.message,
+    stack: error.stack
+  });
   process.exit(1);
+});
+
+// Handle process termination
+process.on('SIGTERM', async () => {
+  debug('Received SIGTERM signal');
+  try {
+    await RedisService.cleanup();
+    await redisPool.cleanup();
+    debug('Cleanup completed on SIGTERM');
+  } catch (error) {
+    console.error('Error during SIGTERM cleanup:', error);
+  }
+  process.exit(0);
 });
