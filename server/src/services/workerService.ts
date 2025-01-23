@@ -18,8 +18,7 @@ class WorkerService {
 
     try {
       // Initialize Redis stream and consumer group
-      const redis = await getRedis();
-      await initializeStream(redis);
+      await initializeStream();
 
       // Start processing loop
       while (this.isRunning) {
