@@ -30,8 +30,11 @@ async function getTokenData() {
       throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
     }
 
-    console.log('Retrieved token data:', { databaseId, userId });
-    return { databaseId, userId };
+    console.log('Retrieved token data:', tokenDataObj);
+    return {
+      databaseId: tokenDataObj.databaseId,
+      userId: tokenDataObj.userId
+    };
   } catch (error) {
     console.error('Error retrieving token data:', error);
     throw error;
