@@ -10,13 +10,13 @@ const logger = {
 };
 
 // Connection pool configuration - optimized for serverless
-const POOL_SIZE = process.env.VERCEL ? 2 : 5; // Smaller pool for serverless
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Faster timeout for serverless
-const MAX_RETRIES = process.env.VERCEL ? 1 : 3; // Fewer retries for serverless
-const RETRY_DELAY = 500; // 500ms
-const CONNECTION_TIMEOUT = 15000; // Increased from 10s to 15s max connection usage time
-const CONNECTION_MAX_AGE = 300000; // 5m max connection age
-const CONNECTION_IDLE_TIMEOUT = 30000; // Reduced from 1m to 30s idle timeout
+const POOL_SIZE = process.env.VERCEL ? 1 : 3; // Reduced pool size for both environments
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 500 : 2000; // Reduced timeouts
+const MAX_RETRIES = process.env.VERCEL ? 1 : 2; // Reduced retries
+const RETRY_DELAY = 250; // Reduced retry delay
+const CONNECTION_TIMEOUT = 10000; // Reduced from 15s to 10s max connection usage time
+const CONNECTION_MAX_AGE = 180000; // Reduced from 5m to 3m max connection age
+const CONNECTION_IDLE_TIMEOUT = 15000; // Reduced from 30s to 15s idle timeout
 const REAPER_INTERVAL = 15000; // Run reaper every 15s instead of 30s
 const MAX_CONNECTION_WAITERS = 10; // Maximum number of connection waiters
 
@@ -528,8 +528,9 @@ export async function setJobStatus(jobId: string, status: JobStatus, existingRed
   }
 }
 
-export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
-  const redis = await getRedis();
+export async function getJobStatus(jobId: string, existingRedis?: RedisType): Promise<JobStatus | null> {
+  const redis = existingRedis || await getRedis();
+  const shouldRelease = !existingRedis;
   try {
     const status = await redis.get(`job:${jobId}:status`);
     if (status) {
@@ -541,7 +542,9 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     logger.error('Failed to get job status', { jobId, error });
     throw error;
   } finally {
-    redisPool.release(redis);
+    if (shouldRelease) {
+      redisPool.release(redis);
+    }
   }
 }
 

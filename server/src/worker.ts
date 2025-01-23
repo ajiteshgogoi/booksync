@@ -100,8 +100,8 @@ export const startWorker = async () => {
         jobsProcessed++;
 
         try {
-          // Check job status before processing
-          const currentStatus = await getJobStatus(jobId);
+          // Check job status before processing using worker's Redis connection
+          const currentStatus = await getJobStatus(jobId, workerRedis);
           console.log('Current job status:', currentStatus);
 
           if (currentStatus?.state === 'completed') {
@@ -127,7 +127,7 @@ export const startWorker = async () => {
           console.log('Job completed successfully:', jobId);
         } catch (error) {
           console.error('Error processing job:', jobId, error);
-          const status = await getJobStatus(jobId);
+          const status = await getJobStatus(jobId, workerRedis);
           
           if (error instanceof Error && error.message === 'Job timeout') {
             // If job timed out, requeue it to continue from last processed index
@@ -179,7 +179,7 @@ export const startWorker = async () => {
 
 async function processJobWithStatus(jobId: string, redis: RedisType): Promise<void> {
   // Get initial status
-  const initialStatus = await getJobStatus(jobId);
+  const initialStatus = await getJobStatus(jobId, redis);
   console.debug('Initial job status:', initialStatus);
 
   // Update status to show we're starting
