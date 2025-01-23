@@ -324,15 +324,21 @@ The application uses a hybrid deployment approach for optimal performance:
     Note: The same R2 configuration must be added to GitHub Actions secrets in step 4
 
 4. Add GitHub Repository Secrets:
-   - Go to your GitHub repository → Settings → Secrets and variables → Actions
-   - Add the following secrets:
-     ```
-     REDIS_URL=your_redis_connection_url
-     NOTION_OAUTH_CLIENT_ID=your_client_id
-     NOTION_OAUTH_CLIENT_SECRET=your_client_secret
-     NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
-     GITHUB_ACCESS_TOKEN=your_github_token    # Required for GitHub Actions workflow
-     ```
+    - Go to your GitHub repository → Settings → Secrets and variables → Actions
+    - Add the following secrets:
+      ```
+      REDIS_URL=your_redis_connection_url
+      NOTION_OAUTH_CLIENT_ID=your_client_id
+      NOTION_OAUTH_CLIENT_SECRET=your_client_secret
+      NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
+      GITHUB_ACCESS_TOKEN=your_github_token    # Required for GitHub Actions workflow
+
+      # R2 Storage Configuration (same as Vercel)
+      R2_ENDPOINT=your_r2_endpoint
+      R2_ACCESS_KEY_ID=your_r2_access_key
+      R2_SECRET_ACCESS_KEY=your_r2_secret_key
+      R2_BUCKET_NAME=your_r2_bucket_name
+      ```
    Note: Use the same Notion OAuth credentials as your Vercel deployment
    For GITHUB_ACCESS_TOKEN, create a personal access token with 'repo' scope
 
