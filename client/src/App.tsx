@@ -49,9 +49,18 @@ function App() {
         body: formData,
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message);
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 429) {
+          const remainingTime = Math.ceil(errorData.remainingTime / 60);
+          setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+          setSyncStatus('idle');
+          return;
+        }
+        throw new Error(errorData.message || await response.text());
+      }
 
+      const data = await response.json();
       setHighlightCount(data.count);
       setSyncStatus('idle');
     } catch (error) {

@@ -66,7 +66,7 @@ class RateLimiter {
 
       const remainingTime = Math.max(
         0,
-        Math.ceil((this.windowMs - (now - record.startTime)) / 1000 / 60)
+        Math.ceil((this.windowMs - (now - record.startTime)) / 1000)
       );
       const remainingUploads = Math.max(0, this.limit - record.count);
 
