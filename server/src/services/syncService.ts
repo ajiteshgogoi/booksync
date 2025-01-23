@@ -1,5 +1,5 @@
-import { parseClippings, Highlight as ParsedHighlight } from '../utils/parseClippings.js';
-import { updateNotionDatabase, Highlight as NotionHighlight } from './notionClient.js';
+import { parseClippings } from '../utils/parseClippings.js';
+import { updateNotionDatabase } from './notionClient.js';
 import {
   getRedis,
   checkRateLimit,
@@ -31,34 +31,28 @@ const MAX_HIGHLIGHTS_PER_RUN = isGitHubAction ? 1000 : // Process up to 1000 in 
                               isProd ? 15 : // Limited in Vercel
                               Infinity; // No limit locally
 
-interface HighlightWithDb extends ParsedHighlight {
-  databaseId: string;
-  version: number;
-}
-
 export async function queueSyncJob(
   databaseId: string,
   fileContent: string
 ): Promise<string> {
   console.debug('Starting sync job for database:', databaseId);
   const jobId = `sync:${databaseId}:${Date.now()}`;
-  const parsedHighlights = await parseClippings(fileContent);
-  console.debug('Parsed highlights count:', parsedHighlights.length);
+  const highlights = parseClippings(fileContent);
+  console.debug('Parsed highlights count:', highlights.length);
   const redis = await getRedis();
   console.debug('Redis client initialized');
   
   // Store highlights in Redis in chunks
-  for (let i = 0; i < parsedHighlights.length; i++) {
-    const highlight = parsedHighlights[i];
-    // Add databaseId and version to the highlight
-    const highlightWithDb: HighlightWithDb = {
+  for (let i = 0; i < highlights.length; i++) {
+    const highlight = highlights[i];
+    // Add databaseId to the highlight
+    const highlightWithDb = {
       ...highlight,
-      databaseId,
-      version: 1
+      databaseId
     };
     const key = `highlights:${jobId}:${i}`;
     const value = JSON.stringify(highlightWithDb);
-    console.debug(`Storing highlight ${i + 1}/${parsedHighlights.length}:`, { key, value });
+    console.debug(`Storing highlight ${i + 1}/${highlights.length}:`, { key, value });
     await redis.set(key, value, 'EX', JOB_TTL);
     
     // Verify storage
@@ -70,7 +64,7 @@ export async function queueSyncJob(
     state: 'pending',
     progress: 0,
     message: 'Job queued',
-    total: parsedHighlights.length,
+    total: highlights.length,
     lastProcessedIndex: 0
   });
   
@@ -91,7 +85,7 @@ export async function processSyncJob(
     const lastProcessedIndex = status?.lastProcessedIndex || 0;
     
     // Get all highlights
-    const highlights = await getHighlightsFromQueue(jobId) as HighlightWithDb[];
+    const highlights = await getHighlightsFromQueue(jobId);
     const total = highlights.length;
     
     if (lastProcessedIndex >= total) {
@@ -161,7 +155,7 @@ export async function processSyncJob(
             throw new Error('Batch contains highlights from multiple databases');
           }
 
-          await updateNotionDatabase(batch as NotionHighlight[]);
+          await updateNotionDatabase(batch);
           currentProcessed += batch.length;
           
           // Update progress
@@ -229,9 +223,9 @@ export async function getSyncStatus(jobId: string): Promise<JobStatus | null> {
   return await getJobStatus(jobId);
 }
 
-async function getHighlightsFromQueue(jobId: string): Promise<HighlightWithDb[]> {
+async function getHighlightsFromQueue(jobId: string) {
   const redis = await getRedis();
-  const highlights: HighlightWithDb[] = [];
+  const highlights = [];
   
   try {
     const pattern = `highlights:${jobId}:*`;

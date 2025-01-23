@@ -1,10 +1,5 @@
-import { parseClippings, Highlight as ParsedHighlight } from '../utils/parseClippings.js';
+import { parseClippings } from '../utils/parseClippings.js';
 import { addJobToQueue, setJobStatus, getRedis, JOB_TTL } from './redisService.js';
-
-interface HighlightWithDb extends ParsedHighlight {
-  databaseId: string;
-  version: number;
-}
 
 export async function processFileContent(
   userId: string,
@@ -18,19 +13,18 @@ export async function processFileContent(
     const jobId = `sync:${userId}:${Date.now()}`;
     
     // Parse all highlights at once
-    const parsedHighlights = await parseClippings(fileContent);
-    console.log('Parsed highlights count:', parsedHighlights.length);
+    const highlights = parseClippings(fileContent);
+    console.log('Parsed highlights count:', highlights.length);
     
     // Use Redis pipeline for batch operations
     const pipeline = redis.pipeline();
     
     // Store all highlights in a single pipeline
     console.log('Storing highlights in pipeline...');
-    parsedHighlights.forEach((highlight: ParsedHighlight, i: number) => {
-      const highlightWithDb: HighlightWithDb = {
+    highlights.forEach((highlight, i) => {
+      const highlightWithDb = {
         ...highlight,
-        databaseId,
-        version: 1
+        databaseId
       };
       const key = `highlights:${jobId}:${i}`;
       pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
@@ -42,7 +36,7 @@ export async function processFileContent(
       state: 'pending',
       progress: 0,
       message: 'File processed, highlights queued',
-      total: parsedHighlights.length,
+      total: highlights.length,
       lastProcessedIndex: 0
     });
 
