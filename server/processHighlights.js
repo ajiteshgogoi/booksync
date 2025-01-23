@@ -57,9 +57,12 @@ async function main() {
     }
 
     // Transform filename to match R2 format
-    // Extract timestamp from the environment variable or use current timestamp
-    const envTimestamp = process.env.TIMESTAMP || Date.now().toString();
-    const r2FileName = `clippings-default-user-id-${envTimestamp}.txt`;
+    // Use the R2 filename provided from the frontend upload
+    const r2FileName = process.env.R2_FILE_NAME;
+    
+    if (!r2FileName) {
+      throw new Error('Missing required environment variable: R2_FILE_NAME');
+    }
 
     debug('Starting file processing:', { inputFileName, r2FileName });
 

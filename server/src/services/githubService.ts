@@ -1,12 +1,38 @@
 import axios from 'axios';
 import { getUploadUrl } from './r2Service.js';
+import { getRedis } from './redisService.js';
+
+async function getTokenData() {
+  const redis = await getRedis();
+  const keys = await redis.keys('oauth:*');
+  
+  if (keys.length === 0) {
+    throw new Error('No OAuth tokens found in Redis');
+  }
+  
+  const tokenData = await redis.get(keys[0]);
+  if (!tokenData) {
+    throw new Error('Failed to retrieve token data from Redis');
+  }
+
+  const tokenDataObj = JSON.parse(tokenData);
+  
+  if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
+    throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
+  }
+
+  return tokenDataObj.userId;
+}
 
 export async function triggerProcessing(
   fileContent: string,
-  userId: string,
+  _userId: string, // Ignored as we'll get real userId from Redis
   clientIp: string
 ): Promise<string> {
-  // Generate unique file name
+  // Get real user ID from Redis
+  const userId = await getTokenData();
+  
+  // Generate unique file name with real user ID
   const fileName = `clippings-${userId}-${Date.now()}.txt`;
   
   try {
