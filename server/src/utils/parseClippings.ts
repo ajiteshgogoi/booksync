@@ -14,7 +14,7 @@ function generateHighlightHash(highlight: string[], location: string, bookTitle:
   return createHash('sha256').update(content).digest('hex');
 }
 
-// Split text into chunks of maxLength, ensuring chunks end at sentence boundaries
+// Split text into chunks of maxLength, ensuring chunks end at sentence boundaries and strictly enforcing length limit
 function splitText(text: string, maxLength = 2000): string[] {
   const chunks: string[] = [];
   let currentChunk = '';
@@ -23,42 +23,63 @@ function splitText(text: string, maxLength = 2000): string[] {
   const sentences = text.split(/(?<=[.!?])\s+/);
   
   for (const sentence of sentences) {
-    // If adding this sentence would exceed maxLength, finalize current chunk
-    if (currentChunk.length + sentence.length + 1 > maxLength) {
+    const potentialChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
+    
+    // If adding this sentence would exceed maxLength, start a new chunk
+    if (potentialChunk.length > maxLength) {
       if (currentChunk) {
         chunks.push(currentChunk.trim());
         currentChunk = '';
       }
       
-      // If a single sentence is too long, split it at spaces
+      // If a single sentence is too long, split it into smaller chunks
       if (sentence.length > maxLength) {
-        let words = sentence.split(' ');
-        let currentLine = '';
-        
-        for (const word of words) {
-          if (currentLine.length + word.length + 1 > maxLength) {
-            chunks.push(currentLine.trim());
-            currentLine = '';
+        let remainingText = sentence;
+        while (remainingText.length > 0) {
+          // Find the last space within maxLength characters
+          let cutoff = maxLength;
+          if (remainingText.length > maxLength) {
+            cutoff = remainingText.lastIndexOf(' ', maxLength);
+            if (cutoff === -1) cutoff = maxLength; // If no space found, hard break at maxLength
           }
-          currentLine += (currentLine ? ' ' : '') + word;
-        }
-        
-        if (currentLine) {
-          chunks.push(currentLine.trim());
+          
+          chunks.push(remainingText.substring(0, cutoff).trim());
+          remainingText = remainingText.substring(cutoff).trim();
         }
       } else {
         currentChunk = sentence;
       }
     } else {
-      currentChunk += (currentChunk ? ' ' : '') + sentence;
+      currentChunk = potentialChunk;
     }
   }
   
   if (currentChunk) {
-    chunks.push(currentChunk.trim());
+    // Final validation check
+    if (currentChunk.length > maxLength) {
+      const lastSpace = currentChunk.lastIndexOf(' ', maxLength);
+      if (lastSpace !== -1) {
+        chunks.push(currentChunk.substring(0, lastSpace).trim());
+        chunks.push(currentChunk.substring(lastSpace).trim());
+      } else {
+        chunks.push(currentChunk.substring(0, maxLength).trim());
+        if (currentChunk.length > maxLength) {
+          chunks.push(currentChunk.substring(maxLength).trim());
+        }
+      }
+    } else {
+      chunks.push(currentChunk.trim());
+    }
   }
   
-  return chunks;
+  // Final validation to ensure no chunk exceeds maxLength
+  return chunks.map(chunk => {
+    if (chunk.length > maxLength) {
+      console.warn(`Found chunk exceeding ${maxLength} characters, truncating...`);
+      return chunk.substring(0, maxLength);
+    }
+    return chunk;
+  });
 }
 
 export function parseClippings(fileContent: string): Highlight[] {
@@ -119,6 +140,13 @@ export function parseClippings(fileContent: string): Highlight[] {
 
       // Split highlight into chunks at sentence boundaries
       const highlightChunks = splitText(highlightContent);
+      
+      // Log if any chunk is close to the limit
+      highlightChunks.forEach((chunk, i) => {
+        if (chunk.length > 1900) {  // Warning threshold at 1900 characters
+          console.warn(`Long highlight detected in book "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
+        }
+      });
 
       const groupKey = `${bookTitle}|${location.split('-')[0]}`;
       if (!highlightGroups.has(groupKey)) {

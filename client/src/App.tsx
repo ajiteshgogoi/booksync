@@ -100,7 +100,6 @@ const handleSync = async () => {
     }
 
     // Only proceed with sync if rate limit check passes
-    setSyncStatus('queued');
     const formData = new FormData();
     formData.append('file', file);
 
@@ -110,31 +109,25 @@ const handleSync = async () => {
       credentials: 'include'
     });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (errorData.code === 'RATE_LIMIT_EXCEEDED') {
-          const remainingTime = Math.ceil(errorData.remainingTime / 60);
-          setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
-          setSyncStatus('idle');
-          return;
-        }
-        throw new Error(errorData.message || await response.text());
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
+    if (!response.ok) {
+      const errorData = await response.json();
+      if (errorData.code === 'RATE_LIMIT_EXCEEDED') {
+        const remainingTime = Math.ceil(errorData.remainingTime / 60);
+        setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
         setSyncStatus('idle');
-        setErrorMessage(errorData.message || 'Failed to sync highlights');
         return;
       }
+      throw new Error(errorData.message || await response.text());
+    }
 
-      const syncResponse = await response.json();
-      if (syncResponse.status === 'queued') {
-        setSyncStatus('queued');
-        setErrorMessage(null);
-      } else {
-        setSyncStatus('idle');
-      }
+    const syncResponse = await response.json();
+    if (syncResponse.success) {
+      setSyncStatus('queued');
+      setErrorMessage(null);
+    } else {
+      setSyncStatus('idle');
+      setErrorMessage(syncResponse.message || 'Failed to sync highlights');
+    }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
     }
