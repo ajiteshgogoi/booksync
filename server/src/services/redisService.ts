@@ -120,14 +120,15 @@ class RedisPool {
 
     // First pass: look for available valid connections
     for (const connection of this.pool) {
-      if (!connection.inUse && !this.isConnectionStale(connection)) {
-        if (await this.validateConnection(connection)) {
+      if (!connection.inUse) {
+        const isStale = await this.isConnectionStale(connection);
+        if (!isStale && await this.validateConnection(connection)) {
           connection.inUse = true;
           connection.lastUsed = now;
           connection.acquiredAt = now;
           return connection.client;
         } else {
-          // Connection invalid, replace it
+          // Connection invalid or stale, replace it
           await this.replaceConnection(connection);
         }
       }
@@ -172,25 +173,30 @@ class RedisPool {
         }
       }, POOL_ACQUIRE_TIMEOUT);
 
-      const checkPool = async () => {
-        const availableConn = this.pool.find(conn => !conn.inUse);
-        if (availableConn) {
-          clearTimeout(timeoutId);
-          availableConn.inUse = true;
-          availableConn.lastUsed = now;
-          availableConn.acquiredAt = now;
-          if (await this.validateConnection(availableConn)) {
-            resolve(availableConn.client);
-          } else {
-            await this.replaceConnection(availableConn);
-            resolve(availableConn.client);
+      const checkPoolInterval = setInterval(async () => {
+        try {
+          const availableConn = this.pool.find(conn => !conn.inUse);
+          if (availableConn) {
+            clearTimeout(timeoutId);
+            clearInterval(checkPoolInterval);
+            
+            availableConn.inUse = true;
+            availableConn.lastUsed = now;
+            availableConn.acquiredAt = now;
+            
+            if (await this.validateConnection(availableConn)) {
+              resolve(availableConn.client);
+            } else {
+              await this.replaceConnection(availableConn);
+              resolve(availableConn.client);
+            }
           }
-        } else {
-          setTimeout(checkPool, 100);
+        } catch (error) {
+          clearInterval(checkPoolInterval);
+          clearTimeout(timeoutId);
+          reject(error);
         }
-      };
-
-      checkPool();
+      }, 100);
     });
   }
 
@@ -204,21 +210,30 @@ class RedisPool {
     }
   }
 
-  private isConnectionStale(connection: PoolConnection): boolean {
+  private async isConnectionStale(connection: PoolConnection): Promise<boolean> {
     const now = Date.now();
+    
+    // Immediately validate connection if it's not in use
+    if (!connection.inUse && !await this.validateConnection(connection)) {
+      return true;
+    }
+
     // Check if connection is too old
     if (now - connection.createdAt > CONNECTION_MAX_AGE) {
       return true;
     }
+    
     // Check if connection has been idle too long
     if (!connection.inUse && now - connection.lastUsed > CONNECTION_IDLE_TIMEOUT) {
       return true;
     }
+    
     // Check if connection has been in use too long
     if (connection.inUse && connection.acquiredAt &&
         now - connection.acquiredAt > CONNECTION_TIMEOUT) {
       return true;
     }
+    
     return false;
   }
 
@@ -255,9 +270,14 @@ class RedisPool {
           continue;
         }
 
-        if (this.isConnectionStale(connection) || !await this.validateConnection(connection)) {
-          logger.info(`Replacing stale connection ${connection.id}`);
-          await this.replaceConnection(connection);
+        try {
+          const isStale = await this.isConnectionStale(connection);
+          if (isStale) {
+            logger.info(`Replacing stale connection ${connection.id}`);
+            await this.replaceConnection(connection);
+          }
+        } catch (error) {
+          logger.error(`Error checking connection ${connection.id}:`, error);
         }
       }
     }, REAPER_INTERVAL);
@@ -312,6 +332,7 @@ export async function getRedis(): Promise<RedisType> {
           return async function(this: any, ...args: unknown[]) {
             try {
               const result = await original.apply(this === proxy ? target : this, args);
+              redisPool.release(target); // Release connection after successful operation
               return result;
             } catch (error) {
               redisPool.release(target);
