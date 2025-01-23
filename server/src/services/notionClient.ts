@@ -117,14 +117,6 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
         tokenData.owner?.user?.id || ''
       );
     }
-    
-    // Initialize client with better error handling
-    _client = new Client({
-      auth: tokenData.access_token,
-    });
-
-    // Find the database with retry logic
-    await findKindleHighlightsDatabase();
   } catch (error) {
     console.error('Failed to set OAuth token:', error);
     throw error;

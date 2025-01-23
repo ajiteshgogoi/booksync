@@ -62,7 +62,7 @@ const RATE_LIMIT_MAX = 10; // Max requests per window
 const BOOK_TTL = 60 * 60 * 24; // 24 hours
 const HIGHLIGHT_TTL = 60 * 60 * 24; // 24 hours
 const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
-const TOKEN_TTL = 60 * 60 * 2; // 2 hours
+const TOKEN_TTL = 60 * 60 * 24; // 24 hours
 
 // Queue functions
 export async function addJobToQueue(jobId: string): Promise<void> {
