@@ -51,6 +51,14 @@ export async function triggerProcessing(
 
     // Send the dispatch request
     try {
+      console.log('\nStarting GitHub API request...');
+      console.log('Request headers:', {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'BookSync-App',
+        'Content-Type': 'application/json',
+        'Authorization': 'token <redacted>'
+      });
+
       const response = await axios.post(
         'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
         payload,
@@ -64,10 +72,16 @@ export async function triggerProcessing(
         }
       );
 
-      console.log('\nGitHub API Response:', {
+      console.log('\nGitHub API Response received');
+      console.log('Response details:', {
         status: response.status,
         statusText: response.statusText,
-        headers: response.headers
+        headers: response.headers,
+        rateLimit: {
+          limit: response.headers['x-ratelimit-limit'],
+          remaining: response.headers['x-ratelimit-remaining'],
+          reset: response.headers['x-ratelimit-reset']
+        }
       });
 
       if (response.status === 204) {
@@ -77,12 +91,21 @@ export async function triggerProcessing(
         throw new Error(`Unexpected response status: ${response.status}`);
       }
     } catch (apiError: any) {
-      console.error('\nGitHub API Error:', {
+      console.error('\nGitHub API Error Details:', {
+        isAxiosError: apiError.isAxiosError,
         status: apiError.response?.status,
         statusText: apiError.response?.statusText,
         message: apiError.response?.data?.message,
         documentation: apiError.response?.data?.documentation_url,
-        headers: apiError.response?.headers
+        headers: apiError.response?.headers,
+        code: apiError.code,
+        name: apiError.name,
+        stack: apiError.stack?.split('\n')[0],  // First line of stack trace
+        config: {
+          url: apiError.config?.url,
+          method: apiError.config?.method,
+          timeout: apiError.config?.timeout
+        }
       });
 
       if (apiError.response?.status === 404) {
