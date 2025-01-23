@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { processFileContent } from './build/src/services/processService.js';
 import { getRedis } from './build/src/services/redisService.js';
+import { streamFile } from './build/src/services/r2Service.js';
 
 async function getTokenData() {
   try {
@@ -43,17 +44,31 @@ async function getTokenData() {
 
 async function main() {
   try {
-    const fileContent = process.env.FILE_CONTENT;
+    const fileName = process.env.FILE_NAME;
     
-    if (!fileContent) {
-      throw new Error('Missing required environment variable: FILE_CONTENT');
+    if (!fileName) {
+      throw new Error('Missing required environment variable: FILE_NAME');
     }
+
+    // Stream file from R2
+    const fileStream = await streamFile(fileName);
+    let fileContent = '';
+    
+    fileStream.on('data', (chunk) => {
+      fileContent += chunk.toString();
+    });
+
+    await new Promise((resolve, reject) => {
+      fileStream.on('end', resolve);
+      fileStream.on('error', reject);
+    });
 
     const { databaseId, userId } = await getTokenData();
 
     console.log('Starting file processing with:', {
       userId,
       databaseId,
+      fileName,
       contentLength: fileContent.length
     });
 

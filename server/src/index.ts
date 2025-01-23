@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
 import type { Express } from 'express-serve-static-core';
@@ -34,7 +35,11 @@ function loadEnv() {
   const required = [
     'NOTION_OAUTH_CLIENT_ID',
     'NOTION_OAUTH_CLIENT_SECRET',
-    'REDIS_URL'
+    'REDIS_URL',
+    'R2_ENDPOINT',
+    'R2_ACCESS_KEY_ID', 
+    'R2_SECRET_ACCESS_KEY',
+    'R2_BUCKET_NAME'
   ];
   
   const missing = required.filter(key => !process.env[key]);

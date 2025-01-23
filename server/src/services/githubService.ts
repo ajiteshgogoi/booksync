@@ -1,10 +1,23 @@
 import axios from 'axios';
+import { getUploadUrl } from './r2Service.js';
 
 export async function triggerProcessing(
   fileContent: string,
   userId: string,
   clientIp: string
-): Promise<void> {
+): Promise<string> {
+  // Generate unique file name
+  const fileName = `clippings-${userId}-${Date.now()}.txt`;
+  
+  // Get pre-signed upload URL
+  const uploadUrl = await getUploadUrl(fileName);
+  
+  // Upload file directly to R2
+  await axios.put(uploadUrl, fileContent, {
+    headers: {
+      'Content-Type': 'text/plain'
+    }
+  });
   console.log('\n=== GitHub Processing Trigger Start ===');
   
   try {
@@ -23,21 +36,25 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Prepare the payload
+    // Prepare the payload with file reference
     const payload = {
       event_type: 'process_highlights',
       client_payload: {
-        fileContent,
+        fileName,
         userId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        clientIp
       }
     };
 
     console.log('\nPreparing GitHub dispatch:', {
       url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
       payloadSize: JSON.stringify(payload).length,
-      contentLength: fileContent.length
+      fileName,
+      uploadUrl
     });
+
+    return fileName;
 
     // Send the dispatch request
     try {
