@@ -94,6 +94,12 @@ REDIS_OAUTH_TTL=7200              # OAuth token cache TTL
 NOTION_RATE_LIMIT=10              # API calls per minute
 GITHUB_ACCESS_TOKEN=your_token    # GitHub personal access token for Actions
 
+# R2 Storage Configuration
+R2_ENDPOINT=your_r2_endpoint
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret_key
+R2_BUCKET_NAME=your_r2_bucket_name
+
 # In client/.env
 VITE_API_URL=http://localhost:3001
 ```
@@ -260,9 +266,25 @@ server/
 │   ├── services/
 │   │   ├── notionClient.ts    # Notion API integration
 │   │   ├── redisService.ts    # Redis queue management
+│   │   ├── r2Service.ts       # R2 storage operations
+│   │   ├── githubService.ts   # GitHub Actions trigger & file handling
 │   │   └── syncService.ts     # Highlight sync logic
 │   └── utils/
 │       └── parseClippings.ts  # Kindle file parser
+
+File Processing Flow:
+1. Frontend uploads "My Clippings.txt"
+2. githubService.ts:
+   - Gets user ID from Redis OAuth data
+   - Generates filename: clippings-{userId}-{timestamp}.txt
+   - Uploads file to R2 storage
+   - Triggers GitHub workflow with filename
+
+3. GitHub Actions (processHighlights.js):
+   - Gets filename from workflow payload
+   - Retrieves file from R2 storage
+   - Gets same user ID from Redis
+   - Processes highlights using parseClippings.ts
 ```
 
 ## Deployment
@@ -284,14 +306,22 @@ The application uses a hybrid deployment approach for optimal performance:
    - Install Command: `cd client && npm install`
 
 3. Add Environment Variables in Vercel:
-   ```
-   NOTION_OAUTH_CLIENT_ID=your_client_id
-   NOTION_OAUTH_CLIENT_SECRET=your_client_secret
-   NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
-   CLIENT_URL=https://your-vercel-url.vercel.app
-   REDIS_URL=your_redis_connection_url
-   REDIS_TTL=86400
-   ```
+    ```
+    NOTION_OAUTH_CLIENT_ID=your_client_id
+    NOTION_OAUTH_CLIENT_SECRET=your_client_secret
+    NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
+    CLIENT_URL=https://your-vercel-url.vercel.app
+    REDIS_URL=your_redis_connection_url
+    REDIS_TTL=86400
+
+    # R2 Storage Configuration
+    R2_ENDPOINT=your_r2_endpoint
+    R2_ACCESS_KEY_ID=your_r2_access_key
+    R2_SECRET_ACCESS_KEY=your_r2_secret_key
+    R2_BUCKET_NAME=your_r2_bucket_name
+    ```
+
+    Note: The same R2 configuration must be added to GitHub Actions secrets in step 4
 
 4. Add GitHub Repository Secrets:
    - Go to your GitHub repository → Settings → Secrets and variables → Actions
