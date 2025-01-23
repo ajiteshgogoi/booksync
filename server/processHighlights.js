@@ -50,17 +50,21 @@ async function getTokenData() {
 
 async function main() {
   try {
-    const fileName = process.env.FILE_NAME;
+    const inputFileName = process.env.FILE_NAME;
     
-    if (!fileName) {
+    if (!inputFileName) {
       throw new Error('Missing required environment variable: FILE_NAME');
     }
 
-    debug('Starting file processing:', {fileName});
+    // Transform filename to match R2 format
+    const timestamp = Date.now();
+    const r2FileName = `clippings-default-user-id-${timestamp}.txt`;
+
+    debug('Starting file processing:', { inputFileName, r2FileName });
 
     // Stream file from R2
     debug('Streaming file from R2...');
-    const fileStream = await streamFile(fileName);
+    const fileStream = await streamFile(r2FileName);
     let fileContent = '';
     
     // Convert stream to string
@@ -70,7 +74,7 @@ async function main() {
     }
 
     debug('File loaded from R2:', {
-      fileName,
+      r2FileName,
       contentLength: fileContent.length,
       contentPreview: fileContent.slice(0, 100) + '...'
     });
@@ -81,7 +85,7 @@ async function main() {
     debug('Starting highlights processing with:', {
       userId,
       databaseId,
-      fileName,
+      r2FileName,
       contentLength: fileContent.length
     });
 
