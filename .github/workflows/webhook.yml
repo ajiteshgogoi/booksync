@@ -62,21 +62,54 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Fetching content from gist..."
-          CONTENT=$(curl -L \
+          
+          # Fetch the gist and save full response
+          RESPONSE=$(curl -L -f \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/gists/$GIST_ID" \
-            | jq -r '.files["content.txt"].content')
+            "https://api.github.com/gists/$GIST_ID" || echo "FETCH_FAILED")
+          
+          if [[ "$RESPONSE" == "FETCH_FAILED" ]]; then
+            echo "::error::Failed to fetch gist content"
+            exit 1
+          fi
+          
+          # Extract content and verify it exists
+          CONTENT=$(echo "$RESPONSE" | jq -r '.files["content.txt"].content')
+          
+          if [[ "$CONTENT" == "null" ]] || [[ -z "$CONTENT" ]]; then
+            echo "::error::No content found in gist file 'content.txt'"
+            echo "Full response: $RESPONSE"
+            exit 1
+          fi
+          
+          # Set the environment variable with content
           echo "FILE_CONTENT<<EOF" >> $GITHUB_ENV
           echo "$CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          echo "Content fetched and saved to environment"
+          
+          # Verify content was set
+          echo "Content length: ${#CONTENT} characters"
+          echo "Content successfully saved to environment"
 
       - name: Process File
         run: |
           cd server
+          
+          # Validate FILE_CONTENT environment variable
+          if [[ -z "${FILE_CONTENT}" ]]; then
+            echo "::error::FILE_CONTENT environment variable is empty or not set"
+            echo "Debug info:"
+            echo "Environment variable names:"
+            env | cut -d= -f1 | sort
+            exit 1
+          fi
+          
           echo "Environment variables:"
           echo "FILE_CONTENT length: ${#FILE_CONTENT}"
+          echo "First 100 characters of content:"
+          echo "${FILE_CONTENT:0:100}..."
+          
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
 
