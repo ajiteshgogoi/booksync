@@ -390,7 +390,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   try {
     console.log('\n=== Sync Request Received ===');
     
-    // Get client IP address for rate limiting
+    // Get client IP for rate limiting
     const xForwardedFor = req.headers['x-forwarded-for'];
     const clientIp = Array.isArray(xForwardedFor)
       ? xForwardedFor[0]
@@ -400,29 +400,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       return res.status(400).json({ error: 'Could not determine client IP' });
     }
 
-    if (!req.file) {
-      console.log('No file in request');
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    // Validate file format and content first
-    if (!Buffer.isBuffer(req.file.buffer)) {
-      console.error('Invalid file format - buffer missing');
-      throw new Error('Invalid file format');
-    }
-    
-    const fileContent = req.file.buffer.toString('utf-8');
-    if (typeof fileContent !== 'string') {
-      console.error('Failed to convert file content to string');
-      throw new Error('Failed to convert file content to string');
-    }
-
-    if (!fileContent.includes('==========')) {
-      console.error('Invalid My Clippings file format');
-      throw new Error('Invalid My Clippings file format');
-    }
-
-    // Apply rate limiting after file validation
+    // Check rate limit when sync is requested
     const rateLimit = rateLimiter.check(clientIp);
     if (!rateLimit.allowed) {
       const remainingTime = Math.ceil(rateLimit.remainingTime / 60);
@@ -431,6 +409,13 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         message: `You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`
       });
     }
+
+    if (!req.file) {
+      console.log('No file in request');
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileContent = req.file.buffer.toString('utf-8');
 
     // Increment rate limit counter before proceeding with sync
     rateLimiter.increment(clientIp);
