@@ -158,10 +158,11 @@ export async function getOAuthToken(): Promise<string | null> {
       logger.warn('No OAuth token found');
       return null;
     }
-    const token = await redis.get(keys[0]);
-    if (token) {
+    const tokenData = await redis.get(keys[0]);
+    if (tokenData) {
+      const parsed = JSON.parse(tokenData);
       logger.debug('Retrieved OAuth token');
-      return token;
+      return parsed.token;
     }
     return null;
   } catch (error) {
