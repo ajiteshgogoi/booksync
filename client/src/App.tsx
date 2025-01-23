@@ -7,9 +7,18 @@ type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error';
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    localStorage.getItem('isAuthenticated') === 'true'
-  );
+  const checkAuthExpiration = () => {
+    const authTimestamp = localStorage.getItem('authTimestamp');
+    if (!authTimestamp) return false;
+    
+    const expirationTime = 60 * 60 * 1000; // 1 hour in milliseconds
+    const elapsed = Date.now() - parseInt(authTimestamp);
+    return elapsed < expirationTime;
+  };
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true' && checkAuthExpiration();
+  });
   const [file, setFile] = useState<File | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -53,6 +62,15 @@ function App() {
 
   const handleSync = async () => {
     if (!file) return;
+    
+    // Check auth expiration before sync
+    if (!checkAuthExpiration()) {
+      setIsAuthenticated(false);
+      localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('authTimestamp');
+      setErrorMessage('Your session has expired. Please reconnect to Notion.');
+      return;
+    }
 
     setSyncStatus('queued');
     setErrorMessage(null);
@@ -99,9 +117,12 @@ function App() {
       if (authResult === 'success') {
         setIsAuthenticated(true);
         localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('authTimestamp', Date.now().toString());
+        localStorage.setItem('authTimestamp', Date.now().toString());
       } else if (authResult === 'error' || error) {
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('authTimestamp');
         setErrorMessage(error === 'Invalid OAuth state' ?
           'Connection to Notion was canceled. Please try again.' :
           'Failed to connect to Notion. Please try again.');
@@ -127,6 +148,20 @@ function App() {
 
     initializeAuth().catch(console.error);
   }, []);
+
+  // Check auth expiration periodically
+  useEffect(() => {
+    const checkInterval = setInterval(() => {
+      if (isAuthenticated && !checkAuthExpiration()) {
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        localStorage.removeItem('authTimestamp');
+        setErrorMessage('Your session has expired. Please reconnect to Notion.');
+      }
+    }, 60 * 1000); // Check every minute
+
+    return () => clearInterval(checkInterval);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (window.kofiWidgetOverlay) {
@@ -245,6 +280,7 @@ function App() {
                 <button
                   onClick={async () => {
                     localStorage.removeItem('isAuthenticated');
+                    localStorage.removeItem('authTimestamp');
                     await fetch(`${apiBase}/auth/disconnect`, {
                       method: 'POST',
                       credentials: 'include'
