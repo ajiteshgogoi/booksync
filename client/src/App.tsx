@@ -80,19 +80,35 @@ const handleSync = async () => {
     return;
   }
 
-  setSyncStatus('queued');
   setErrorMessage(null);
 
-  const formData = new FormData();
-  formData.append('file', file);
+  // Check rate limit before proceeding
+  try {
+    const rateLimitResponse = await fetch(`${apiBase}/rate-limit-check`, {
+      method: 'GET',
+      credentials: 'include'
+    });
 
+    if (!rateLimitResponse.ok) {
+      const errorData = await rateLimitResponse.json();
+      if (errorData.code === 'RATE_LIMIT_EXCEEDED') {
+        const remainingTime = Math.ceil(errorData.remainingTime / 60);
+        setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+        return;
+      }
+      throw new Error(errorData.message || await rateLimitResponse.text());
+    }
 
-    try {
-      const response = await fetch(`${apiBase}/sync`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
+    // Only proceed with sync if rate limit check passes
+    setSyncStatus('queued');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${apiBase}/sync`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include'
+    });
 
       if (!response.ok) {
         const errorData = await response.json();
