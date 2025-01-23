@@ -80,6 +80,9 @@ const handleSync = async () => {
     return;
   }
 
+  setSyncStatus('queued');
+  setErrorMessage(null);
+
   const formData = new FormData();
   formData.append('file', file);
 
@@ -100,6 +103,13 @@ const handleSync = async () => {
           return;
         }
         throw new Error(errorData.message || await response.text());
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setSyncStatus('idle');
+        setErrorMessage(errorData.message || 'Failed to sync highlights');
+        return;
       }
 
       const syncResponse = await response.json();
