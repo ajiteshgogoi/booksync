@@ -109,6 +109,29 @@ function generateState() {
          Math.random().toString(36).substring(2, 15);
 }
 
+// Rate limit check endpoint
+app.get(`${apiBasePath}/rate-limit-check`, (req: Request, res: Response) => {
+  const xForwardedFor = req.headers['x-forwarded-for'];
+  const clientIp = Array.isArray(xForwardedFor)
+    ? xForwardedFor[0]
+    : (xForwardedFor || req.socket.remoteAddress);
+  
+  if (!clientIp || typeof clientIp !== 'string') {
+    return res.status(400).json({ error: 'Could not determine client IP' });
+  }
+
+  const rateLimit = rateLimiter.check(clientIp);
+  if (!rateLimit.allowed) {
+    const remainingTime = Math.ceil(rateLimit.remainingTime / 60);
+    return res.status(429).json({
+      error: 'Rate limit exceeded',
+      message: `You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`
+    });
+  }
+
+  res.json({ allowed: true });
+});
+
 // Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   const config = {
