@@ -57,8 +57,8 @@ async function main() {
     }
 
     // Transform filename to match R2 format
-    const timestamp = Date.now();
-    const r2FileName = `clippings-default-user-id-${timestamp}.txt`;
+    // Use the input filename directly as it should already be in the correct R2 format
+    const r2FileName = inputFileName;
 
     debug('Starting file processing:', { inputFileName, r2FileName });
 
