@@ -156,13 +156,19 @@ class RedisPool {
     
     while (retryCount < MAX_RETRIES) {
       try {
-        // Clean up old connection
-        try {
-          await connection.client.quit();
-        } catch (quitError) {
-          logger.warn('Error quitting old connection', {
-            error: quitError instanceof Error ? quitError.message : 'Unknown error',
-            stack: quitError instanceof Error ? quitError.stack : undefined
+        // Clean up old connection if it's still open
+        if (connection.client.status === 'ready' || connection.client.status === 'connecting') {
+          try {
+            await connection.client.quit();
+          } catch (quitError) {
+            logger.warn('Error quitting old connection', {
+              error: quitError instanceof Error ? quitError.message : 'Unknown error',
+              stack: quitError instanceof Error ? quitError.stack : undefined
+            });
+          }
+        } else {
+          logger.debug('Skipping quit for already closed connection', {
+            status: connection.client.status
           });
         }
         
