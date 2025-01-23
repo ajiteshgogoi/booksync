@@ -106,7 +106,10 @@ jobs:
           echo
           
           echo "Starting file processing..."
-          node --experimental-vm-modules processHighlights.js
+          # Make wrapper script executable
+          chmod +x run-highlights.js
+          # Run process with wrapper script
+          ./run-highlights.js ../kindle_content.txt
           
           # Cleanup
           rm ../kindle_content.txt
