@@ -78,7 +78,7 @@ jobs:
         working-directory: server
         env:
           FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
-          FILE_NAME: "My Clippings.txt"
+          FILE_NAME: ${{ github.event.client_payload.fileName }}
           R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
         run: |
           echo "Environment Check:"
