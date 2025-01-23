@@ -69,18 +69,7 @@ function App() {
 
       if (!response.ok) throw new Error(await response.text());
 
-      const data = await response.json();
-      setErrorMessage(data.info || 'Your highlights are queued for processing');
-      
-      // Show processing info after short delay
-      setTimeout(() => {
-        setErrorMessage(
-          'Your highlights are queued for processing. ' +
-          'Processing happens every 30 minutes through our background system. ' +
-          'If you have too many highlights, it may take a couple of hours for all of them to sync. ' +
-          'You can safely close this page - your highlights will appear in Notion gradually as they are processed.'
-        );
-      }, 3000);
+      await response.json(); // Status messages are handled by syncStatus state and UI
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
@@ -209,7 +198,7 @@ function App() {
               {file && (
                 <>
                   {highlightCount > 0 && (
-                    <div className="mt-4 text-gray-700 text-center">
+                    <div className="mt-4 text-[#4a7c59] text-center font-serif">
                       Found {highlightCount} highlights
                     </div>
                   )}
@@ -226,15 +215,16 @@ function App() {
                   {(syncStatus === 'queued' || syncStatus === 'parsing') && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
-                         <div className="text-[#3d2b1f] font-semibold text-lg animate-slide">
-                           {syncStatus === 'queued' ?
-                             '⏳ Preparing to sync...' :
-                             '⏳ Processing your highlights'}
+                         <div className="text-[#3d2b1f] font-semibold text-lg relative overflow-hidden">
+                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#ffffff66] to-transparent animate-pulse-slow w-[200%] h-full"></div>
+                           <span className="relative z-10 animate-pulse">
+                             ⏳ Processing your highlights...
+                           </span>
                          </div>
-                         <div className="text-sm text-[#5a463a] mt-2 space-y-1">
-                           <div>• You can safely close this page</div>
-                           <div>• Processing happens every 30 minutes</div>
-                           <div>• You'll see results in Notion gradually</div>
+                         <div className="text-xs text-[#5a463a] mt-2 space-y-1">
+                           <div>• You can safely close this page.</div>
+                           <div>• Processing happens in the background every 30 minutes.</div>
+                           <div>• Highlights are added to Notion in a queue. It may take a few hours for everything to show.</div>
                          </div>
                        </div>
                      </div>
