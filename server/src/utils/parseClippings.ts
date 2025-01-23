@@ -149,8 +149,44 @@ export function parseClippings(fileContent: string): Highlight[] {
       }
 
       const highlightContent = lines.slice(2).join('\n').trim();
+      
+      // Common Kindle error messages and invalid content patterns
+      const invalidPatterns = [
+        'You have reached the clipping limit for this item',
+        'clipping limit',
+        'no more items',
+        'content is not available',
+        'unavailable for this book'
+      ];
+      
       if (!highlightContent) {
         console.log('Skipping entry: empty highlight content');
+        continue;
+      }
+      
+      const hasInvalidPattern = invalidPatterns.some(pattern =>
+        highlightContent.toLowerCase().includes(pattern.toLowerCase())
+      );
+      
+      // Skip if invalid pattern detected
+      if (hasInvalidPattern) {
+        console.log('Skipping entry: invalid content pattern detected', {
+          bookTitle,
+          content: highlightContent,
+          location
+        });
+        continue;
+      }
+
+      // Skip extremely short highlights or those that look like formatting errors
+      if (highlightContent.length < 3 ||
+          highlightContent.trim().split(/\s+/).length < 2 ||
+          /^[.,;:!?-\s]*$/.test(highlightContent)) {
+        console.log('Skipping entry: content too short or invalid', {
+          bookTitle,
+          content: highlightContent,
+          location
+        });
         continue;
       }
 
