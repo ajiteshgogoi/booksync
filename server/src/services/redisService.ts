@@ -10,13 +10,13 @@ const logger = {
 };
 
 // Connection pool configuration - optimized for serverless
-const POOL_SIZE = process.env.VERCEL ? 1 : 3; // Reduced pool size for both environments
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 500 : 2000; // Reduced timeouts
-const MAX_RETRIES = process.env.VERCEL ? 1 : 2; // Reduced retries
-const RETRY_DELAY = 250; // Reduced retry delay
-const CONNECTION_TIMEOUT = 10000; // Reduced from 15s to 10s max connection usage time
-const CONNECTION_MAX_AGE = 180000; // Reduced from 5m to 3m max connection age
-const CONNECTION_IDLE_TIMEOUT = 15000; // Reduced from 30s to 15s idle timeout
+const POOL_SIZE = process.env.VERCEL ? 2 : 5; // Increased pool size
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Increased timeouts
+const MAX_RETRIES = process.env.VERCEL ? 2 : 3; // Increased retries
+const RETRY_DELAY = 500; // Increased retry delay
+const CONNECTION_TIMEOUT = 15000; // Increased to 15s max connection usage time
+const CONNECTION_MAX_AGE = 300000; // Increased to 5m max connection age
+const CONNECTION_IDLE_TIMEOUT = 30000; // Increased to 30s idle timeout
 const REAPER_INTERVAL = 15000; // Run reaper every 15s instead of 30s
 const MAX_CONNECTION_WAITERS = 10; // Maximum number of connection waiters
 
@@ -44,7 +44,7 @@ class RedisPool {
     totalForcedReleases: 0,
     totalPoolHits: 0,
     totalPoolMisses: 0,
-    lastError: null as Error | null,
+    lastError: null as unknown,
     lastErrorTimestamp: 0,
     lastAcquireDuration: 0,
     lastReleaseDuration: 0
@@ -261,7 +261,29 @@ class RedisPool {
     });
   }
 
+    public async validateClientConnection(client: RedisType): Promise<boolean> {
+      try {
+        await client.ping();
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+  
     private async validateConnection(connection: PoolConnection): Promise<boolean> {
+      const validationStart = Date.now();
+      try {
+        await connection.client.ping();
+        this.connectionStats.lastAcquireDuration = Date.now() - validationStart;
+        return true;
+      } catch (error: unknown) {
+        const typedError = error instanceof Error ? error : new Error(String(error));
+        this.connectionStats.lastError = typedError as Error | null;
+        this.connectionStats.lastErrorTimestamp = Date.now();
+        this.connectionStats.totalErrors++;
+        logger.warn(`Connection validation failed for ${connection.id}:`, error);
+        return false;
+      }
     const start = Date.now();
     try {
       await connection.client.ping();

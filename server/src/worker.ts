@@ -71,7 +71,11 @@ export const startWorker = async () => {
     // Process jobs until we hit limits
     while (jobsProcessed < MAX_JOBS_PER_RUN && (MAX_RUNTIME === Infinity || (Date.now() - startTime) < MAX_RUNTIME)) {
       try {
-        if (!workerRedis) {
+        // Ensure we have a valid Redis connection
+        if (!workerRedis || !await redisPool.validateClientConnection(workerRedis)) {
+          if (workerRedis) {
+            redisPool.release(workerRedis);
+          }
           console.log('Reconnecting Redis client...');
           workerRedis = await getRedis();
         }
