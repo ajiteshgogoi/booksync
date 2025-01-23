@@ -22,36 +22,64 @@ async function initializeRedis(): Promise<RedisType> {
       throw new Error('Missing Redis configuration in environment variables');
     }
 
+    logger.debug('=== Redis Initialization Start ===');
     logger.debug('Initializing Redis with URL', { url: process.env.REDIS_URL });
-    const redis = new Redis(process.env.REDIS_URL, {
+    
+    // Create Redis client with detailed options
+    const options = {
       maxRetriesPerRequest: 3,
-      retryStrategy(times) {
-        if (times > MAX_RETRIES) return null;
-        return Math.min(times * RETRY_DELAY, 3000);
+      connectTimeout: 10000, // 10 seconds
+      retryStrategy(times: number) {
+        logger.debug(`Redis retry attempt ${times}`);
+        if (times > MAX_RETRIES) {
+          logger.error('Max Redis retries reached');
+          return null;
+        }
+        const delay = Math.min(times * RETRY_DELAY, 3000);
+        logger.debug(`Redis retry in ${delay}ms`);
+        return delay;
       },
-      reconnectOnError(err) {
+      reconnectOnError(err: Error) {
+        logger.debug('Redis reconnect check:', err.message);
         const targetError = 'READONLY';
         if (err.message.includes(targetError)) {
+          logger.debug('Redis reconnecting due to READONLY error');
           return true;
         }
         return false;
       }
+    };
+
+    logger.debug('Creating Redis client with options:', options);
+    const redis = new Redis(process.env.REDIS_URL, options);
+
+    // Set up event handlers with detailed logging
+    redis.on('connect', () => {
+      logger.info('✅ Redis client connected successfully');
+    });
+    redis.on('error', (error) => {
+      logger.error('❌ Redis client error:', {
+        error: error.message,
+        stack: error.stack
+      });
+    });
+    redis.on('reconnecting', (attempt: number) => {
+      logger.info('⏳ Redis client reconnecting:', { attempt });
     });
 
-    // Set up event handlers
-    redis.on('connect', () => logger.info('Redis client connected'));
-    redis.on('error', (error) => logger.error('Redis client error', { error }));
-    redis.on('reconnecting', () => logger.info('Redis client reconnecting'));
-
-    // Test connection with retry
+    // Test connection with retry and detailed logging
     for (let i = 0; i < MAX_RETRIES; i++) {
       try {
+        logger.debug(`Ping attempt ${i + 1}/${MAX_RETRIES}...`);
         await redis.ping();
-        logger.info('Redis client initialized successfully');
+        logger.info(`✅ Redis ping successful on attempt ${i + 1}`);
         return redis;
       } catch (error) {
-        if (i === MAX_RETRIES - 1) throw error;
-        logger.warn(`Redis ping attempt ${i + 1} failed, retrying...`);
+        if (i === MAX_RETRIES - 1) {
+          logger.error('❌ All Redis ping attempts failed');
+          throw error;
+        }
+        logger.warn(`⚠️ Redis ping attempt ${i + 1} failed, retrying...`, error);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       }
     }

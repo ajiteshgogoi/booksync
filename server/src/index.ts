@@ -479,11 +479,24 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     // Trigger GitHub workflow in background
     try {
       // Verify Redis connection before proceeding
-      const redis = await getRedis();
-      await redis.ping();
-      console.log('Redis connection verified');
+      console.log('\n=== Verifying Redis Connection ===');
+      let redis;
+      try {
+        redis = await getRedis();
+        await redis.ping();
+        console.log('✅ Redis connection verified successfully');
+      } catch (redisError) {
+        console.error('❌ Redis connection failed:', redisError);
+        await setJobStatus(jobId, {
+          state: 'failed',
+          message: 'Redis connection failed - please try again',
+          progress: 0
+        });
+        throw redisError;
+      }
 
-      console.log('\nTrigger Details:', {
+      console.log('=== Starting File Processing ===');
+      console.log('Trigger Details:', {
         fileContentLength: fileContent.length,
         userId,
         jobId,
