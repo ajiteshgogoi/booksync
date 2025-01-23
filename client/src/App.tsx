@@ -254,11 +254,11 @@ const handleSync = async () => {
               </p>
 
               <div className="mt-4">
-                <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif ${
-                  syncStatus === 'parsing' || syncStatus === 'queued'
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}>
+<label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif ${
+  syncStatus === 'parsing' || syncStatus === 'queued'
+    ? 'opacity-50 cursor-not-allowed'
+    : 'cursor-pointer'
+}`}>
                   <input
                     type="file"
                     accept=".txt"
@@ -325,10 +325,10 @@ const handleSync = async () => {
                     });
                     window.location.href = '/';
                   }}
-                  className={`mt-4 mx-auto block bg-[#991b1b] hover:bg-[#7f1d1d] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif shadow-md hover:shadow-lg ${
+                  className={`mt-4 mx-auto block bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif ${
                     ['parsing', 'queued'].includes(syncStatus)
                       ? 'opacity-50 cursor-not-allowed'
-                      : ''
+                      : 'cursor-pointer'
                   }`}
                   disabled={['parsing', 'queued'].includes(syncStatus)}
                 >
