@@ -10,14 +10,14 @@ const logger = {
 };
 
 // Connection pool configuration
-const POOL_SIZE = 5;
-const POOL_ACQUIRE_TIMEOUT = 10000; // 10 seconds
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-const CONNECTION_TIMEOUT = 30000; // 30 seconds max connection usage time
-const CONNECTION_MAX_AGE = 3600000; // 1 hour max connection age
-const CONNECTION_IDLE_TIMEOUT = 300000; // 5 minutes idle timeout
-const REAPER_INTERVAL = 60000; // Run reaper every minute
+const POOL_SIZE = 2; // Reduced from 5 to 2 to conserve connections
+const POOL_ACQUIRE_TIMEOUT = 5000; // Reduced from 10 to 5 seconds
+const MAX_RETRIES = 2; // Reduced from 3
+const RETRY_DELAY = 500; // Reduced from 1000ms
+const CONNECTION_TIMEOUT = 10000; // Reduced from 30s to 10s max connection usage time
+const CONNECTION_MAX_AGE = 300000; // Reduced from 1h to 5m max connection age
+const CONNECTION_IDLE_TIMEOUT = 60000; // Reduced from 5m to 1m idle timeout
+const REAPER_INTERVAL = 30000; // Run reaper every 30s instead of 1m
 
 interface PoolConnection {
   client: RedisType;
@@ -38,27 +38,30 @@ class RedisPool {
     }
 
     const options = {
-      maxRetriesPerRequest: 3,
-      connectTimeout: 10000,
+      maxRetriesPerRequest: 1, // Reduced from 3
+      connectTimeout: 5000, // Reduced from 10000
       retryStrategy(times: number) {
         logger.debug(`Redis retry attempt ${times}`);
         if (times > MAX_RETRIES) {
           logger.error('Max Redis retries reached');
           return null;
         }
-        const delay = Math.min(times * RETRY_DELAY, 3000);
+        const delay = Math.min(times * RETRY_DELAY, 1000); // Reduced max delay from 3000ms
         logger.debug(`Redis retry in ${delay}ms`);
         return delay;
       },
       reconnectOnError(err: Error) {
         logger.debug('Redis reconnect check:', err.message);
-        const targetError = 'READONLY';
-        if (err.message.includes(targetError)) {
-          logger.debug('Redis reconnecting due to READONLY error');
+        // Only reconnect on critical errors
+        const targetErrors = ['READONLY', 'ERR max number of clients reached'];
+        if (targetErrors.some(e => err.message.includes(e))) {
+          logger.debug(`Redis reconnecting due to ${err.message}`);
           return true;
         }
         return false;
-      }
+      },
+      enableOfflineQueue: false, // Disable offline queue to prevent connection buildup
+      enableReadyCheck: true // Add ready check to ensure connection is valid
     };
 
     const redis = new Redis(process.env.REDIS_URL, options);
@@ -286,9 +289,26 @@ class RedisPool {
   public release(client: RedisType): void {
     const connection = this.pool.find(conn => conn.client === client);
     if (connection) {
+      // Force release if connection has been in use too long
+      if (connection.acquiredAt && Date.now() - connection.acquiredAt > CONNECTION_TIMEOUT) {
+        this.forceRelease(connection).catch(err => {
+          logger.warn('Error force releasing connection:', err);
+        });
+        return;
+      }
+      
       connection.inUse = false;
       connection.lastUsed = Date.now();
       connection.acquiredAt = null;
+      
+      // If connection is stale, replace it
+      this.isConnectionStale(connection).then(isStale => {
+        if (isStale) {
+          this.replaceConnection(connection).catch(err => {
+            logger.warn('Error replacing stale connection:', err);
+          });
+        }
+      });
     }
   }
 
