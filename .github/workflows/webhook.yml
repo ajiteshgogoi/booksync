@@ -82,20 +82,33 @@ jobs:
             echo "Full response: $RESPONSE"
             exit 1
           fi
+          echo "Current directory: $PWD"
           
           # Save content to a file in the server directory
           echo "$CONTENT" > server/kindle_content.txt
           
           # Verify content was saved
+          echo "Files in server directory:"
+          ls -la server/
           echo "Content length: $(wc -c < server/kindle_content.txt) bytes"
+          echo "File permissions:"
+          stat server/kindle_content.txt
+
           echo "Content successfully saved to file"
 
       - name: Process File
         run: |
-          cd server
+          echo "Before cd - Current directory: $PWD"
+          echo "Before cd - Files in server:"
+          ls -la server/
           
-          if [ ! -f "../kindle_content.txt" ]; then
-            echo "::error::Content file not found"
+          cd server
+          echo "After cd - Current directory: $PWD"
+          echo "After cd - Files in current directory:"
+          ls -la
+          
+          if [ ! -f "kindle_content.txt" ]; then
+            echo "::error::Content file not found in $(pwd)"
             exit 1
           fi
           
