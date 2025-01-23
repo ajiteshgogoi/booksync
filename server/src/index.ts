@@ -238,21 +238,10 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
       return res.status(400).json({ error: 'Could not determine client IP' });
     }
 
-    // Check rate limit
-    const limitCheck = rateLimiter.check(ip);
-    if (!limitCheck.allowed) {
-      return res.status(429).json({ 
-        error: `You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${limitCheck.remainingTime} minutes.`
-      });
-    }
-
     if (!req.file) {
       console.log('No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
-
-    // Increment rate limit counter
-    rateLimiter.increment(ip);
 
     console.log('File size:', req.file.size, 'bytes');
     const fileContent = req.file.buffer.toString('utf-8');
