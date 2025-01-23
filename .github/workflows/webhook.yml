@@ -83,34 +83,35 @@ jobs:
             exit 1
           fi
           
-          # Save content to a file that will be used by the next step
-          echo "$CONTENT" > kindle_content.txt
+          # Set the environment variable with content
+          echo "FILE_CONTENT<<EOF" >> $GITHUB_ENV
+          echo "$CONTENT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
           
-          # Verify content was saved
-          echo "Content length: $(wc -c < kindle_content.txt) bytes"
-          echo "Content successfully saved to file"
+          # Verify content was set
+          echo "Content length: ${#CONTENT} characters"
+          echo "Content successfully saved to environment"
 
       - name: Process File
         run: |
           cd server
           
-          if [ ! -f "../kindle_content.txt" ]; then
-            echo "::error::Content file not found"
+          # Validate FILE_CONTENT environment variable
+          if [[ -z "${FILE_CONTENT}" ]]; then
+            echo "::error::FILE_CONTENT environment variable is empty or not set"
+            echo "Debug info:"
+            echo "Environment variable names:"
+            env | cut -d= -f1 | sort
             exit 1
           fi
           
-          # Show content stats
-          echo "Content file size: $(wc -c < ../kindle_content.txt) bytes"
-          echo "First 100 characters:"
-          head -c 100 ../kindle_content.txt
-          echo
+          echo "Environment variables:"
+          echo "FILE_CONTENT length: ${#FILE_CONTENT}"
+          echo "First 100 characters of content:"
+          echo "${FILE_CONTENT:0:100}..."
           
           echo "Starting file processing..."
-          export FILE_CONTENT="$(cat ../kindle_content.txt)"
           node --experimental-vm-modules processHighlights.js
-          
-          # Cleanup
-          rm ../kindle_content.txt
 
       - name: Cleanup Gist
         if: always()  # Run even if previous steps fail
