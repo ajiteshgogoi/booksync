@@ -101,36 +101,58 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
       throw new Error('Invalid token data - missing required fields');
     }
 
-    // Store the workspace ID as the key since we don't have user IDs
     const workspaceId = tokenData.workspace_id;
+    const userId = tokenData.owner?.user?.id || '';
+
+    // Log initial token storage
+    console.log('[OAuth] Storing initial token data', {
+      workspaceId,
+      userId,
+      hasDatabaseId: !!_databaseId
+    });
 
     // Store the token data first
     await storeOAuthToken(
       JSON.stringify(tokenData),
       workspaceId,
       '', // Database ID will be set after we find it
-      tokenData.owner?.user?.id || ''
+      userId
     );
 
-    // Initialize client with better error handling
+    console.log('[OAuth] Initial token storage complete');
+
+    // Initialize client
     _client = new Client({
       auth: tokenData.access_token,
     });
 
     // Find the database
+    console.log('[OAuth] Searching for Kindle Highlights database...');
     await findKindleHighlightsDatabase();
 
     // If we found the database ID, update the token storage with it
     if (_databaseId) {
+      console.log('[OAuth] Found database ID:', _databaseId);
+      console.log('[OAuth] Updating token storage with database ID');
+
       await storeOAuthToken(
         JSON.stringify(tokenData),
         workspaceId,
         _databaseId,
-        tokenData.owner?.user?.id || ''
+        userId
       );
+
+      console.log('[OAuth] Token storage updated with database ID');
+    } else {
+      console.log('[OAuth] No database ID found - using initial token storage');
     }
+
+    console.log('[OAuth] OAuth flow completed successfully');
   } catch (error) {
-    console.error('Failed to set OAuth token:', error);
+    console.error('[OAuth] Failed to set OAuth token:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
     throw error;
   }
 }
@@ -206,7 +228,11 @@ export async function refreshToken(): Promise<void> {
 
 export async function clearAuth(): Promise<void> {
   try {
-    await deleteRedisOAuthToken();
+    const token = await getRedisOAuthToken();
+    if (token) {
+      const tokenData = JSON.parse(token);
+      await deleteRedisOAuthToken(tokenData.workspace_id);
+    }
     _client = null;
     _databaseId = null;
   } catch (error) {

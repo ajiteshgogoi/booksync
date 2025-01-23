@@ -414,6 +414,82 @@ async function cleanupExpiredKeys(): Promise<void> {
   }
 }
 
+// OAuth token management
+const OAUTH_TOKEN_PREFIX = 'notion_oauth:';
+const OAUTH_TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
+
+export async function storeOAuthToken(
+  tokenData: string,
+  workspaceId: string,
+  databaseId: string,
+  userId: string
+): Promise<void> {
+  const redis = await getRedis();
+  try {
+    const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
+    await redis.set(key, tokenData, 'EX', OAUTH_TOKEN_TTL);
+    
+    // Store additional metadata
+    await redis.hset(`${key}:meta`, {
+      databaseId,
+      userId,
+      lastUpdated: Date.now()
+    });
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
+export async function getOAuthToken(workspaceId?: string): Promise<string | null> {
+  const redis = await getRedis();
+  try {
+    if (!workspaceId) {
+      // Get first available token if no workspace specified
+      const keys = await redis.keys(`${OAUTH_TOKEN_PREFIX}*`);
+      if (keys.length === 0) return null;
+      workspaceId = keys[0].replace(OAUTH_TOKEN_PREFIX, '');
+    }
+    
+    const token = await redis.get(`${OAUTH_TOKEN_PREFIX}${workspaceId}`);
+    if (!token) return null;
+    
+    // Refresh TTL on access
+    await redis.expire(`${OAUTH_TOKEN_PREFIX}${workspaceId}`, OAUTH_TOKEN_TTL);
+    return token;
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
+export async function refreshOAuthToken(
+  workspaceId: string,
+  newTokenData: string
+): Promise<void> {
+  const redis = await getRedis();
+  try {
+    const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
+    await redis.set(key, newTokenData, 'EX', OAUTH_TOKEN_TTL);
+    
+    // Update metadata
+    await redis.hset(`${key}:meta`, {
+      lastUpdated: Date.now()
+    });
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
+export async function deleteOAuthToken(workspaceId: string): Promise<void> {
+  const redis = await getRedis();
+  try {
+    const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
+    await redis.del(key);
+    await redis.del(`${key}:meta`);
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
 export type { RedisType };
 export { redisPool };
 
