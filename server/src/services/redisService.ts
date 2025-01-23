@@ -415,7 +415,7 @@ async function cleanupExpiredKeys(): Promise<void> {
 }
 
 // OAuth token management
-const OAUTH_TOKEN_PREFIX = 'notion_oauth:';
+const OAUTH_TOKEN_PREFIX = 'oauth:';
 const OAUTH_TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
 
 export async function storeOAuthToken(
@@ -427,14 +427,24 @@ export async function storeOAuthToken(
   const redis = await getRedis();
   try {
     const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
-    await redis.set(key, tokenData, 'EX', OAUTH_TOKEN_TTL);
+    console.log('[Redis] Storing OAuth token for workspace:', workspaceId);
     
-    // Store additional metadata
-    await redis.hset(`${key}:meta`, {
+    // Store token data as JSON string
+    const data = JSON.stringify({
+      token: tokenData,
       databaseId,
       userId,
       lastUpdated: Date.now()
     });
+    
+    await redis.set(key, data, 'EX', OAUTH_TOKEN_TTL);
+    console.log('[Redis] Token stored successfully');
+  } catch (error) {
+    console.error('[Redis] Error storing OAuth token:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
   } finally {
     redisPool.release(redis);
   }
@@ -446,16 +456,35 @@ export async function getOAuthToken(workspaceId?: string): Promise<string | null
     if (!workspaceId) {
       // Get first available token if no workspace specified
       const keys = await redis.keys(`${OAUTH_TOKEN_PREFIX}*`);
-      if (keys.length === 0) return null;
+      if (keys.length === 0) {
+        console.log('[Redis] No OAuth tokens found');
+        return null;
+      }
       workspaceId = keys[0].replace(OAUTH_TOKEN_PREFIX, '');
+      console.log('[Redis] Using workspace ID:', workspaceId);
     }
-    
-    const token = await redis.get(`${OAUTH_TOKEN_PREFIX}${workspaceId}`);
-    if (!token) return null;
+
+    const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
+    console.log('[Redis] Retrieving token from key:', key);
+
+    const data = await redis.get(key);
+    if (!data) {
+      console.log('[Redis] No token found for workspace:', workspaceId);
+      return null;
+    }
+
+    const parsedData = JSON.parse(data);
+    console.log('[Redis] Token retrieved successfully');
     
     // Refresh TTL on access
-    await redis.expire(`${OAUTH_TOKEN_PREFIX}${workspaceId}`, OAUTH_TOKEN_TTL);
-    return token;
+    await redis.expire(key, OAUTH_TOKEN_TTL);
+    return parsedData.token;
+  } catch (error) {
+    console.error('[Redis] Error getting OAuth token:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    throw error;
   } finally {
     redisPool.release(redis);
   }
@@ -468,12 +497,20 @@ export async function refreshOAuthToken(
   const redis = await getRedis();
   try {
     const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
-    await redis.set(key, newTokenData, 'EX', OAUTH_TOKEN_TTL);
     
-    // Update metadata
-    await redis.hset(`${key}:meta`, {
-      lastUpdated: Date.now()
-    });
+    // Get existing data
+    const existingData = await redis.get(key);
+    if (!existingData) {
+      throw new Error('No existing token data found');
+    }
+    
+    // Parse existing data and update token
+    const data = JSON.parse(existingData);
+    data.token = newTokenData;
+    data.lastUpdated = Date.now();
+    
+    // Store updated data
+    await redis.set(key, JSON.stringify(data), 'EX', OAUTH_TOKEN_TTL);
   } finally {
     redisPool.release(redis);
   }
@@ -484,7 +521,6 @@ export async function deleteOAuthToken(workspaceId: string): Promise<void> {
   try {
     const key = `${OAUTH_TOKEN_PREFIX}${workspaceId}`;
     await redis.del(key);
-    await redis.del(`${key}:meta`);
   } finally {
     redisPool.release(redis);
   }
