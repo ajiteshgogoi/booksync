@@ -33,15 +33,16 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
 
     // Store the token data with database ID
     const tokenWithDatabase = {
-      ...tokenData,
-      database_id: response.results[0].id
+      token: tokenData.access_token,
+      databaseId: response.results[0].id,
+      userId: tokenData.owner?.user?.id,
+      workspaceId: tokenData.workspace_id
     };
     
-    const userId = tokenData.owner?.user?.id;
-    if (!userId) {
+    if (!tokenWithDatabase.userId) {
       throw new Error('No user ID in token data');
     }
-    await storeOAuthToken(JSON.stringify(tokenWithDatabase), workspaceId, tokenWithDatabase.database_id, userId);
+    await storeOAuthToken(tokenWithDatabase.token, workspaceId, tokenWithDatabase.databaseId, tokenWithDatabase.userId);
     
     // Update the client
     _client = client;

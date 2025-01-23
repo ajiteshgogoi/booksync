@@ -19,15 +19,15 @@ async function getTokenData() {
       throw new Error('Failed to retrieve token data from Redis');
     }
 
-    const { databaseId, userId } = JSON.parse(tokenData);
+    const tokenDataObj = JSON.parse(tokenData);
     
     // Validate database ID format (Notion database IDs are UUIDs)
-    if (!databaseId || typeof databaseId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(databaseId)) {
-      throw new Error(`Invalid database ID format. Expected UUID, got: ${databaseId}`);
+    if (!tokenDataObj.databaseId || typeof tokenDataObj.databaseId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(tokenDataObj.databaseId)) {
+      throw new Error(`Invalid database ID format. Expected UUID, got: ${tokenDataObj.databaseId}`);
     }
     
-    if (!userId || typeof userId !== 'string') {
-      throw new Error(`Invalid user ID format: ${userId}`);
+    if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
+      throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
     }
 
     console.log('Retrieved token data:', { databaseId, userId });
