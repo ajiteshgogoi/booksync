@@ -16,9 +16,17 @@ export async function triggerProcessing(
   await axios.put(uploadUrl, fileContent, {
     headers: {
       'Content-Type': 'text/plain'
-    }
+    },
+    maxContentLength: Infinity, // Allow large file uploads
+    maxBodyLength: Infinity // Allow large file uploads
   });
+  
   console.log('\n=== GitHub Processing Trigger Start ===');
+  console.log('File uploaded to R2:', {
+    fileName,
+    size: fileContent.length,
+    uploadUrl
+  });
   
   try {
     // Get GitHub token - check both local and Vercel env vars
