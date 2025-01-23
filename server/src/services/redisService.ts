@@ -233,14 +233,53 @@ class RedisPool {
       }
 
       while (currentRetry < MAX_RETRIES) {
+        // Try to find an available connection
         const connection = this.pool.find(conn => !conn.inUse);
         
-        if (connection && !await this.isConnectionStale(connection)) {
-          connection.inUse = true;
-          connection.lastUsed = Date.now();
-          connection.acquiredAt = Date.now();
-          this.connectionWaiters--;
-          return connection.client;
+        if (connection) {
+          try {
+            // Verify connection is not stale
+            if (!await this.isConnectionStale(connection)) {
+              connection.inUse = true;
+              connection.lastUsed = Date.now();
+              connection.acquiredAt = Date.now();
+              this.connectionWaiters--;
+              return connection.client;
+            }
+            
+            // If stale, replace it immediately
+            await this.replaceConnection(connection);
+            continue;
+          } catch (error) {
+            logger.warn('Error verifying connection', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              stack: error instanceof Error ? error.stack : undefined
+            });
+          }
+        }
+
+        // If no available connections, try to create a new one
+        if (this.pool.length < POOL_SIZE) {
+          try {
+            const newClient = await this.createClient();
+            const now = Date.now();
+            const newConnection = {
+              client: newClient,
+              inUse: true,
+              lastUsed: now,
+              acquiredAt: now,
+              createdAt: now,
+              id: `conn-${now}-${this.pool.length}`
+            };
+            this.pool.push(newConnection);
+            this.connectionWaiters--;
+            return newClient;
+          } catch (error) {
+            logger.warn('Error creating new connection', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              stack: error instanceof Error ? error.stack : undefined
+            });
+          }
         }
 
         currentRetry++;
