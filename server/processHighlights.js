@@ -41,11 +41,23 @@ async function getTokenData() {
   }
 }
 
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.on('data', chunk => {
+      data += chunk;
+    });
+    process.stdin.on('end', () => {
+      resolve(data);
+    });
+  });
+}
+
 async function main() {
   try {
-    const fileContent = process.env.FILE_CONTENT;
+    const fileContent = await readStdin();
     if (!fileContent) {
-      throw new Error('Missing required environment variable: FILE_CONTENT');
+      throw new Error('No content received on stdin');
     }
 
     const { databaseId, userId } = await getTokenData();
