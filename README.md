@@ -43,13 +43,13 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
   - Automatic retry mechanism for failed requests
   - Detailed sync metrics collection
 - **User Experience**
-  - Real-time progress bar with time estimates
-  - Background processing notifications
-  - Sync status persistence
-  - Clean, intuitive interface
-  - Sync metrics visualization
-  - Cache management options
-  - Detailed error reporting
+- Simplified status UI
+- Background processing notifications
+- Sync status persistence
+- Clean, intuitive interface with parchment texture background
+- Cache management options
+- Detailed error reporting
+- Responsive design for mobile and desktop
 
 ## Prerequisites
 
