@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
+import { rateLimiter } from './services/rateLimiter';
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error';
 
@@ -68,21 +69,29 @@ function App() {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
     }
   };
+const handleSync = async () => {
+  if (!file) return;
+  
+  // Check auth expiration before sync
+  if (!checkAuthExpiration()) {
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('authTimestamp');
+    setErrorMessage('Your session has expired. Please reconnect to Notion.');
+    return;
+  }
 
-  const handleSync = async () => {
-    if (!file) return;
-    
-    // Check auth expiration before sync
-    if (!checkAuthExpiration()) {
-      setIsAuthenticated(false);
-      localStorage.removeItem('isAuthenticated');
-      localStorage.removeItem('authTimestamp');
-      setErrorMessage('Your session has expired. Please reconnect to Notion.');
-      return;
-    }
+  // Check rate limit before syncing
+  const rateLimitCheck = await rateLimiter.canSync();
+  if (!rateLimitCheck.allowed) {
+    setErrorMessage(rateLimitCheck.message || 'Rate limit exceeded');
+    setSyncStatus('idle');
+    return;
+  }
 
-    const formData = new FormData();
-    formData.append('file', file);
+  const formData = new FormData();
+  formData.append('file', file);
+
 
     try {
       const response = await fetch(`${apiBase}/sync`, {
