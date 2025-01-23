@@ -83,6 +83,7 @@ import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
+import { rateLimiter } from './services/rateLimiter.js';
 import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
@@ -389,7 +390,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   try {
     console.log('\n=== Sync Request Received ===');
     
-    // Get client IP address (handle both string and string[] cases)
+    // Get client IP address for rate limiting
     const xForwardedFor = req.headers['x-forwarded-for'];
     const clientIp = Array.isArray(xForwardedFor)
       ? xForwardedFor[0]
@@ -404,11 +405,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    console.log('File received:', {
-      size: req.file.size,
-      mimeType: req.file.mimetype
-    });
-
+    // Validate file format and content first
     if (!Buffer.isBuffer(req.file.buffer)) {
       console.error('Invalid file format - buffer missing');
       throw new Error('Invalid file format');
@@ -420,11 +417,23 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       throw new Error('Failed to convert file content to string');
     }
 
-    // Validate file content
     if (!fileContent.includes('==========')) {
       console.error('Invalid My Clippings file format');
       throw new Error('Invalid My Clippings file format');
     }
+
+    // Apply rate limiting after file validation
+    const rateLimit = rateLimiter.check(clientIp);
+    if (!rateLimit.allowed) {
+      const remainingTime = Math.ceil(rateLimit.remainingTime / 60);
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        message: `You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`
+      });
+    }
+
+    // Increment rate limit counter before proceeding with sync
+    rateLimiter.increment(clientIp);
 
     const userId = req.user?.id || 'default-user-id';
     console.log('Processing for user:', userId);

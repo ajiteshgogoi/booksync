@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
-import { rateLimiter } from './services/rateLimiter';
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error';
 
@@ -70,7 +69,7 @@ function App() {
     }
   };
 const handleSync = async () => {
-  if (!file) return;
+  if (!file || highlightCount === 0) return;
   
   // Check auth expiration before sync
   if (!checkAuthExpiration()) {
@@ -78,14 +77,6 @@ const handleSync = async () => {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('authTimestamp');
     setErrorMessage('Your session has expired. Please reconnect to Notion.');
-    return;
-  }
-
-  // Check rate limit before syncing
-  const rateLimitCheck = await rateLimiter.canSync();
-  if (!rateLimitCheck.allowed) {
-    setErrorMessage(rateLimitCheck.message || 'Rate limit exceeded');
-    setSyncStatus('idle');
     return;
   }
 
