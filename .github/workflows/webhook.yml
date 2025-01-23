@@ -82,27 +82,47 @@ jobs:
             echo "Full response: $RESPONSE"
             exit 1
           fi
+          echo "Current directory: $PWD"
+          
+          # Save content to a file in the server directory
+          echo "$CONTENT" > server/kindle_content.txt
+          
+          # Verify content was saved
+          echo "Files in server directory:"
+          ls -la server/
+          echo "Content length: $(wc -c < server/kindle_content.txt) bytes"
+          echo "File permissions:"
+          stat server/kindle_content.txt
 
-          # Set multiline content in GitHub environment
-          {
-            echo "FILE_CONTENT<<EOF"
-            echo "$CONTENT"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-          echo "Content saved to environment variable"
+          echo "Content successfully saved to file"
 
       - name: Process File
         run: |
-          cd server
+          echo "Before cd - Current directory: $PWD"
+          echo "Before cd - Files in server:"
+          ls -la server/
           
-          # Debug environment variable content
-          echo "FILE_CONTENT variable length: ${#FILE_CONTENT}"
-          echo "First 100 chars of FILE_CONTENT:"
-          echo "${FILE_CONTENT:0:100}"
+          cd server
+          echo "After cd - Current directory: $PWD"
+          echo "After cd - Files in current directory:"
+          ls -la
+          
+          if [ ! -f "kindle_content.txt" ]; then
+            echo "::error::Content file not found in $(pwd)"
+            exit 1
+          fi
+          
+          # Show content stats
+          echo "Content file size: $(wc -c < kindle_content.txt) bytes"
+          echo "First 100 characters:"
+          head -c 100 kindle_content.txt
+          echo
           
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
+          
+          # Cleanup
+          rm kindle_content.txt
 
       - name: Cleanup Gist
         if: always()  # Run even if previous steps fail

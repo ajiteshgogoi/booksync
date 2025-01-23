@@ -43,9 +43,16 @@ async function getTokenData() {
 
 async function main() {
   try {
-    const fileContent = process.env.FILE_CONTENT;
-    if (!fileContent) {
-      throw new Error('Missing required environment variable: FILE_CONTENT');
+    // Read content from file instead of environment variable
+    let fileContent;
+    try {
+      fileContent = await import('fs/promises').then(fs =>
+        fs.readFile('kindle_content.txt', 'utf8')
+      );
+      console.log('Successfully read content file, length:', fileContent.length);
+    } catch (err) {
+      console.error('Error reading content file:', err);
+      throw new Error('Failed to read kindle_content.txt file');
     }
 
     const { databaseId, userId } = await getTokenData();
