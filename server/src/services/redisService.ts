@@ -204,8 +204,8 @@ export async function addJobToQueue(jobId: string, existingRedis?: RedisType): P
   }
 }
 
-export async function getNextJob(): Promise<string | null> {
-  const redis = await getRedis();
+export async function getNextJob(existingRedis?: RedisType): Promise<string | null> {
+  const redis = existingRedis || await getRedis();
   try {
     const queueLength = await redis.llen(QUEUE_NAME);
     logger.debug('Current queue length', { queueLength });
@@ -249,6 +249,8 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   } catch (error) {
     logger.error('Failed to get job status', { jobId, error });
     throw error;
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -271,6 +273,8 @@ export async function storeOAuthToken(token: string, workspaceId: string, databa
   } catch (error) {
     logger.error('Failed to store OAuth token', { workspaceId, error });
     throw error;
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -292,6 +296,8 @@ export async function getOAuthToken(): Promise<string | null> {
   } catch (error) {
     logger.error('Failed to get OAuth token', { error });
     throw error;
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -303,6 +309,8 @@ export async function refreshOAuthToken(token: string, workspaceId: string): Pro
   } catch (error) {
     logger.error('Failed to refresh OAuth token', { workspaceId, error });
     throw error;
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -317,6 +325,8 @@ export async function deleteOAuthToken(): Promise<void> {
   } catch (error) {
     logger.error('Failed to delete OAuth token', { error });
     throw error;
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -348,6 +358,8 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
   } catch (error) {
     logger.error('Rate limit check failed', { databaseId, error });
     return true; // Fail open to avoid blocking requests
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -378,6 +390,8 @@ async function cleanupExpiredKeys(): Promise<void> {
     logger.info('Completed Redis key cleanup');
   } catch (error) {
     logger.error('Failed to cleanup expired keys', { error });
+  } finally {
+    redisPool.release(redis);
   }
 }
 
@@ -407,5 +421,6 @@ export async function stopCleanupScheduler(): Promise<void> {
   await redisPool.cleanup();
 }
 
-// Export the redis instance for direct access when needed
-export { getRedis as redis };
+// Export types, redis instance, and pool
+export type { RedisType };
+export { getRedis as redis, redisPool };
