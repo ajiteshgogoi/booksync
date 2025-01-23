@@ -24,8 +24,6 @@ class RateLimiter {
     this.windowMs = windowMs;
     this.cleanupInterval = cleanupInterval;
 
-    console.log(`[RateLimiter] Initialized with limit: ${limit}, window: ${windowMs/1000}s`);
-
     // Start cleanup interval
     setInterval(() => this.cleanup(), this.cleanupInterval);
   }
@@ -72,11 +70,8 @@ class RateLimiter {
       );
       const remainingUploads = Math.max(0, this.limit - record.count);
 
-      // Log if remaining uploads are low or rate limit is exceeded
-      if (remainingUploads === 0) {
-        console.warn(`[RateLimiter] Rate limit exceeded for IP: ${ip}. Try again in ${remainingTime} minutes`);
-      } else if (remainingUploads === 1) {
-        console.warn(`[RateLimiter] IP: ${ip} has 1 upload remaining in window`);
+      if (remainingUploads < this.limit) {
+        console.log(`[RateLimiter] ${remainingUploads} uploads remaining. Reset in ${remainingTime} minutes`);
       }
 
       return {
@@ -108,10 +103,11 @@ class RateLimiter {
       if (now - record.startTime > this.windowMs) {
         record.count = 1;
         record.startTime = now;
-        console.log(`[RateLimiter] New upload window started for IP: ${ip}`);
+        record.count = 1;
+        console.log(`[RateLimiter] ${this.limit - 1} uploads remaining in window`);
       } else {
         record.count += 1;
-        console.log(`[RateLimiter] Increment for IP: ${ip}, count: ${record.count}/${this.limit}`);
+        console.log(`[RateLimiter] ${this.limit - record.count} uploads remaining in window`);
       }
       record.lastUpdated = now;
       this.store.set(ip, record);
