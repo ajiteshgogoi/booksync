@@ -214,8 +214,8 @@ const handleSync = async () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f5f2e9] bg-[url('/src/assets/parchment-texture.png')] bg-cover bg-center flex flex-col">
-      <main className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col justify-center">
+    <div className="min-h-screen bg-[#f5f2e9] bg-[url('/src/assets/parchment-texture.png')] bg-cover bg-center flex flex-col justify-center">
+      <main className="max-w-4xl w-full mx-auto px-4 py-8 h-[calc(100vh-8rem)] overflow-y-auto">
         <div className="text-center mb-8">
           <h1 
             className="text-5xl font-bold bg-gradient-to-r from-[#8b7355] to-[#3d2b1f] bg-clip-text text-transparent font-serif tracking-wide [text-shadow:0_2px_4px_rgba(0,0,0,0.3)] relative after:content-[''] after:absolute after:left-0 after:right-0 after:-bottom-2 after:h-[2px] after:bg-gradient-to-r after:from-[#8b7355] after:to-[#3d2b1f] cursor-pointer"
@@ -232,7 +232,7 @@ const handleSync = async () => {
             <p className="text-gray-600">Then connect to Notion and allow access.</p>
               <button
                 onClick={() => window.location.href = `${apiBase}/auth/notion`}
-                className="mt-4 bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif"
+                className="mt-4 bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif block mx-auto disabled:cursor-not-allowed focus:outline-none"
               >
                 Connect to Notion
               </button>
@@ -254,7 +254,7 @@ const handleSync = async () => {
               </p>
 
               <div className="mt-4">
-<label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif ${
+<label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif cursor-pointer ${
   syncStatus === 'parsing' || syncStatus === 'queued'
     ? 'opacity-50 cursor-not-allowed'
     : 'cursor-pointer'
@@ -286,7 +286,7 @@ const handleSync = async () => {
                   <button
                     onClick={handleSync}
                     disabled={syncStatus === 'parsing' || syncStatus === 'queued'}
-                    className="mt-4 w-full bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif"
+                    className="mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block"
                   >
                     {syncStatus === 'parsing' ? 'Parsing...' :
                      syncStatus === 'queued' ? 'In Queue...' : 'Sync Highlights'}
@@ -315,23 +315,23 @@ const handleSync = async () => {
               )}
 
               {syncStatus !== 'queued' && (
-                <button
-                  onClick={async () => {
-                    localStorage.removeItem('isAuthenticated');
-                    localStorage.removeItem('authTimestamp');
-                    await fetch(`${apiBase}/auth/disconnect`, {
-                      method: 'POST',
-                      credentials: 'include'
-                    });
-                    window.location.href = '/';
-                  }}
-                  className={`mt-4 mx-auto block bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif ${
-                    ['parsing', 'queued'].includes(syncStatus)
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'cursor-pointer'
-                  }`}
-                  disabled={['parsing', 'queued'].includes(syncStatus)}
-                >
+                  <button
+                    onClick={async () => {
+                      localStorage.removeItem('isAuthenticated');
+                      localStorage.removeItem('authTimestamp');
+                      await fetch(`${apiBase}/auth/disconnect`, {
+                        method: 'POST',
+                        credentials: 'include'
+                      });
+                      window.location.href = '/';
+                    }}
+                    className={`mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif block ${
+                      ['parsing', 'queued'].includes(syncStatus)
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'cursor-pointer'
+                    }`}
+                    disabled={['parsing', 'queued'].includes(syncStatus)}
+                  >
                   Disconnect Notion
                 </button>
               )}
