@@ -21,7 +21,12 @@ jobs:
       NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
       NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
       NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
+      GITHUB_ACTIONS: true
       NODE_ENV: production
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
 
     steps:
       - name: Log Full Event Details
@@ -34,35 +39,43 @@ jobs:
           echo 'Has databaseId: ${{ github.event.client_payload.databaseId != null }}'
           echo "=========================="
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
+        working-directory: server
         run: |
-          cd server
           echo "Installing dependencies..."
           npm ci
           echo "Dependencies installed"
 
       - name: Build
+        working-directory: server
         run: |
-          cd server
           echo "Building server..."
           npm run build
           echo "Build complete"
 
       - name: Process File
+        working-directory: server
         env:
           FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
+          FILE_NAME: ${{ github.event.client_payload.fileName }}
         run: |
-          cd server
-          echo "Environment variables:"
-          echo "FILE_CONTENT length: ${#FILE_CONTENT}"
+          echo "Environment Check:"
+          echo "- FILE_CONTENT length: ${#FILE_CONTENT}"
+          echo "- FILE_NAME: $FILE_NAME"
+          echo "- R2 Config Status:"
+          echo "  - ENDPOINT: ${R2_ENDPOINT:+configured}"
+          echo "  - ACCESS_KEY: ${R2_ACCESS_KEY_ID:+configured}"
+          echo "  - SECRET_KEY: ${R2_SECRET_ACCESS_KEY:+configured}"
+          echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
 
@@ -72,9 +85,29 @@ jobs:
     steps:
       - name: Log Test Event
         run: |
-          echo "Received test webhook event"
+          echo "=== Webhook Test Event Details ==="
           echo "Event type: ${{ github.event.action }}"
-          echo "Test payload: ${{ toJSON(github.event.client_payload) }}"
+          echo "Client Payload:"
+          echo "- Has fileContent: ${{ github.event.client_payload.fileContent != null }}"
+          echo "- Has fileName: ${{ github.event.client_payload.fileName != null }}"
+          if [ -n "${{ github.event.client_payload.fileContent }}" ]; then
+            echo "- fileContent is present"
+          else
+            echo "- fileContent is empty"
+          fi
+          echo "- fileName: ${{ github.event.client_payload.fileName }}"
+          echo "Full payload: ${{ toJSON(github.event.client_payload) }}"
       
+      - name: Verify Required Secrets
+        run: |
+          echo "=== Required Secrets Check ==="
+          echo "R2 Configuration:"
+          echo "- R2_ENDPOINT: ${{ secrets.R2_ENDPOINT != '' }}"
+          echo "- R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID != '' }}"
+          echo "- R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY != '' }}"
+          echo "- R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME != '' }}"
+          
       - name: Return Success
-        run: echo "✅ Webhook test successful"
+        run: |
+          echo "✅ Webhook test completed"
+          echo "Run process_highlights action to process files"

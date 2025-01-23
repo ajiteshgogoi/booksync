@@ -15,6 +15,7 @@ jobs:
       GITHUB_ACTIONS: true
       NODE_ENV: production
       FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
+      FILE_NAME: ${{ github.event.client_payload.fileName }}
       R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
