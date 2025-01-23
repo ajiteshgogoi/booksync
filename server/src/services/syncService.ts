@@ -1,5 +1,5 @@
 import { parseClippings } from '../utils/parseClippings.js';
-import { updateNotionDatabase } from './notionClient.js';
+import { updateNotionDatabase, Highlight } from './notionClient.js';
 import {
   getRedis,
   checkRateLimit,
@@ -9,6 +9,11 @@ import {
   setJobStatus,
   JobStatus
 } from './redisService.js';
+
+// Extend Highlight interface to include processing-specific fields
+interface ProcessedHighlight extends Highlight {
+  databaseId: string;
+}
 
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
@@ -42,23 +47,23 @@ export async function queueSyncJob(
   const redis = await getRedis();
   console.debug('Redis client initialized');
   
-  // Store highlights in Redis in chunks
-  for (let i = 0; i < highlights.length; i++) {
-    const highlight = highlights[i];
-    // Add databaseId to the highlight
+  // Use Redis pipeline for batch operations
+  const pipeline = redis.pipeline();
+  
+  // Store all highlights in a single pipeline
+  console.debug('Storing highlights in pipeline...');
+  highlights.forEach((highlight, i) => {
     const highlightWithDb = {
       ...highlight,
       databaseId
     };
     const key = `highlights:${jobId}:${i}`;
-    const value = JSON.stringify(highlightWithDb);
-    console.debug(`Storing highlight ${i + 1}/${highlights.length}:`, { key, value });
-    await redis.set(key, value, 'EX', JOB_TTL);
-    
-    // Verify storage
-    const stored = await redis.get(key);
-    console.debug(`Verified storage for highlight ${i + 1}:`, { stored });
-  }
+    pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
+  });
+
+  // Execute pipeline
+  console.debug('Executing Redis pipeline...');
+  await pipeline.exec();
   
   await setJobStatus(jobId, {
     state: 'pending',
@@ -76,9 +81,10 @@ export async function processSyncJob(
   jobId: string,
   onProgress?: (progress: number, message: string) => Promise<void>
 ) {
+  let redis;
   try {
     console.debug(`Starting sync job processing for ${jobId}`);
-    const redis = await getRedis();
+    redis = await getRedis();
     
     // Get current progress
     const status = await getJobStatus(jobId);
@@ -219,15 +225,12 @@ export async function processSyncJob(
   }
 }
 
-export async function getSyncStatus(jobId: string): Promise<JobStatus | null> {
-  return await getJobStatus(jobId);
-}
-
-async function getHighlightsFromQueue(jobId: string) {
-  const redis = await getRedis();
-  const highlights = [];
+async function getHighlightsFromQueue(jobId: string): Promise<ProcessedHighlight[]> {
+  let redis;
+  const highlights: ProcessedHighlight[] = [];
   
   try {
+    redis = await getRedis();
     const pattern = `highlights:${jobId}:*`;
     console.debug(`Retrieving highlights for job ${jobId} with pattern: ${pattern}`);
     
@@ -235,28 +238,36 @@ async function getHighlightsFromQueue(jobId: string) {
     const allKeys = await redis.keys(pattern);
     console.debug(`Found ${allKeys.length} keys matching pattern:`, allKeys);
     
-    // Get all values at once instead of using scan
+    // Get all values at once using pipeline instead of mget
     if (allKeys.length > 0) {
-      const batch = await redis.mget(...allKeys);
-      console.debug('Raw batch values:', batch);
+      const pipeline = redis.pipeline();
+      allKeys.forEach(key => pipeline.get(key));
+      const results = await pipeline.exec();
       
-      for (const [index, item] of batch.entries()) {
-        if (item !== null) {
-          try {
-            // Handle both string and object responses from Redis
-            const highlight = typeof item === 'string' ? JSON.parse(item) : item;
-            if (typeof highlight === 'object' && highlight.bookTitle && highlight.databaseId) {
-              console.debug(`Valid highlight at index ${index}`);
-              highlights.push(highlight);
-            } else {
-              console.error(`Invalid highlight structure at index ${index}:`, highlight);
-            }
-          } catch (error) {
-            console.error(`Error processing highlight at index ${index}:`, error, item);
+      if (results) {
+        results.forEach(([err, item], index) => {
+          if (err) {
+            console.error(`Error getting value at index ${index}:`, err);
+            return;
           }
-        } else {
-          console.debug(`Null value at index ${index}`);
-        }
+          
+          if (item !== null) {
+            try {
+              // Handle both string and object responses from Redis
+              const highlight = typeof item === 'string' ? JSON.parse(item) : item;
+              if (typeof highlight === 'object' && highlight.bookTitle && highlight.databaseId) {
+                console.debug(`Valid highlight at index ${index}`);
+                highlights.push(highlight);
+              } else {
+                console.error(`Invalid highlight structure at index ${index}:`, highlight);
+              }
+            } catch (error) {
+              console.error(`Error processing highlight at index ${index}:`, error, item);
+            }
+          } else {
+            console.debug(`Null value at index ${index}`);
+          }
+        });
       }
     }
 
@@ -265,5 +276,18 @@ async function getHighlightsFromQueue(jobId: string) {
   } catch (error) {
     console.error('Error retrieving highlights from queue:', error);
     throw error;
+  } finally {
+    // Clean up Redis connection
+    if (redis) {
+      try {
+        await redis.quit();
+      } catch (quitError) {
+        console.error('Error while closing Redis connection:', quitError);
+      }
+    }
   }
+}
+
+export async function getSyncStatus(jobId: string): Promise<JobStatus | null> {
+  return await getJobStatus(jobId);
 }
