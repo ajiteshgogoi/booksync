@@ -51,6 +51,18 @@ jobs:
           npm cache clean --force
           npm ci
 
+      - name: Initialize Redis connection
+        run: |
+          cd server
+          echo "Initializing Redis connection pool..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            const { RedisService } = await import('./build/src/services/redisService.js');
+            global.redisService = await RedisService.init();
+            console.log('Redis connection pool initialized');
+          })();
+          "
+
       - name: Build and run worker
         run: |
           cd server
@@ -91,4 +103,23 @@ jobs:
               console.error('Failed to run worker:', error);
               process.exit(1);
             }
-          })();"
+          })();
+          "
+
+      - name: Cleanup Redis connection
+        if: always()
+        run: |
+          cd server
+          echo "Cleaning up Redis connection..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              if (global.redisService) {
+                await global.redisService.close();
+                console.log('Redis connection pool closed');
+              }
+            } catch (error) {
+              console.error('Error during Redis cleanup:', error);
+            }
+          })();
+          "

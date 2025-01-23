@@ -9,15 +9,16 @@ const logger = {
   debug: (message: string, data?: any) => console.debug(`[DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : ''),
 };
 
-// Connection pool configuration
-const POOL_SIZE = 2; // Reduced from 5 to 2 to conserve connections
-const POOL_ACQUIRE_TIMEOUT = 5000; // Reduced from 10 to 5 seconds
-const MAX_RETRIES = 2; // Reduced from 3
-const RETRY_DELAY = 500; // Reduced from 1000ms
-const CONNECTION_TIMEOUT = 10000; // Reduced from 30s to 10s max connection usage time
-const CONNECTION_MAX_AGE = 300000; // Reduced from 1h to 5m max connection age
-const CONNECTION_IDLE_TIMEOUT = 60000; // Reduced from 5m to 1m idle timeout
-const REAPER_INTERVAL = 30000; // Run reaper every 30s instead of 1m
+// Connection pool configuration - optimized for serverless
+const POOL_SIZE = process.env.VERCEL ? 2 : 5; // Smaller pool for serverless
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 1000 : 5000; // Faster timeout for serverless
+const MAX_RETRIES = process.env.VERCEL ? 1 : 3; // Fewer retries for serverless
+const RETRY_DELAY = 500; // 500ms
+const CONNECTION_TIMEOUT = 15000; // Increased from 10s to 15s max connection usage time
+const CONNECTION_MAX_AGE = 300000; // 5m max connection age
+const CONNECTION_IDLE_TIMEOUT = 30000; // Reduced from 1m to 30s idle timeout
+const REAPER_INTERVAL = 15000; // Run reaper every 15s instead of 30s
+const MAX_CONNECTION_WAITERS = 10; // Maximum number of connection waiters
 
 interface PoolConnection {
   client: RedisType;
@@ -31,6 +32,23 @@ interface PoolConnection {
 class RedisPool {
   private pool: PoolConnection[] = [];
   private connectionPromises: Map<number, Promise<RedisType>> = new Map();
+  private connectionWaiters: number = 0;
+  private connectionStats = {
+    totalAcquires: 0,
+    totalReleases: 0,
+    totalTimeouts: 0,
+    totalErrors: 0,
+    maxWaiters: 0,
+    totalStaleConnections: 0,
+    totalReconnects: 0,
+    totalForcedReleases: 0,
+    totalPoolHits: 0,
+    totalPoolMisses: 0,
+    lastError: null as Error | null,
+    lastErrorTimestamp: 0,
+    lastAcquireDuration: 0,
+    lastReleaseDuration: 0
+  };
 
   private async createClient(): Promise<RedisType> {
     if (!process.env.REDIS_URL) {
@@ -115,12 +133,45 @@ class RedisPool {
   constructor() {
     // Start the connection reaper when pool is created
     this.startConnectionReaper();
+
+    // Add Vercel-specific cleanup handlers
+    if (process.env.VERCEL) {
+      // Cleanup on function completion
+      process.on('beforeExit', async () => {
+        logger.info('Vercel function completing - cleaning up Redis connections');
+        await this.cleanup();
+      });
+
+      // Cleanup on SIGTERM
+      process.on('SIGTERM', async () => {
+        logger.info('Vercel function terminating - cleaning up Redis connections');
+        await this.cleanup();
+        process.exit(0);
+      });
+    }
   }
 
   public async acquire(): Promise<RedisType> {
-    // Initialize pool if needed
-    if (this.pool.length === 0) {
-      await this.initializePool();
+    // Check connection waiter limit
+    if (this.connectionWaiters >= MAX_CONNECTION_WAITERS) {
+      this.connectionStats.totalErrors++;
+      throw new Error('Maximum number of connection waiters reached');
+    }
+
+    this.connectionWaiters++;
+    this.connectionStats.maxWaiters = Math.max(
+      this.connectionStats.maxWaiters,
+      this.connectionWaiters
+    );
+
+    try {
+      // Initialize pool if needed
+      if (this.pool.length === 0) {
+        await this.initializePool();
+      }
+    } catch (error) {
+      this.connectionWaiters--;
+      throw error;
     }
 
     const now = Date.now();
@@ -158,6 +209,7 @@ class RedisPool {
 
     // Wait for a connection with timeout
     return new Promise((resolve, reject) => {
+      this.connectionStats.totalAcquires++;
       const timeoutId = setTimeout(async () => {
         // On timeout, try to force release the longest-held connection
         const oldestConnection = this.pool
@@ -182,22 +234,24 @@ class RedisPool {
 
       const checkPoolInterval = setInterval(async () => {
         try {
-          const availableConn = this.pool.find(conn => !conn.inUse);
-          if (availableConn) {
-            clearTimeout(timeoutId);
-            clearInterval(checkPoolInterval);
-            
-            availableConn.inUse = true;
-            availableConn.lastUsed = now;
-            availableConn.acquiredAt = now;
-            
-            if (await this.validateConnection(availableConn)) {
-              resolve(availableConn.client);
-            } else {
-              await this.replaceConnection(availableConn);
-              resolve(availableConn.client);
+            const availableConn = this.pool.find(conn => !conn.inUse);
+            if (availableConn) {
+              clearTimeout(timeoutId);
+              clearInterval(checkPoolInterval);
+              
+              availableConn.inUse = true;
+              availableConn.lastUsed = now;
+              availableConn.acquiredAt = now;
+              
+              if (await this.validateConnection(availableConn)) {
+                this.connectionWaiters--;
+                resolve(availableConn.client);
+              } else {
+                await this.replaceConnection(availableConn);
+                this.connectionWaiters--;
+                resolve(availableConn.client);
+              }
             }
-          }
         } catch (error) {
           clearInterval(checkPoolInterval);
           clearTimeout(timeoutId);
@@ -207,11 +261,16 @@ class RedisPool {
     });
   }
 
-  private async validateConnection(connection: PoolConnection): Promise<boolean> {
+    private async validateConnection(connection: PoolConnection): Promise<boolean> {
+    const start = Date.now();
     try {
       await connection.client.ping();
+      this.connectionStats.lastAcquireDuration = Date.now() - start;
       return true;
     } catch (error) {
+      this.connectionStats.lastError = error instanceof Error ? error : new Error(String(error));
+      this.connectionStats.lastErrorTimestamp = Date.now();
+      this.connectionStats.totalErrors++;
       logger.warn(`Connection validation failed for ${connection.id}:`, error);
       return false;
     }
@@ -247,22 +306,31 @@ class RedisPool {
   private async replaceConnection(connection: PoolConnection): Promise<void> {
     try {
       await connection.client.quit();
+      this.connectionStats.totalStaleConnections++;
     } catch (error) {
       logger.warn(`Error closing stale connection ${connection.id}:`, error);
+      this.connectionStats.totalErrors++;
     }
 
     const now = Date.now();
     const index = this.pool.indexOf(connection);
     if (index !== -1) {
-      const newClient = await this.createClient();
-      this.pool[index] = {
-        client: newClient,
-        inUse: false,
-        lastUsed: now,
-        acquiredAt: null,
-        createdAt: now,
-        id: `conn-${now}-${index}`
-      };
+      try {
+        const newClient = await this.createClient();
+        this.pool[index] = {
+          client: newClient,
+          inUse: false,
+          lastUsed: now,
+          acquiredAt: null,
+          createdAt: now,
+          id: `conn-${now}-${index}`
+        };
+        this.connectionStats.totalReconnects++;
+      } catch (error) {
+        logger.error('Failed to create replacement connection:', error);
+        this.connectionStats.totalErrors++;
+        throw error;
+      }
     }
   }
 
@@ -291,8 +359,29 @@ class RedisPool {
   }
 
   public release(client: RedisType): void {
+    const start = Date.now();
+    this.connectionStats.totalReleases++;
     const connection = this.pool.find(conn => conn.client === client);
     if (connection) {
+      // Track release duration
+      this.connectionStats.lastReleaseDuration = Date.now() - start;
+      
+      // Log connection stats periodically
+      if (this.connectionStats.totalReleases % 10 === 0) {
+        logger.info('Redis connection pool stats', {
+          poolSize: this.pool.length,
+          inUse: this.pool.filter(conn => conn.inUse).length,
+          waiters: this.connectionWaiters,
+          stats: this.connectionStats
+        });
+      }
+      
+      // Track pool hits/misses
+      if (connection.acquiredAt && Date.now() - connection.acquiredAt < CONNECTION_TIMEOUT) {
+        this.connectionStats.totalPoolHits++;
+      } else {
+        this.connectionStats.totalPoolMisses++;
+      }
       // Force release if connection has been in use too long
       if (connection.acquiredAt && Date.now() - connection.acquiredAt > CONNECTION_TIMEOUT) {
         this.forceRelease(connection).catch(err => {

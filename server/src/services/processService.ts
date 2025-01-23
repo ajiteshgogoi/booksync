@@ -42,8 +42,30 @@ export async function processFileContent(
 
     // Execute pipeline and add job to queue
     console.log('Executing Redis pipeline...');
-    await pipeline.exec();
-    await addJobToQueue(jobId, redis);
+    try {
+      const pipelineResults = await pipeline.exec();
+      if (!pipelineResults) {
+        throw new Error('Pipeline execution returned no results');
+      }
+      
+      // Check for pipeline errors
+      const errors = pipelineResults.filter(result => result[0]);
+      if (errors.length > 0) {
+        console.error('Pipeline errors:', errors);
+        throw new Error(`Failed to store ${errors.length} highlights`);
+      }
+      
+      console.log('Pipeline executed successfully:', {
+        total: highlights.length,
+        success: pipelineResults.length - errors.length
+      });
+      
+      await addJobToQueue(jobId, redis);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown pipeline error';
+      console.error('Pipeline execution failed:', errorMessage);
+      throw new Error(`Failed to store highlights: ${errorMessage}`);
+    }
     
     console.log('File processing completed. Job ID:', jobId);
     return jobId;

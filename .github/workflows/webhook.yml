@@ -62,6 +62,18 @@ jobs:
           npm run build
           echo "Build complete"
 
+      - name: Initialize Redis connection
+        working-directory: server
+        run: |
+          echo "Initializing Redis connection pool..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            const { RedisService } = await import('./build/src/services/redisService.js');
+            global.redisService = await RedisService.init();
+            console.log('Redis connection pool initialized');
+          })();
+          "
+
       - name: Process File
         working-directory: server
         env:
@@ -79,6 +91,24 @@ jobs:
           echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
+
+      - name: Cleanup Redis connection
+        if: always()
+        working-directory: server
+        run: |
+          echo "Cleaning up Redis connection..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              if (global.redisService) {
+                await global.redisService.close();
+                console.log('Redis connection pool closed');
+              }
+            } catch (error) {
+              console.error('Error during Redis cleanup:', error);
+            }
+          })();
+          "
 
   test-webhook:
     if: github.event.action == 'process_highlights_test'

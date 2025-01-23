@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import { processFileContent } from './build/src/services/processService.js';
-import { getRedis } from './build/src/services/redisService.js';
+import { RedisService } from './build/src/services/redisService.js';
 import { streamFile } from './build/src/services/r2Service.js';
 
 dotenv.config();
@@ -11,7 +11,7 @@ const debug = (...args) => console.log('[Debug]', ...args);
 
 async function getTokenData() {
   try {
-    const redis = await getRedis();
+    const redis = global.redisService || await RedisService.init();
     const keys = await redis.keys('oauth:*');
     
     if (keys.length === 0) {
