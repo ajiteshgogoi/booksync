@@ -212,7 +212,7 @@ function App() {
                      syncStatus === 'queued' ? 'In Queue...' : 'Sync Highlights'}
                   </button>
 
-                  {(syncStatus === 'queued' || syncStatus === 'parsing') && (
+                  {(syncStatus === 'queued') && (
                      <div className="mt-4 text-sm text-[#5a463a] font-serif space-y-1">
                        <div className="text-center p-4 bg-[#fffaf0] border border-[#e0d6c2] rounded-lg">
                          <div className="text-[#3d2b1f] font-semibold text-lg relative overflow-hidden">
