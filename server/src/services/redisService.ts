@@ -219,5 +219,59 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
   }
 }
 
+// Cleanup configuration
+const CLEANUP_INTERVAL = 60 * 60 * 1000; // Run cleanup every hour
+
+// Function to clean up expired keys
+async function cleanupExpiredKeys(): Promise<void> {
+  try {
+    const redis = await getRedis();
+    const patterns = [
+      'job:*:status',    // Job statuses
+      'oauth:*',         // OAuth tokens
+      'rate_limit:*'     // Rate limit keys
+    ];
+
+    for (const pattern of patterns) {
+      const keys = await redis.keys(pattern);
+      for (const key of keys) {
+        const ttl = await redis.ttl(key);
+        // If TTL is -1 (no expiry) or -2 (expired), delete the key
+        if (ttl === -1 || ttl === -2) {
+          await redis.del(key);
+          logger.debug('Cleaned up expired key', { key });
+        }
+      }
+    }
+    logger.info('Completed Redis key cleanup');
+  } catch (error) {
+    logger.error('Failed to cleanup expired keys', { error });
+  }
+}
+
+// Initialize cleanup scheduler
+let cleanupInterval: NodeJS.Timeout;
+
+export async function startCleanupScheduler(): Promise<void> {
+  try {
+    // Run initial cleanup
+    await cleanupExpiredKeys();
+    
+    // Schedule periodic cleanup
+    cleanupInterval = setInterval(cleanupExpiredKeys, CLEANUP_INTERVAL);
+    logger.info('Redis cleanup scheduler started');
+  } catch (error) {
+    logger.error('Failed to start cleanup scheduler', { error });
+    throw error;
+  }
+}
+
+export async function stopCleanupScheduler(): Promise<void> {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    logger.info('Redis cleanup scheduler stopped');
+  }
+}
+
 // Export the redis instance for direct access when needed
 export { getRedis as redis };

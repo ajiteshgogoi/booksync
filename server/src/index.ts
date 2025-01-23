@@ -83,6 +83,7 @@ import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
+import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
@@ -481,8 +482,16 @@ if (!process.env.VERCEL) {
   let workerInterval: NodeJS.Timeout;
 
   // Start the server
-  app.listen(port, () => {
+  app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
+    
+    // Start Redis cleanup scheduler
+    try {
+      await startCleanupScheduler();
+      console.log('Redis cleanup scheduler started');
+    } catch (error) {
+      console.error('Failed to start Redis cleanup scheduler:', error);
+    }
     
     // Start continuous background worker for local development
     workerInterval = setInterval(async () => {
@@ -495,10 +504,18 @@ if (!process.env.VERCEL) {
   });
 
   // Handle shutdown
-  process.on('SIGTERM', () => {
+  process.on('SIGTERM', async () => {
     console.log('Server shutting down...');
     if (workerInterval) {
       clearInterval(workerInterval);
+    }
+    
+    // Stop Redis cleanup scheduler
+    try {
+      await stopCleanupScheduler();
+      console.log('Redis cleanup scheduler stopped');
+    } catch (error) {
+      console.error('Failed to stop Redis cleanup scheduler:', error);
     }
   });
 }
