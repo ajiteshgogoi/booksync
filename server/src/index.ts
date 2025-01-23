@@ -6,11 +6,54 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { config } from 'dotenv';
 
-// Configure dotenv for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = join(__dirname, '../../.env');
-config({ path: envPath });
+// Configure dotenv
+function loadEnv() {
+  // When running with ts-node (development)
+  if (process.env.NODE_ENV !== 'production') {
+    config(); // First try default loading (process.cwd())
+    
+    // If that didn't work, try explicit paths
+    if (!process.env.NOTION_OAUTH_CLIENT_ID) {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
+      const serverRoot = join(__dirname, process.env.NODE_ENV === 'development' ? '../..' : '../../../..');
+      
+      console.log('Loading .env from server root:', serverRoot);
+      const envPath = join(serverRoot, '.env');
+      const result = config({ path: envPath });
+      
+      if (!result.parsed) {
+        throw new Error(`Failed to load .env file from ${envPath}`);
+      }
+      
+      console.log('Environment loaded from:', envPath);
+    }
+  }
+  
+  // Validate required environment variables
+  const required = [
+    'NOTION_OAUTH_CLIENT_ID',
+    'NOTION_OAUTH_CLIENT_SECRET',
+    'REDIS_URL'
+  ];
+  
+  const missing = required.filter(key => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+  
+  console.log('Environment configuration:', {
+    NODE_ENV: process.env.NODE_ENV || 'development',
+    NOTION_CONFIG: {
+      clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
+      redirectUri: process.env.NOTION_REDIRECT_URI || 'http://localhost:3001/auth/notion/callback'
+    },
+    REDIS_URL: process.env.REDIS_URL ? 'configured' : 'missing'
+  });
+}
+
+// Initialize environment
+loadEnv();
 
 interface User {
   id: string;
@@ -66,7 +109,21 @@ function generateState() {
 
 // Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
-  res.status(200).json({ status: 'ok' });
+  const config = {
+    status: 'ok',
+    environment: process.env.NODE_ENV,
+    notionConfig: {
+      clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
+      redirectUri: process.env.NOTION_REDIRECT_URI || 'using default',
+      clientSecret: process.env.NOTION_OAUTH_CLIENT_SECRET ? 'configured' : 'missing'
+    },
+    redisConfig: {
+      url: process.env.REDIS_URL ? 'configured' : 'missing'
+    }
+  };
+  
+  console.log('Health check response:', config);
+  res.status(200).json(config);
 });
 
 // Test GitHub connection
@@ -182,29 +239,60 @@ app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
 
 // Notion OAuth routes
 app.get(`${apiBasePath}/auth/notion`, (req: Request, res: Response) => {
-  const state = generateState();
-  const redirectUri = process.env.NOTION_REDIRECT_URI;
-  
-  if (!redirectUri) {
-    return res.status(500).json({ error: 'Missing redirect URI configuration' });
+  try {
+    console.log('\n=== Starting Notion OAuth Flow ===');
+    
+    // Generate and validate state
+    const state = generateState();
+    console.log('Generated state:', state);
+    
+    // Get and validate configuration
+    const clientId = process.env.NOTION_OAUTH_CLIENT_ID;
+    const redirectUri = process.env.NOTION_REDIRECT_URI;
+    const finalRedirectUri = redirectUri || `http://localhost:3001${apiBasePath}/auth/notion/callback`;
+
+    // Validate client ID
+    if (!clientId || clientId === 'undefined' || clientId === 'null') {
+      console.error('Invalid NOTION_OAUTH_CLIENT_ID:', clientId);
+      return res.status(500).json({
+        error: 'OAuth configuration error',
+        details: 'Client ID is not properly configured'
+      });
+    }
+
+    // Log configuration
+    console.log('OAuth Configuration:', {
+      clientId,
+      redirectUri: finalRedirectUri,
+      state
+    });
+
+    // Construct auth URL
+    const authUrl = `https://api.notion.com/v1/oauth/authorize?${
+      qs.stringify({
+        client_id: clientId,
+        redirect_uri: finalRedirectUri,
+        response_type: 'code',
+        state: state,
+      })
+    }`;
+    
+    // Set cookie and redirect
+    res.cookie('oauth_state', state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    console.log('Redirecting to Notion OAuth URL');
+    res.redirect(authUrl);
+  } catch (error) {
+    console.error('Failed to initiate OAuth flow:', error);
+    res.status(500).json({
+      error: 'OAuth initialization failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
-
-  const authUrl = `https://api.notion.com/v1/oauth/authorize?${
-    qs.stringify({
-      client_id: process.env.NOTION_OAUTH_CLIENT_ID,
-      redirect_uri: redirectUri,
-      response_type: 'code',
-      state: state,
-    })
-  }`;
-
-  res.cookie('oauth_state', state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax'
-  });
-
-  res.redirect(authUrl);
 });
 
 app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Response) => {
@@ -217,10 +305,11 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
   }
 
   try {
+    const finalRedirectUri = process.env.NOTION_REDIRECT_URI || `http://localhost:3001${apiBasePath}/auth/notion/callback`;
     const response = await axios.post('https://api.notion.com/v1/oauth/token', {
       grant_type: 'authorization_code',
       code: code,
-      redirect_uri: process.env.NOTION_REDIRECT_URI,
+      redirect_uri: finalRedirectUri,
     }, {
       auth: {
         username: process.env.NOTION_OAUTH_CLIENT_ID!,

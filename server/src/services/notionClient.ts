@@ -92,13 +92,31 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
     // Store the workspace ID as the key since we don't have user IDs
     const workspaceId = tokenData.workspace_id;
 
-    // Validate and store the token data
+    // Store the token data first
     await storeOAuthToken(
       JSON.stringify(tokenData),
       workspaceId,
-      _databaseId || '',
+      '', // Database ID will be set after we find it
       tokenData.owner?.user?.id || ''
     );
+
+    // Initialize client with better error handling
+    _client = new Client({
+      auth: tokenData.access_token,
+    });
+
+    // Find the database
+    await findKindleHighlightsDatabase();
+
+    // If we found the database ID, update the token storage with it
+    if (_databaseId) {
+      await storeOAuthToken(
+        JSON.stringify(tokenData),
+        workspaceId,
+        _databaseId,
+        tokenData.owner?.user?.id || ''
+      );
+    }
     
     // Initialize client with better error handling
     _client = new Client({
