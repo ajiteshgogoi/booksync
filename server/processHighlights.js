@@ -47,7 +47,7 @@ async function main() {
     let fileContent;
     try {
       fileContent = await import('fs/promises').then(fs =>
-        fs.readFile('../kindle_content.txt', 'utf8')
+        fs.readFile('kindle_content.txt', 'utf8')
       );
       console.log('Successfully read content file, length:', fileContent.length);
     } catch (err) {

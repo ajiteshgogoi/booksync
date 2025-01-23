@@ -83,11 +83,11 @@ jobs:
             exit 1
           fi
           
-          # Save content to a file that will be used by the next step
-          echo "$CONTENT" > kindle_content.txt
+          # Save content to a file in the server directory
+          echo "$CONTENT" > server/kindle_content.txt
           
           # Verify content was saved
-          echo "Content length: $(wc -c < kindle_content.txt) bytes"
+          echo "Content length: $(wc -c < server/kindle_content.txt) bytes"
           echo "Content successfully saved to file"
 
       - name: Process File
@@ -100,16 +100,16 @@ jobs:
           fi
           
           # Show content stats
-          echo "Content file size: $(wc -c < ../kindle_content.txt) bytes"
+          echo "Content file size: $(wc -c < kindle_content.txt) bytes"
           echo "First 100 characters:"
-          head -c 100 ../kindle_content.txt
+          head -c 100 kindle_content.txt
           echo
           
           echo "Starting file processing..."
           node --experimental-vm-modules processHighlights.js
           
           # Cleanup
-          rm ../kindle_content.txt
+          rm kindle_content.txt
 
       - name: Cleanup Gist
         if: always()  # Run even if previous steps fail
