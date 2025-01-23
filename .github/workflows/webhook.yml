@@ -66,7 +66,7 @@ jobs:
         working-directory: server
         env:
           FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
-          FILE_NAME: ${{ github.event.client_payload.fileName }}
+          FILE_NAME: "My Clippings.txt"
         run: |
           echo "Environment Check:"
           echo "- FILE_CONTENT length: ${#FILE_CONTENT}"
@@ -89,13 +89,12 @@ jobs:
           echo "Event type: ${{ github.event.action }}"
           echo "Client Payload:"
           echo "- Has fileContent: ${{ github.event.client_payload.fileContent != null }}"
-          echo "- Has fileName: ${{ github.event.client_payload.fileName != null }}"
           if [ -n "${{ github.event.client_payload.fileContent }}" ]; then
             echo "- fileContent is present"
           else
             echo "- fileContent is empty"
           fi
-          echo "- fileName: ${{ github.event.client_payload.fileName }}"
+          echo "- Using default fileName: My Clippings.txt"
           echo "Full payload: ${{ toJSON(github.event.client_payload) }}"
       
       - name: Verify Required Secrets
