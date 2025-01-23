@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger.js';
 import { getRedis, setJobStatus } from './redisService.js';
 import { downloadObject, uploadObject, getObjectInfo } from './r2Service.js';
+import { queueSyncJob, processSyncJob } from './syncService.js';
 
 export async function processFileContent(
   userId: string,
@@ -14,9 +15,14 @@ export async function processFileContent(
       contentLength: fileContent.length
     });
 
-    // Process the file content
-    // Here you would implement your specific file processing logic
-    // For example, parsing highlights, extracting text, etc.
+    // Queue sync job to process highlights
+    const jobId = await queueSyncJob(databaseId, fileContent);
+    logger.info('Sync job queued', { jobId });
+
+    // Process the sync job
+    await processSyncJob(jobId, async (progress: number, message: string) => {
+      logger.info('Sync progress', { progress, message });
+    });
     
     logger.info('File content processed successfully');
   } catch (error) {
