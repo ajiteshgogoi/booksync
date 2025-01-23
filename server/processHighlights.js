@@ -1,15 +1,52 @@
 #!/usr/bin/env node
 import { processFileContent } from './build/src/services/processService.js';
+import { getRedis } from './build/src/services/redisService.js';
+
+async function getTokenData() {
+  try {
+    const redis = await getRedis();
+    const keys = await redis.keys('oauth:*');
+    
+    if (keys.length === 0) {
+      throw new Error('No OAuth tokens found in Redis');
+    }
+
+    console.log('Found OAuth keys:', keys);
+    
+    // Get the first workspace's token data
+    const tokenData = await redis.get(keys[0]);
+    if (!tokenData) {
+      throw new Error('Failed to retrieve token data from Redis');
+    }
+
+    const { databaseId, userId } = JSON.parse(tokenData);
+    
+    // Validate database ID format (Notion database IDs are 32 char hex)
+    if (!databaseId || typeof databaseId !== 'string' || !/^[a-f0-9]{32}$/.test(databaseId)) {
+      throw new Error(`Invalid database ID format: ${databaseId}`);
+    }
+    
+    if (!userId || typeof userId !== 'string') {
+      throw new Error(`Invalid user ID format: ${userId}`);
+    }
+
+    console.log('Retrieved token data:', { databaseId, userId });
+    return { databaseId, userId };
+  } catch (error) {
+    console.error('Error retrieving token data:', error);
+    throw error;
+  }
+}
 
 async function main() {
   try {
     const fileContent = process.env.FILE_CONTENT;
-    const userId = process.env.USER_ID;
-    const databaseId = process.env.DATABASE_ID;
     
-    if (!fileContent || !userId || !databaseId) {
-      throw new Error('Missing required environment variables');
+    if (!fileContent) {
+      throw new Error('Missing required environment variable: FILE_CONTENT');
     }
+
+    const { databaseId, userId } = await getTokenData();
 
     console.log('Starting file processing with:', {
       userId,

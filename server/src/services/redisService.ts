@@ -129,17 +129,19 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
 }
 
 // Token management
-export async function storeOAuthToken(token: string, workspaceId: string, databaseId: string): Promise<void> {
+export async function storeOAuthToken(token: string, workspaceId: string, databaseId: string, userId: string): Promise<void> {
   try {
     const redis = await getRedis();
     const tokenData = {
       token,
-      databaseId
+      databaseId,
+      userId
     };
     await redis.set(`oauth:${workspaceId}`, JSON.stringify(tokenData), 'EX', TOKEN_TTL);
     logger.debug('OAuth token stored', {
       workspaceId,
       databaseId,
+      userId,
       tokenLength: token.length
     });
   } catch (error) {
