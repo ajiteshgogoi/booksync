@@ -83,26 +83,17 @@ jobs:
             exit 1
           fi
 
-          # Set multiline content in GitHub environment
-          {
-            echo "FILE_CONTENT<<EOF"
-            echo "$CONTENT"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-          echo "Content saved to environment variable"
+          # Save content to temp file
+          TEMP_FILE=$(mktemp)
+          echo "$CONTENT" > "$TEMP_FILE"
+          echo "Content saved to temp file: $TEMP_FILE"
 
       - name: Process File
         run: |
           cd server
-          
-          # Debug environment variable content
-          echo "FILE_CONTENT variable length: ${#FILE_CONTENT}"
-          echo "First 100 chars of FILE_CONTENT:"
-          echo "${FILE_CONTENT:0:100}"
-          
           echo "Starting file processing..."
-          node --experimental-vm-modules processHighlights.js
+          FILE_CONTENT="$(cat $TEMP_FILE)" node --experimental-vm-modules processHighlights.js
+          rm -f $TEMP_FILE
 
       - name: Cleanup Gist
         if: always()  # Run even if previous steps fail
