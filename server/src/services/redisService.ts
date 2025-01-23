@@ -93,26 +93,90 @@ async function initializeRedis(): Promise<RedisType> {
 
 export async function getRedis(): Promise<RedisType> {
   try {
-    // Return existing client if it's connected
+    logger.debug('=== Redis Client Request ===');
+    
+    // Check if existing client is truly ready
     if (_redis?.status === 'ready') {
-      return _redis;
-    }
-
-    // Create new connection if none exists or previous one failed
-    if (!connectionPromise) {
-      connectionPromise = initializeRedis().then(redis => {
-        _redis = redis;
-        connectionPromise = null;
-        return redis;
-      }).catch(error => {
-        connectionPromise = null;
-        throw error;
+      try {
+        // Verify connection is actually working with timeout
+        const pingPromise = _redis.ping();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis ping timeout')), 5000)
+        );
+        await Promise.race([pingPromise, timeoutPromise]);
+        logger.debug('✅ Existing Redis client verified');
+        return _redis;
+      } catch (pingError) {
+        logger.warn('⚠️ Existing Redis client failed verification:', {
+          error: pingError instanceof Error ? pingError.message : String(pingError),
+          status: _redis.status
+        });
+        _redis = null; // Clear the failed client
+      }
+    } else if (_redis) {
+      logger.warn('⚠️ Existing Redis client not ready:', {
+        status: _redis.status,
+        connected: _redis.status === 'connecting'
       });
+      _redis = null;
     }
 
-    return await connectionPromise;
+    // Handle concurrent connection attempts with timeout
+    if (!connectionPromise) {
+      logger.debug('Creating new Redis connection...');
+      connectionPromise = Promise.race<RedisType>([
+        initializeRedis()
+          .then(redis => {
+            logger.debug('✅ New Redis connection established');
+            _redis = redis;
+            connectionPromise = null;
+            return redis;
+          })
+          .catch(error => {
+            logger.error('❌ Failed to establish Redis connection:', {
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined
+            });
+            connectionPromise = null;
+            throw error;
+          }),
+        new Promise<RedisType>((_, reject) =>
+          setTimeout(() => {
+            connectionPromise = null;
+            reject(new Error('Redis connection timeout after 10s'));
+          }, 10000)
+        )
+      ]);
+    } else {
+      logger.debug('Using existing connection promise...');
+    }
+
+    const newRedis = await connectionPromise;
+    if (!newRedis) {
+      throw new Error('Failed to create Redis client');
+    }
+    
+    // Final verification
+    await newRedis.ping();
+    logger.debug('Redis client ready and verified');
+    return newRedis;
   } catch (error) {
-    logger.error('Failed to get Redis client', { error });
+    // Clean up on failure
+    if (_redis) {
+      try {
+        await _redis.quit();
+      } catch (quitError) {
+        logger.warn('Failed to quit Redis client:', quitError);
+      }
+      _redis = null;
+    }
+    connectionPromise = null;
+
+    logger.error('Redis client acquisition failed:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      url: process.env.REDIS_URL ? 'configured' : 'missing'
+    });
     throw error;
   }
 }
