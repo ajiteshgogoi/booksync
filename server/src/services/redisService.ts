@@ -246,7 +246,7 @@ export const CONSUMER_GROUP = 'sync_processors';
 export const CONSUMER_NAME = `consumer-${process.pid}`;
 export const JOB_TTL = 60 * 60 * 24; // 24 hours
 
-export class RedisService {
+class RedisService {
   private static instance: RedisType | null = null;
   private static pool = RedisPool.getInstance();
 
@@ -564,7 +564,7 @@ export async function deleteOAuthToken(workspaceId: string): Promise<void> {
 }
 
 export type { RedisType };
-export { redisPool };
+export { redisPool, RedisService };
 
 // Type for Redis stream response
 type RedisStreamResponse = Array<[string, Array<[string, string[]]>]>;

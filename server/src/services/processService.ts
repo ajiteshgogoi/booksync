@@ -2,6 +2,34 @@ import { logger } from '../utils/logger.js';
 import { getRedis, setJobStatus } from './redisService.js';
 import { downloadObject, uploadObject, getObjectInfo } from './r2Service.js';
 
+export async function processFileContent(
+  userId: string,
+  fileContent: string,
+  databaseId: string
+): Promise<void> {
+  try {
+    logger.info('Processing file content', {
+      userId,
+      databaseId,
+      contentLength: fileContent.length
+    });
+
+    // Process the file content
+    // Here you would implement your specific file processing logic
+    // For example, parsing highlights, extracting text, etc.
+    
+    logger.info('File content processed successfully');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error processing file content', {
+      userId,
+      databaseId,
+      error: errorMessage
+    });
+    throw error;
+  }
+}
+
 export async function processFile(jobId: string): Promise<void> {
   const redis = await getRedis();
   
