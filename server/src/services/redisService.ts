@@ -150,26 +150,59 @@ class RedisPool {
   }
 
   private async replaceConnection(connection: PoolConnection): Promise<void> {
-    try {
-      await connection.client.quit();
-      this.connectionStats.totalStaleConnections++;
-      
-      const index = this.pool.indexOf(connection);
-      if (index !== -1) {
-        const newClient = await this.createClient();
-        this.pool[index] = {
-          client: newClient,
-          inUse: false,
-          lastUsed: Date.now(),
-          acquiredAt: null,
-          createdAt: Date.now(),
-          id: `conn-${Date.now()}-${index}`
-        };
-        this.connectionStats.totalReconnects++;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000;
+    let retryCount = 0;
+    
+    while (retryCount < MAX_RETRIES) {
+      try {
+        // Clean up old connection
+        try {
+          await connection.client.quit();
+        } catch (quitError) {
+          logger.warn('Error quitting old connection', {
+            error: quitError instanceof Error ? quitError.message : 'Unknown error',
+            stack: quitError instanceof Error ? quitError.stack : undefined
+          });
+        }
+        
+        this.connectionStats.totalStaleConnections++;
+        
+        const index = this.pool.indexOf(connection);
+        if (index !== -1) {
+          // Create new connection with timeout
+          const newClient = await this.createClient();
+          
+          // Verify new connection
+          await newClient.ping();
+          
+          this.pool[index] = {
+            client: newClient,
+            inUse: false,
+            lastUsed: Date.now(),
+            acquiredAt: null,
+            createdAt: Date.now(),
+            id: `conn-${Date.now()}-${index}`
+          };
+          this.connectionStats.totalReconnects++;
+          return;
+        }
+      } catch (error) {
+        retryCount++;
+        logger.error('Error replacing connection', {
+          attempt: retryCount,
+          maxRetries: MAX_RETRIES,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        if (retryCount < MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * retryCount));
+        } else {
+          this.connectionStats.totalErrors++;
+          throw error;
+        }
       }
-    } catch (error) {
-      logger.error('Error replacing connection', { error });
-      this.connectionStats.totalErrors++;
     }
   }
 
