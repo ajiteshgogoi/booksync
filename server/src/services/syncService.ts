@@ -37,7 +37,7 @@ export async function queueSyncJob(
 ): Promise<string> {
   console.debug('Starting sync job for database:', databaseId);
   const jobId = `sync:${databaseId}:${Date.now()}`;
-  const highlights = parseClippings(fileContent);
+  const highlights = await parseClippings(fileContent);
   console.debug('Parsed highlights count:', highlights.length);
   const redis = await getRedis();
   console.debug('Redis client initialized');

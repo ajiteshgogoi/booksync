@@ -13,7 +13,7 @@ export async function processFileContent(
     const jobId = `sync:${userId}:${Date.now()}`;
     
     // Parse all highlights at once
-    const highlights = parseClippings(fileContent);
+    const highlights = await parseClippings(fileContent);
     console.log('Parsed highlights count:', highlights.length);
     
     // Use Redis pipeline for batch operations
@@ -21,7 +21,7 @@ export async function processFileContent(
     
     // Store all highlights in a single pipeline
     console.log('Storing highlights in pipeline...');
-    highlights.forEach((highlight, i) => {
+    highlights.forEach((highlight: any, i: number) => {
       const highlightWithDb = {
         ...highlight,
         databaseId

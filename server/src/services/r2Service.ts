@@ -1,6 +1,9 @@
+import dotenv from 'dotenv';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+
+dotenv.config();
 
 const R2_ENDPOINT = process.env.R2_ENDPOINT;
 const R2_ACCESS_KEY = process.env.R2_ACCESS_KEY_ID;
@@ -8,6 +11,12 @@ const R2_SECRET_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 
 if (!R2_ENDPOINT || !R2_ACCESS_KEY || !R2_SECRET_KEY || !R2_BUCKET_NAME) {
+  console.error('R2 Environment Variables:', {
+    endpoint: !!R2_ENDPOINT,
+    accessKey: !!R2_ACCESS_KEY,
+    secretKey: !!R2_SECRET_KEY,
+    bucketName: !!R2_BUCKET_NAME
+  });
   throw new Error('Missing required R2 environment variables');
 }
 
