@@ -245,7 +245,7 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
     const fileContent = req.file.buffer.toString('utf-8');
     console.log('File content preview:', fileContent.slice(0, 200));
 
-    const highlights = parseClippings(fileContent);
+    const highlights = await parseClippings(fileContent);
     console.log('Parsed highlights count:', highlights.length);
     
     const response = { count: highlights.length };
@@ -515,12 +515,12 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   }
 });
 
-// For local development, start the server and continuous worker
-if (!process.env.VERCEL) {
-  let workerInterval: NodeJS.Timeout;
+// Initialize worker interval
+let workerInterval: NodeJS.Timeout | undefined;
 
-  // Start the server
-  app.listen(port, async () => {
+// Start the server if not in Vercel environment
+if (!process.env.VERCEL) {
+  const server = app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
     
     // Start Redis cleanup scheduler
@@ -531,18 +531,20 @@ if (!process.env.VERCEL) {
       console.error('Failed to start Redis cleanup scheduler:', error);
     }
     
-    // Start continuous background worker for local development
-    workerInterval = setInterval(async () => {
-      try {
-        await startWorker();
-      } catch (error) {
-        console.error('Worker iteration error:', error);
-      }
-    }, 30000); // Run every 30 seconds in development
+    if (process.env.NODE_ENV !== 'production') {
+      // Start continuous background worker for local development
+      workerInterval = setInterval(async () => {
+        try {
+          await startWorker();
+        } catch (error) {
+          console.error('Worker iteration error:', error);
+        }
+      }, 30000); // Run every 30 seconds in development
+    }
   });
 
   // Handle shutdown
-  process.on('SIGTERM', async () => {
+  const cleanup = async () => {
     console.log('Server shutting down...');
     if (workerInterval) {
       clearInterval(workerInterval);
@@ -555,7 +557,12 @@ if (!process.env.VERCEL) {
     } catch (error) {
       console.error('Failed to stop Redis cleanup scheduler:', error);
     }
-  });
+    
+    server.close();
+  };
+
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
 }
 
 export default app;
