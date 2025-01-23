@@ -9,26 +9,30 @@ const logger = {
   debug: (message: string, data?: any) => console.debug(`[DEBUG] ${message}`, data ? JSON.stringify(data, null, 2) : ''),
 };
 
-// Initialize Redis client
-let _redis: RedisType | null = null;
-
+// Connection pool configuration
+const POOL_SIZE = 5;
+const POOL_ACQUIRE_TIMEOUT = 10000; // 10 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
-let connectionPromise: Promise<RedisType> | null = null;
 
-async function initializeRedis(): Promise<RedisType> {
-  try {
+interface PoolConnection {
+  client: RedisType;
+  inUse: boolean;
+  lastUsed: number;
+}
+
+class RedisPool {
+  private pool: PoolConnection[] = [];
+  private connectionPromises: Map<number, Promise<RedisType>> = new Map();
+
+  private async createClient(): Promise<RedisType> {
     if (!process.env.REDIS_URL) {
       throw new Error('Missing Redis configuration in environment variables');
     }
 
-    logger.debug('=== Redis Initialization Start ===');
-    logger.debug('Initializing Redis with URL', { url: process.env.REDIS_URL });
-    
-    // Create Redis client with detailed options
     const options = {
       maxRetriesPerRequest: 3,
-      connectTimeout: 10000, // 10 seconds
+      connectTimeout: 10000,
       retryStrategy(times: number) {
         logger.debug(`Redis retry attempt ${times}`);
         if (times > MAX_RETRIES) {
@@ -50,10 +54,8 @@ async function initializeRedis(): Promise<RedisType> {
       }
     };
 
-    logger.debug('Creating Redis client with options:', options);
     const redis = new Redis(process.env.REDIS_URL, options);
 
-    // Set up event handlers with detailed logging
     redis.on('connect', () => {
       logger.info('✅ Redis client connected successfully');
     });
@@ -67,116 +69,108 @@ async function initializeRedis(): Promise<RedisType> {
       logger.info('⏳ Redis client reconnecting:', { attempt });
     });
 
-    // Test connection with retry and detailed logging
-    for (let i = 0; i < MAX_RETRIES; i++) {
+    // Test connection
+    await redis.ping();
+    return redis;
+  }
+
+  private async initializePool(): Promise<void> {
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const client = await this.createClient();
+      this.pool.push({
+        client,
+        inUse: false,
+        lastUsed: Date.now()
+      });
+    }
+  }
+
+  public async acquire(): Promise<RedisType> {
+    // Initialize pool if needed
+    if (this.pool.length === 0) {
+      await this.initializePool();
+    }
+
+    // Find available connection
+    const availableConnection = this.pool.find(conn => !conn.inUse);
+    if (availableConnection) {
+      availableConnection.inUse = true;
+      availableConnection.lastUsed = Date.now();
+
+      // Verify connection is working
       try {
-        logger.debug(`Ping attempt ${i + 1}/${MAX_RETRIES}...`);
-        await redis.ping();
-        logger.info(`✅ Redis ping successful on attempt ${i + 1}`);
-        return redis;
+        await availableConnection.client.ping();
+        return availableConnection.client;
       } catch (error) {
-        if (i === MAX_RETRIES - 1) {
-          logger.error('❌ All Redis ping attempts failed');
-          throw error;
-        }
-        logger.warn(`⚠️ Redis ping attempt ${i + 1} failed, retrying...`, error);
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        // Connection failed, create new one
+        availableConnection.client = await this.createClient();
+        return availableConnection.client;
       }
     }
 
-    throw new Error('Failed to establish Redis connection after retries');
-  } catch (error) {
-    logger.error('Failed to initialize Redis client', { error });
-    throw error;
+    // No available connections, wait for one
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Timeout waiting for available Redis connection'));
+      }, POOL_ACQUIRE_TIMEOUT);
+
+      const checkPool = async () => {
+        const conn = this.pool.find(conn => !conn.inUse);
+        if (conn) {
+          clearTimeout(timeoutId);
+          conn.inUse = true;
+          conn.lastUsed = Date.now();
+          try {
+            await conn.client.ping();
+            resolve(conn.client);
+          } catch (error) {
+            conn.client = await this.createClient();
+            resolve(conn.client);
+          }
+        } else {
+          setTimeout(checkPool, 100);
+        }
+      };
+
+      checkPool();
+    });
+  }
+
+  public release(client: RedisType): void {
+    const connection = this.pool.find(conn => conn.client === client);
+    if (connection) {
+      connection.inUse = false;
+      connection.lastUsed = Date.now();
+    }
+  }
+
+  public async cleanup(): Promise<void> {
+    // Close all connections
+    for (const conn of this.pool) {
+      if (conn.client) {
+        try {
+          await conn.client.quit();
+        } catch (error) {
+          logger.warn('Error closing Redis connection:', error);
+        }
+      }
+    }
+    this.pool = [];
   }
 }
 
+// Create Redis pool instance
+const redisPool = new RedisPool();
+
+// Get Redis client from pool
 export async function getRedis(): Promise<RedisType> {
   try {
     logger.debug('=== Redis Client Request ===');
-    
-    // Check if existing client is truly ready
-    if (_redis?.status === 'ready') {
-      try {
-        // Verify connection is actually working with timeout
-        const pingPromise = _redis.ping();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Redis ping timeout')), 5000)
-        );
-        await Promise.race([pingPromise, timeoutPromise]);
-        logger.debug('✅ Existing Redis client verified');
-        return _redis;
-      } catch (pingError) {
-        logger.warn('⚠️ Existing Redis client failed verification:', {
-          error: pingError instanceof Error ? pingError.message : String(pingError),
-          status: _redis.status
-        });
-        _redis = null; // Clear the failed client
-      }
-    } else if (_redis) {
-      logger.warn('⚠️ Existing Redis client not ready:', {
-        status: _redis.status,
-        connected: _redis.status === 'connecting'
-      });
-      _redis = null;
-    }
-
-    // Handle concurrent connection attempts with timeout
-    if (!connectionPromise) {
-      logger.debug('Creating new Redis connection...');
-      connectionPromise = Promise.race<RedisType>([
-        initializeRedis()
-          .then(redis => {
-            logger.debug('✅ New Redis connection established');
-            _redis = redis;
-            connectionPromise = null;
-            return redis;
-          })
-          .catch(error => {
-            logger.error('❌ Failed to establish Redis connection:', {
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined
-            });
-            connectionPromise = null;
-            throw error;
-          }),
-        new Promise<RedisType>((_, reject) =>
-          setTimeout(() => {
-            connectionPromise = null;
-            reject(new Error('Redis connection timeout after 10s'));
-          }, 10000)
-        )
-      ]);
-    } else {
-      logger.debug('Using existing connection promise...');
-    }
-
-    const newRedis = await connectionPromise;
-    if (!newRedis) {
-      throw new Error('Failed to create Redis client');
-    }
-    
-    // Final verification
-    await newRedis.ping();
-    logger.debug('Redis client ready and verified');
-    return newRedis;
+    const client = await redisPool.acquire();
+    logger.debug('Redis client acquired from pool');
+    return client;
   } catch (error) {
-    // Clean up on failure
-    if (_redis) {
-      try {
-        await _redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-      _redis = null;
-    }
-    connectionPromise = null;
-
-    logger.error('Redis client acquisition failed:', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      url: process.env.REDIS_URL ? 'configured' : 'missing'
-    });
+    logger.error('Failed to acquire Redis client:', error);
     throw error;
   }
 }
@@ -197,48 +191,25 @@ export type JobStatus = {
   lastProcessedIndex?: number;  // Track the last processed highlight index
 };
 
-// Rate limiting configuration
-const RATE_LIMIT_WINDOW = 60; // 60 seconds
-const RATE_LIMIT_MAX = 10; // Max requests per window
-
-// Cache TTLs
-const BOOK_TTL = 60 * 60 * 24; // 24 hours
-const HIGHLIGHT_TTL = 60 * 60 * 24; // 24 hours
-const PAGE_ID_TTL = 60 * 60 * 24; // 24 hours
-const TOKEN_TTL = 60 * 60 * 24; // 24 hours
-
 // Queue functions
-export async function addJobToQueue(jobId: string): Promise<void> {
-  let redis;
+export async function addJobToQueue(jobId: string, existingRedis?: RedisType): Promise<void> {
+  const redis = existingRedis || await getRedis();
   try {
-    redis = await getRedis();
     await redis.rpush(QUEUE_NAME, jobId);
-    await setJobStatus(jobId, { state: 'pending' });
+    await setJobStatus(jobId, { state: 'pending' }, redis);
     logger.debug('Job added to queue', { jobId });
   } catch (error) {
     logger.error('Failed to add job to queue', { jobId, error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 export async function getNextJob(): Promise<string | null> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
-    
-    // First check queue length
     const queueLength = await redis.llen(QUEUE_NAME);
     logger.debug('Current queue length', { queueLength });
 
-    // List all jobs in queue
     const allJobs = await redis.lrange(QUEUE_NAME, 0, -1);
     logger.debug('All jobs in queue', { jobs: allJobs });
 
@@ -252,41 +223,23 @@ export async function getNextJob(): Promise<string | null> {
   } catch (error) {
     logger.error('Failed to get next job from queue', { error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
-export async function setJobStatus(jobId: string, status: JobStatus): Promise<void> {
-  let redis;
+export async function setJobStatus(jobId: string, status: JobStatus, existingRedis?: RedisType): Promise<void> {
+  const redis = existingRedis || await getRedis();
   try {
-    redis = await getRedis();
     await redis.set(`job:${jobId}:status`, JSON.stringify(status), 'EX', JOB_TTL);
     logger.debug('Job status updated', { jobId, status });
   } catch (error) {
     logger.error('Failed to set job status', { jobId, error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const status = await redis.get(`job:${jobId}:status`);
     if (status) {
       logger.debug('Retrieved job status', { jobId, status: JSON.parse(status) });
@@ -296,22 +249,13 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   } catch (error) {
     logger.error('Failed to get job status', { jobId, error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 // Token management
 export async function storeOAuthToken(token: string, workspaceId: string, databaseId: string, userId: string): Promise<void> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const tokenData = {
       token,
       databaseId,
@@ -327,21 +271,12 @@ export async function storeOAuthToken(token: string, workspaceId: string, databa
   } catch (error) {
     logger.error('Failed to store OAuth token', { workspaceId, error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 export async function getOAuthToken(): Promise<string | null> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const keys = await redis.keys('oauth:*');
     if (keys.length === 0) {
       logger.warn('No OAuth token found');
@@ -357,41 +292,23 @@ export async function getOAuthToken(): Promise<string | null> {
   } catch (error) {
     logger.error('Failed to get OAuth token', { error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 export async function refreshOAuthToken(token: string, workspaceId: string): Promise<void> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     await redis.set(`oauth:${workspaceId}`, token, 'EX', TOKEN_TTL);
     logger.debug('OAuth token refreshed', { workspaceId });
   } catch (error) {
     logger.error('Failed to refresh OAuth token', { workspaceId, error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
 export async function deleteOAuthToken(): Promise<void> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const keys = await redis.keys('oauth:*');
     if (keys.length > 0) {
       await redis.del(...keys);
@@ -400,22 +317,20 @@ export async function deleteOAuthToken(): Promise<void> {
   } catch (error) {
     logger.error('Failed to delete OAuth token', { error });
     throw error;
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW = 60; // 60 seconds
+const RATE_LIMIT_MAX = 10; // Max requests per window
+
+// Cache TTLs
+const TOKEN_TTL = 60 * 60 * 24; // 24 hours
+
 // Rate limiting
 export async function checkRateLimit(databaseId: string): Promise<boolean> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const currentTime = Math.floor(Date.now() / 1000);
     const key = `rate_limit:${databaseId}:${currentTime}`;
     
@@ -433,14 +348,6 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
   } catch (error) {
     logger.error('Rate limit check failed', { databaseId, error });
     return true; // Fail open to avoid blocking requests
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
@@ -449,9 +356,8 @@ const CLEANUP_INTERVAL = 60 * 60 * 1000; // Run cleanup every hour
 
 // Function to clean up expired keys
 async function cleanupExpiredKeys(): Promise<void> {
-  let redis;
+  const redis = await getRedis();
   try {
-    redis = await getRedis();
     const patterns = [
       'job:*:status',    // Job statuses
       'oauth:*',         // OAuth tokens
@@ -472,14 +378,6 @@ async function cleanupExpiredKeys(): Promise<void> {
     logger.info('Completed Redis key cleanup');
   } catch (error) {
     logger.error('Failed to cleanup expired keys', { error });
-  } finally {
-    if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        logger.warn('Failed to quit Redis client:', quitError);
-      }
-    }
   }
 }
 
@@ -505,6 +403,8 @@ export async function stopCleanupScheduler(): Promise<void> {
     clearInterval(cleanupInterval);
     logger.info('Redis cleanup scheduler stopped');
   }
+  // Clean up Redis pool
+  await redisPool.cleanup();
 }
 
 // Export the redis instance for direct access when needed

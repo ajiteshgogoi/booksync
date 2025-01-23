@@ -37,15 +37,6 @@ export const startWorker = async () => {
   const startTime = Date.now();
   let jobsProcessed = 0;
 
-  // Test Redis connection first
-  try {
-    const redis = await getRedis();
-    console.log('Redis connection test:', await redis.ping());
-  } catch (error) {
-    console.error('Failed to connect to Redis:', error);
-    return;
-  }
-
   // Process jobs until we hit limits
   while (jobsProcessed < MAX_JOBS_PER_RUN && (MAX_RUNTIME === Infinity || (Date.now() - startTime) < MAX_RUNTIME)) {
     try {

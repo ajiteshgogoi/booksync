@@ -38,25 +38,17 @@ export async function processFileContent(
       message: 'File processed, highlights queued',
       total: highlights.length,
       lastProcessedIndex: 0
-    });
+    }, redis);
 
     // Execute pipeline and add job to queue
     console.log('Executing Redis pipeline...');
     await pipeline.exec();
-    await addJobToQueue(jobId);
+    await addJobToQueue(jobId, redis);
     
     console.log('File processing completed. Job ID:', jobId);
-    
-    // Close Redis connection
-    redis.quit();
-    
     return jobId;
   } catch (error) {
     console.error('Error processing file:', error);
-    
-    // Close Redis connection on error
-    redis.quit();
-    
     throw error;
   }
 }
