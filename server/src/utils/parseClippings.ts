@@ -9,6 +9,8 @@ export interface Highlight {
   hash: string;
 }
 
+const BATCH_SIZE = 100; // Process 100 entries at a time
+
 function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
   // Generate hash from first chunk plus metadata to avoid length issues
   // This ensures unique identification while staying within Notion's limits
@@ -98,18 +100,11 @@ function splitText(text: string, maxLength = 2000): string[] {
   });
 }
 
-export function parseClippings(fileContent: string): Highlight[] {
-  console.log('Starting to parse clippings file');
-  const entries = fileContent
-    .split('==========')
-    .map(entry => entry.trim())
-    .filter(entry => entry.length > 0);
-  
-  console.log(`Found ${entries.length} valid entries`);
-  
-  const highlights: Highlight[] = [];
-  const highlightGroups = new Map<string, Highlight[]>();
-
+// Process a single batch of entries
+async function processBatch(
+  entries: string[],
+  highlightGroups: Map<string, Highlight[]>
+): Promise<void> {
   for (const entry of entries) {
     try {
       const lines = entry.split(/\r?\n/).map(line => line.trim());
@@ -227,7 +222,30 @@ export function parseClippings(fileContent: string): Highlight[] {
       continue;
     }
   }
+}
 
+export async function parseClippings(fileContent: string): Promise<Highlight[]> {
+  console.log('Starting to parse clippings file');
+  
+  // Split content into entries and filter empty ones
+  const entries = fileContent
+    .split('==========')
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0);
+  
+  console.log(`Found ${entries.length} valid entries`);
+  
+  const highlightGroups = new Map<string, Highlight[]>();
+  const highlights: Highlight[] = [];
+
+  // Process entries in batches
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    const batch = entries.slice(i, i + BATCH_SIZE);
+    console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(entries.length / BATCH_SIZE)}`);
+    await processBatch(batch, highlightGroups);
+  }
+
+  // Post-process all groups to handle duplicates
   for (const group of highlightGroups.values()) {
     group.sort((a, b) => b.date.getTime() - a.date.getTime());
     
@@ -251,7 +269,7 @@ export function parseClippings(fileContent: string): Highlight[] {
   }
   
   // Verify all highlights have required fields
-  highlights.forEach((h, index) => {
+  highlights.forEach((h: Highlight, index: number) => {
     console.debug(`Verifying highlight ${index + 1}/${highlights.length}`);
     if (!h.bookTitle || !h.author || !h.highlight || !h.location || !h.date) {
       console.warn('Invalid highlight structure:', h);

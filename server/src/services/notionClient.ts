@@ -26,28 +26,39 @@ type PageObjectResponse = {
   };
 };
 
-// Enhanced book cover fetching with better error handling
+import { withRetry } from '../utils/retry.js';
+
+// Enhanced book cover fetching with retry mechanism
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
   try {
-    // First try OpenLibrary
-    const openLibraryResponse = await axios.get(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(title)}+${encodeURIComponent(author)}&limit=1`
-    );
-    
-    if (openLibraryResponse.data?.docs?.[0]?.cover_i) {
-      return `https://covers.openlibrary.org/b/id/${openLibraryResponse.data.docs[0].cover_i}-L.jpg`;
+    // First try OpenLibrary with retry
+    const openLibraryCover = await withRetry(async () => {
+      const response = await axios.get(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(title)}+${encodeURIComponent(author)}&limit=1`
+      );
+      
+      if (response.data?.docs?.[0]?.cover_i) {
+        return `https://covers.openlibrary.org/b/id/${response.data.docs[0].cover_i}-L.jpg`;
+      }
+      return null;
+    }, 3, 1000);
+
+    if (openLibraryCover) {
+      return openLibraryCover;
     }
 
-    // Fallback to Google Books
-    const googleResponse = await axios.get(
-      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&maxResults=1`
-    );
-    
-    if (googleResponse.data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail) {
-      return googleResponse.data.items[0].volumeInfo.imageLinks.thumbnail.replace('zoom=1', 'zoom=2');
-    }
+    // Fallback to Google Books with retry
+    return await withRetry(async () => {
+      const response = await axios.get(
+        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(title)}+inauthor:${encodeURIComponent(author)}&maxResults=1`
+      );
+      
+      if (response.data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail) {
+        return response.data.items[0].volumeInfo.imageLinks.thumbnail.replace('zoom=1', 'zoom=2');
+      }
+      return null;
+    }, 3, 1000);
 
-    return null;
   } catch (error) {
     console.error('Error fetching book cover:', error);
     return null;
