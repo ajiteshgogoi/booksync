@@ -10,17 +10,33 @@ export interface Highlight {
 }
 
 function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
-  const content = highlight.join('\n\n') + location + bookTitle + author;
+  // Generate hash from first chunk plus metadata to avoid length issues
+  // This ensures unique identification while staying within Notion's limits
+  const firstChunk = highlight[0] || '';
+  const content = firstChunk + location + bookTitle + author;
   return createHash('sha256').update(content).digest('hex');
 }
 
 // Split text into chunks of maxLength, ensuring chunks end at sentence boundaries and strictly enforcing length limit
 function splitText(text: string, maxLength = 2000): string[] {
+  // Early validation
+  if (!text || text.length === 0) {
+    return [];
+  }
+
+  // Handle case where text is already within limits
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
   const chunks: string[] = [];
   let currentChunk = '';
   
-  // Split text into sentences using common punctuation
-  const sentences = text.split(/(?<=[.!?])\s+/);
+  // Split text into sentences using common punctuation and handle ellipsis
+  const sentences = text
+    .split(/(?<=[.!?](?:\s+|$))/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
   
   for (const sentence of sentences) {
     const potentialChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
@@ -141,12 +157,21 @@ export function parseClippings(fileContent: string): Highlight[] {
       // Split highlight into chunks at sentence boundaries
       const highlightChunks = splitText(highlightContent);
       
-      // Log if any chunk is close to the limit
+      // Validate chunks and provide detailed logging
       highlightChunks.forEach((chunk, i) => {
-        if (chunk.length > 1900) {  // Warning threshold at 1900 characters
-          console.warn(`Long highlight detected in book "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
+        if (chunk.length > 2000) {
+          console.error(`ERROR: Chunk exceeds Notion limit in "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
+          // Truncate chunk to ensure it fits
+          highlightChunks[i] = chunk.substring(0, 2000);
+        } else if (chunk.length > 1900) {
+          console.warn(`Warning: Chunk approaching Notion limit in "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
         }
       });
+
+      // Additional validation for very large highlights
+      if (highlightChunks.length > 10) {
+        console.warn(`Warning: Large number of chunks (${highlightChunks.length}) for highlight in "${bookTitle}". Consider reviewing the content.`);
+      }
 
       const groupKey = `${bookTitle}|${location.split('-')[0]}`;
       if (!highlightGroups.has(groupKey)) {
