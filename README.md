@@ -33,9 +33,10 @@ A clean, simple web application to sync your Kindle highlights to Notion. BookSy
     - 5 hour maximum runtime per workflow
   - Protected against abuse:
     - Rate limiting (10 Notion API requests/minute)
+    - IP-based upload limiting (2 uploads per IP every 30 minutes)
     - Shared 2000 minutes/month fairly distributed
     - Upload validation and format checking
-    - Per-user upload limits prevent resource monopoly
+    - User session expiration after 1 hour of inactivity
 - **Notion Integration**
   - OAuth integration with automatic refresh and invalidation
   - Automatic database detection
@@ -91,6 +92,7 @@ REDIS_BOOK_TTL=86400              # Book cache TTL
 REDIS_PAGE_TTL=86400              # Page ID cache TTL
 REDIS_OAUTH_TTL=7200              # OAuth token cache TTL
 NOTION_RATE_LIMIT=10              # API calls per minute
+GITHUB_ACCESS_TOKEN=your_token    # GitHub personal access token for Actions
 
 # In client/.env
 VITE_API_URL=http://localhost:3001
@@ -290,14 +292,21 @@ The application uses a hybrid deployment approach for optimal performance:
      NOTION_OAUTH_CLIENT_ID=your_client_id
      NOTION_OAUTH_CLIENT_SECRET=your_client_secret
      NOTION_REDIRECT_URI=https://your-vercel-url.vercel.app/auth/notion/callback
+     GITHUB_ACCESS_TOKEN=your_github_token    # Required for GitHub Actions workflow
      ```
    Note: Use the same Notion OAuth credentials as your Vercel deployment
+   For GITHUB_ACCESS_TOKEN, create a personal access token with 'repo' scope
 
-4. Update client environment:
+5. Update client environment:
    - Create `.env.production` in client directory
    - Set `VITE_API_URL=https://your-vercel-url.vercel.app`
 
-5. Deploy:
+6. Set up Ko-fi widget (optional):
+   - Sign up at Ko-fi.com
+   - Get your Ko-fi username
+   - Replace 'gogoi' with your username in the Ko-fi widget code in App.tsx
+
+7. Deploy:
    ```bash
    vercel
    ```
