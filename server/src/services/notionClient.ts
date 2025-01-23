@@ -76,7 +76,8 @@ export interface NotionBookPage {
 
 function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
   const content = highlight.join('\n\n') + location + bookTitle + author;
-  return createHash('sha256').update(content).digest('hex');
+  // Only use first 8 characters of hash for storage efficiency while maintaining uniqueness
+  return createHash('sha256').update(content).digest('hex').substring(0, 8);
 }
 
 // Client management with better initialization
@@ -259,14 +260,8 @@ async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> 
         Array.isArray(hashProperty.rich_text) &&
         hashProperty.rich_text[0]?.type === 'text' &&
         hashProperty.rich_text[0].plain_text) {
-      try {
-        const hashes = JSON.parse(hashProperty.rich_text[0].plain_text);
-        if (Array.isArray(hashes)) {
-          return new Set(hashes);
-        }
-      } catch (error) {
-        console.error('Error parsing highlight hashes:', error);
-      }
+      const hashString = hashProperty.rich_text[0].plain_text;
+      return new Set(hashString.split(',').filter(h => h.length === 8));
     }
     
     return new Set();
@@ -394,7 +389,11 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
               'Highlight Hash': {
                 rich_text: [{
                   text: {
-                    content: JSON.stringify([...existingHashes, ...book.highlights.map(h => h.hash)])
+                    content: ((existingHashes.size > 0 ? [...existingHashes] : [])
+                      .concat(book.highlights.map(h => h.hash))
+                      .filter((h, i, arr) => arr.indexOf(h) === i) // Remove duplicates
+                      .join(','))
+                      .substring(0, 1900) // Leave some buffer for Notion's limit
                   }
                 }]
               }
@@ -480,7 +479,11 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
               'Highlight Hash': {
                 rich_text: [{
                   text: {
-                    content: JSON.stringify(book.highlights.map(h => h.hash))
+                    content: book.highlights
+                      .map(h => h.hash)
+                      .filter((h, i, arr) => arr.indexOf(h) === i) // Remove duplicates
+                      .join(',')
+                      .substring(0, 1900) // Leave some buffer for Notion's limit
                   }
                 }]
               }
