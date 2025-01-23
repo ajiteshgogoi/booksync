@@ -31,24 +31,24 @@ function App() {
     setErrorMessage(null);
     setSyncStatus('parsing');
 
-      const formData = new FormData();
-      formData.append('file', selectedFile);
+    const formData = new FormData();
+    formData.append('file', selectedFile);
 
-      try {
-        const response = await fetch(`${apiBase}/parse`, {
-          method: 'POST',
-          body: formData,
-        });
+    try {
+      const response = await fetch(`${apiBase}/parse`, {
+        method: 'POST',
+        body: formData,
+      });
 
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
 
-        setHighlightCount(data.count);
-        setSyncStatus('idle');
-      } catch (error) {
-        setSyncStatus('error');
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
-      }
+      setHighlightCount(data.count);
+      setSyncStatus('idle');
+    } catch (error) {
+      setSyncStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
+    }
   };
 
   const handleSync = async () => {
@@ -67,9 +67,16 @@ function App() {
         credentials: 'include'
       });
 
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (errorData.code === 'RATE_LIMIT_EXCEEDED') {
+          const remainingTime = Math.ceil(errorData.remainingTime / 60);
+          throw new Error(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+        }
+        throw new Error(errorData.message || await response.text());
+      }
 
-      await response.json(); // Status messages are handled by syncStatus state and UI
+      await response.json();
     } catch (error) {
       setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');

@@ -1,9 +1,20 @@
 import axios from 'axios';
+import { rateLimiter } from './rateLimiter.js';
 
 export async function triggerProcessing(
   fileContent: string,
-  userId: string
+  userId: string,
+  clientIp: string
 ): Promise<void> {
+  // Check rate limit
+  const rateLimit = rateLimiter.check(clientIp);
+  if (!rateLimit.allowed) {
+    throw new Error(
+      `You have exceeded the upload limit of 2 uploads every 30 minutes. ` +
+      `Please try again in ${rateLimit.remainingTime} minutes.`
+    );
+  }
+
   console.log('\n=== GitHub Processing Trigger Start ===');
   
   try {
@@ -60,6 +71,7 @@ export async function triggerProcessing(
       });
 
       if (response.status === 204) {
+        rateLimiter.trackGitHubUpload(clientIp);
         console.log('\n✅ Successfully triggered GitHub workflow');
       } else {
         throw new Error(`Unexpected response status: ${response.status}`);

@@ -81,6 +81,7 @@ import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
 import { setJobStatus } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
+import { rateLimiter } from './services/rateLimiter.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
 import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
@@ -107,6 +108,31 @@ function generateState() {
   return Math.random().toString(36).substring(2, 15) +
          Math.random().toString(36).substring(2, 15);
 }
+
+// Rate limit status endpoint
+app.get(`${apiBasePath}/rate-limit-status`, (req: Request, res: Response) => {
+  try {
+    // Get client IP address (handle both string and string[] cases)
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const ip = Array.isArray(xForwardedFor) 
+      ? xForwardedFor[0] 
+      : (xForwardedFor || req.socket.remoteAddress);
+    
+    if (!ip || typeof ip !== 'string') {
+      return res.status(400).json({ error: 'Could not determine client IP' });
+    }
+
+    const limitCheck = rateLimiter.check(ip);
+    res.json({
+      allowed: limitCheck.allowed,
+      remainingTime: limitCheck.remainingTime,
+      remainingUploads: limitCheck.remainingUploads
+    });
+  } catch (error) {
+    console.error('Rate limit status check error:', error);
+    res.status(500).json({ error: 'Failed to check rate limit status' });
+  }
+});
 
 // Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
@@ -202,10 +228,31 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
   try {
     console.log('Received parse request');
     
+    // Get client IP address (handle both string and string[] cases)
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const ip = Array.isArray(xForwardedFor) 
+      ? xForwardedFor[0] 
+      : (xForwardedFor || req.socket.remoteAddress);
+    
+    if (!ip || typeof ip !== 'string') {
+      return res.status(400).json({ error: 'Could not determine client IP' });
+    }
+
+    // Check rate limit
+    const limitCheck = rateLimiter.check(ip);
+    if (!limitCheck.allowed) {
+      return res.status(429).json({ 
+        error: `You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${limitCheck.remainingTime} minutes.`
+      });
+    }
+
     if (!req.file) {
       console.log('No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
     }
+
+    // Increment rate limit counter
+    rateLimiter.increment(ip);
 
     console.log('File size:', req.file.size, 'bytes');
     const fileContent = req.file.buffer.toString('utf-8');
@@ -406,6 +453,16 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       throw new Error('Invalid My Clippings file format');
     }
 
+    // Get client IP address (handle both string and string[] cases)
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const ip = Array.isArray(xForwardedFor) 
+      ? xForwardedFor[0] 
+      : (xForwardedFor || req.socket.remoteAddress);
+    
+    if (!ip || typeof ip !== 'string') {
+      throw new Error('Could not determine client IP');
+    }
+
     const userId = req.user?.id || 'default-user-id';
     console.log('Processing for user:', userId);
     
@@ -440,12 +497,13 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         fileContentLength: fileContent.length,
         userId,
         jobId,
-        githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN
+        githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
+        clientIp: ip
       });
       
       console.log('Calling triggerProcessing...');
       try {
-        await triggerProcessing(fileContent, userId);
+        await triggerProcessing(fileContent, userId, ip);
         console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
       } catch (error) {
         console.error('Failed to trigger GitHub processing:', error);
