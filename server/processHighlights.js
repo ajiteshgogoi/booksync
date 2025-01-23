@@ -136,14 +136,28 @@ main().catch(error => {
 });
 
 // Handle process termination
-process.on('SIGTERM', async () => {
-  debug('Received SIGTERM signal');
+async function cleanupAndExit() {
+  debug('Starting cleanup process...');
   try {
+    // Clear any active intervals
+    const activeIntervals = Object.keys(global).filter(key => key.startsWith('_interval_'));
+    activeIntervals.forEach(interval => {
+      clearInterval(global[interval]);
+    });
+    
+    // Cleanup Redis services
     await RedisService.cleanup();
     await redisPool.cleanup();
-    debug('Cleanup completed on SIGTERM');
+    
+    debug('Cleanup completed');
   } catch (error) {
-    console.error('Error during SIGTERM cleanup:', error);
+    console.error('Error during cleanup:', error);
+  } finally {
+    debug('Exiting process');
+    process.exit(0);
   }
-  process.exit(0);
-});
+}
+
+process.on('SIGTERM', cleanupAndExit);
+process.on('SIGINT', cleanupAndExit);
+process.on('exit', cleanupAndExit);
