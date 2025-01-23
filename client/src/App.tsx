@@ -298,8 +298,8 @@ const handleSync = async () => {
                            <div>• You can safely close this page.</div>
                            <div>• Processing runs in the background every 30 minutes.</div>
                            <div>• Highlights are added to Notion as they are processed.</div>
-                           <div>• If you have a lot of highlights, it may take a few hours for everything to show.</div>
-                           <div>• To prevent syncing issues, you are limited to 2 uploads every 30 minutes.</div>
+                           <div>• If you have a lot of highlights, it may take a few hours for everything to sync.</div>
+                           <div>• To prevent syncing issues, you are limited to 2 'My Clippings.txt' uploads every 30 minutes.</div>
                          </div>
                        </div>
                      </div>
