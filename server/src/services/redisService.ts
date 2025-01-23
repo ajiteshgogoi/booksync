@@ -246,6 +246,43 @@ export const CONSUMER_GROUP = 'sync_processors';
 export const CONSUMER_NAME = `consumer-${process.pid}`;
 export const JOB_TTL = 60 * 60 * 24; // 24 hours
 
+export class RedisService {
+  private static instance: RedisType | null = null;
+  private static pool = RedisPool.getInstance();
+
+  public static async init(): Promise<RedisService> {
+    if (!RedisService.instance) {
+      RedisService.instance = await RedisService.pool.acquire();
+    }
+    return new RedisService(RedisService.instance);
+  }
+
+  public static async cleanup(): Promise<void> {
+    if (RedisService.instance) {
+      RedisService.pool.release(RedisService.instance);
+      RedisService.instance = null;
+    }
+  }
+
+  private constructor(private redis: RedisType) {}
+
+  async keys(pattern: string): Promise<string[]> {
+    return await this.redis.keys(pattern);
+  }
+
+  async get(key: string): Promise<string | null> {
+    return await this.redis.get(key);
+  }
+
+  async set(key: string, value: string, ...args: any[]): Promise<'OK'> {
+    return await this.redis.set(key, value, ...args);
+  }
+
+  async del(key: string): Promise<number> {
+    return await this.redis.del(key);
+  }
+}
+
 // Create Redis pool instance
 const redisPool = RedisPool.getInstance();
 
