@@ -1,5 +1,19 @@
 import { InMemoryStore } from './inMemoryStore.js';
 
+function maskIP(ip: string): string {
+  // For IPv4
+  if (ip.includes('.')) {
+    const parts = ip.split('.');
+    return `${parts[0]}.${parts[1]}.*.*`;
+  }
+  // For IPv6
+  if (ip.includes(':')) {
+    const parts = ip.split(':');
+    return `${parts[0]}:${parts[1]}:****:****`;
+  }
+  return 'unknown';
+}
+
 interface RateLimitRecord {
   count: number;
   startTime: number;
@@ -32,14 +46,39 @@ class RateLimiter {
     const now = Date.now();
     let cleanedCount = 0;
     try {
-      for (const [ip, record] of Object.entries(this.store.getAll())) {
-        if (now - (record as RateLimitRecord).lastUpdated > this.windowMs) {
+      const allRecords = this.store.getAll();
+      const totalRecords = Object.keys(allRecords).length;
+      
+      for (const [ip, record] of Object.entries(allRecords)) {
+        const typedRecord = record as RateLimitRecord;
+        const timeSinceUpdate = now - typedRecord.lastUpdated;
+        
+        if (timeSinceUpdate > this.windowMs) {
           this.store.delete(ip);
           cleanedCount++;
+          console.log(
+            `[RateLimiter] Cleaned record for ${maskIP(ip)}:`,
+            JSON.stringify({
+              event: 'cleanup',
+              lastUpdated: new Date(typedRecord.lastUpdated).toISOString(),
+              idleTime: `${Math.floor(timeSinceUpdate / 60000)}m`,
+              count: typedRecord.count
+            })
+          );
         }
       }
-      if (cleanedCount > 0) {
-        console.log(`[RateLimiter] Cleaned up ${cleanedCount} expired records`);
+
+      if (cleanedCount > 0 || totalRecords > 0) {
+        console.log(
+          '[RateLimiter] Cleanup summary:',
+          JSON.stringify({
+            event: 'cleanup_summary',
+            cleanedCount,
+            remainingRecords: totalRecords - cleanedCount,
+            totalRecords,
+            cleanupTime: new Date().toISOString()
+          })
+        );
       }
     } catch (error) {
       console.error('[RateLimiter] Error during cleanup:', error);
@@ -61,7 +100,14 @@ class RateLimiter {
         record.startTime = now;
         record.lastUpdated = now;
         this.store.set(ip, record);
-        console.log(`[RateLimiter] Reset window for IP: ${ip}`);
+        console.log(
+          `[RateLimiter] Reset window for ${maskIP(ip)}:`,
+          JSON.stringify({
+            event: 'window_reset',
+            newCount: record.count,
+            windowStartTime: new Date(now).toISOString()
+          })
+        );
       }
 
       const remainingTime = Math.max(
@@ -69,9 +115,23 @@ class RateLimiter {
         Math.ceil((this.windowMs - (now - record.startTime)) / 1000)
       );
       const remainingUploads = Math.max(0, this.limit - record.count);
+      const allowed = record.count < this.limit;
+
+      // Enhanced logging with rate limit decision details
+      console.log(
+        `[RateLimiter] Check for ${maskIP(ip)}:`,
+        JSON.stringify({
+          decision: allowed ? 'allowed' : 'blocked',
+          currentCount: record.count,
+          limit: this.limit,
+          remainingUploads,
+          windowTimeLeft: `${Math.floor(remainingTime / 60)}m ${remainingTime % 60}s`,
+          windowStarted: new Date(record.startTime).toISOString()
+        })
+      );
 
       return {
-        allowed: record.count < this.limit,
+        allowed,
         remainingTime,
         remainingUploads
       };
@@ -96,9 +156,20 @@ class RateLimiter {
       };
 
       // If window has passed, reset count
-      if (now - record.startTime > this.windowMs) {
+      const isNewWindow = now - record.startTime > this.windowMs;
+      if (isNewWindow) {
         record.count = 1;
         record.startTime = now;
+        console.log(
+          `[RateLimiter] New window started for ${maskIP(ip)}:`,
+          JSON.stringify({
+            event: 'window_reset',
+            newCount: record.count,
+            limit: this.limit,
+            windowStartTime: new Date(now).toISOString(),
+            previousWindowStart: new Date(record.startTime).toISOString()
+          })
+        );
       } else {
         record.count += 1;
       }
@@ -106,7 +177,20 @@ class RateLimiter {
       record.lastUpdated = now;
       this.store.set(ip, record);
       
-      console.log(`[RateLimiter] ${this.limit - record.count} uploads remaining in current window`);
+      const remainingUploads = this.limit - record.count;
+      const windowEndTime = new Date(record.startTime + this.windowMs);
+      console.log(
+        `[RateLimiter] Increment for ${maskIP(ip)}:`,
+        JSON.stringify({
+          event: 'increment',
+          currentCount: record.count,
+          remainingUploads,
+          limit: this.limit,
+          windowEnds: windowEndTime.toISOString(),
+          timeUntilReset: `${Math.floor((windowEndTime.getTime() - now) / 60000)}m`,
+          isNewWindow
+        })
+      );
     } catch (error) {
       console.error('[RateLimiter] Error incrementing count:', error);
       throw error;
