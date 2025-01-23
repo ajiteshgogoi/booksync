@@ -12,6 +12,10 @@ const logger = {
 // Initialize Redis client
 let _redis: RedisType | null = null;
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+let connectionPromise: Promise<RedisType> | null = null;
+
 async function initializeRedis(): Promise<RedisType> {
   try {
     if (!process.env.REDIS_URL) {
@@ -19,12 +23,40 @@ async function initializeRedis(): Promise<RedisType> {
     }
 
     logger.debug('Initializing Redis with URL', { url: process.env.REDIS_URL });
-    const redis = new Redis(process.env.REDIS_URL);
+    const redis = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      retryStrategy(times) {
+        if (times > MAX_RETRIES) return null;
+        return Math.min(times * RETRY_DELAY, 3000);
+      },
+      reconnectOnError(err) {
+        const targetError = 'READONLY';
+        if (err.message.includes(targetError)) {
+          return true;
+        }
+        return false;
+      }
+    });
 
-    // Test connection
-    await redis.ping();
-    logger.info('Redis client initialized successfully');
-    return redis;
+    // Set up event handlers
+    redis.on('connect', () => logger.info('Redis client connected'));
+    redis.on('error', (error) => logger.error('Redis client error', { error }));
+    redis.on('reconnecting', () => logger.info('Redis client reconnecting'));
+
+    // Test connection with retry
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      try {
+        await redis.ping();
+        logger.info('Redis client initialized successfully');
+        return redis;
+      } catch (error) {
+        if (i === MAX_RETRIES - 1) throw error;
+        logger.warn(`Redis ping attempt ${i + 1} failed, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+
+    throw new Error('Failed to establish Redis connection after retries');
   } catch (error) {
     logger.error('Failed to initialize Redis client', { error });
     throw error;
@@ -32,10 +64,29 @@ async function initializeRedis(): Promise<RedisType> {
 }
 
 export async function getRedis(): Promise<RedisType> {
-  if (!_redis) {
-    _redis = await initializeRedis();
+  try {
+    // Return existing client if it's connected
+    if (_redis?.status === 'ready') {
+      return _redis;
+    }
+
+    // Create new connection if none exists or previous one failed
+    if (!connectionPromise) {
+      connectionPromise = initializeRedis().then(redis => {
+        _redis = redis;
+        connectionPromise = null;
+        return redis;
+      }).catch(error => {
+        connectionPromise = null;
+        throw error;
+      });
+    }
+
+    return await connectionPromise;
+  } catch (error) {
+    logger.error('Failed to get Redis client', { error });
+    throw error;
   }
-  return _redis;
 }
 
 // Queue configuration

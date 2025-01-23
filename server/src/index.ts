@@ -84,7 +84,7 @@ import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
-import { setJobStatus } from './services/redisService.js';
+import { setJobStatus, getRedis } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { parseClippings } from './utils/parseClippings.js';
@@ -478,23 +478,46 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     // Trigger GitHub workflow in background
     try {
+      // Verify Redis connection before proceeding
+      const redis = await getRedis();
+      await redis.ping();
+      console.log('Redis connection verified');
+
       console.log('\nTrigger Details:', {
         fileContentLength: fileContent.length,
         userId,
         jobId,
         githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
-        clientIp
+        clientIp,
+        redisConnected: true
       });
       
       console.log('Calling triggerProcessing...');
       try {
-        await triggerProcessing(fileContent, userId, clientIp);
-        console.log('\n✅ Successfully triggered GitHub processing for job:', jobId);
+        const result = await triggerProcessing(fileContent, userId, clientIp);
+        console.log('\n✅ Successfully triggered GitHub processing:', {
+          jobId,
+          fileName: result,
+          userId,
+          fileSize: fileContent.length
+        });
+        
+        // Update job status with file name for tracking
+        await setJobStatus(jobId, {
+          state: 'processing',
+          message: 'File uploaded and processing triggered',
+          progress: 0,
+          result: { fileName: result }
+        });
       } catch (error) {
         console.error('Failed to trigger GitHub processing:', error);
+        const errorMessage = error instanceof Error ?
+          `${error.message} (Redis connected: true)` :
+          'Unknown error occurred while triggering processing';
+
         await setJobStatus(jobId, {
           state: 'failed',
-          message: 'Failed to trigger processing',
+          message: errorMessage,
           progress: 0
         });
         throw error;

@@ -2,37 +2,52 @@ import axios from 'axios';
 import { getUploadUrl } from './r2Service.js';
 import { getRedis } from './redisService.js';
 
-async function getTokenData() {
-  const redis = await getRedis();
-  const keys = await redis.keys('oauth:*');
-  
-  if (keys.length === 0) {
-    throw new Error('No OAuth tokens found in Redis');
-  }
-  
-  const tokenData = await redis.get(keys[0]);
-  if (!tokenData) {
-    throw new Error('Failed to retrieve token data from Redis');
-  }
+async function getTokenData(retryCount = 0): Promise<string> {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 1000; // 1 second
 
-  const tokenDataObj = JSON.parse(tokenData);
-  
-  if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
-    throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
-  }
+  try {
+    const redis = await getRedis();
+    const keys = await redis.keys('oauth:*');
+    
+    if (keys.length === 0) {
+      throw new Error('No OAuth tokens found in Redis');
+    }
+    
+    const tokenData = await redis.get(keys[0]);
+    if (!tokenData) {
+      throw new Error('Failed to retrieve token data from Redis');
+    }
 
-  return tokenDataObj.userId;
+    const tokenDataObj = JSON.parse(tokenData);
+    
+    if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
+      throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
+    }
+
+    console.log('Successfully retrieved user ID from Redis token');
+    return tokenDataObj.userId;
+  } catch (error) {
+    if (retryCount < MAX_RETRIES) {
+      console.warn(`Retry ${retryCount + 1}/${MAX_RETRIES}: Failed to get token data, retrying...`, error);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(2, retryCount)));
+      return getTokenData(retryCount + 1);
+    }
+    throw error;
+  }
 }
 
 export async function triggerProcessing(
   fileContent: string,
-  _userId: string, // Ignored as we'll get real userId from Redis
+  _userId: string, // Kept for compatibility but we use Redis token
   clientIp: string
 ): Promise<string> {
-  // Get real user ID from Redis
+  console.log('Starting triggerProcessing...');
+  // Get real user ID from Redis with retries
   const userId = await getTokenData();
+  console.log('Retrieved userId from Redis:', userId);
   
-  // Generate unique file name with real user ID
+  // Generate unique file name with real user ID from Redis
   const fileName = `clippings-${userId}-${Date.now()}.txt`;
   
   try {
