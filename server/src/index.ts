@@ -2,6 +2,15 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import type { Express } from 'express-serve-static-core';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { config } from 'dotenv';
+
+// Configure dotenv for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const envPath = join(__dirname, '../../.env');
+config({ path: envPath });
 
 interface User {
   id: string;
@@ -24,7 +33,6 @@ declare global {
   }
 }
 import axios from 'axios';
-import dotenv from 'dotenv';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
@@ -34,9 +42,6 @@ import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/no
 import { parseClippings } from './utils/parseClippings.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
-
-// Initialize Express app
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
