@@ -9,26 +9,25 @@ export async function triggerProcessing(
   // Generate unique file name
   const fileName = `clippings-${userId}-${Date.now()}.txt`;
   
-  // Get pre-signed upload URL
-  const uploadUrl = await getUploadUrl(fileName);
-  
-  // Upload file directly to R2
-  await axios.put(uploadUrl, fileContent, {
-    headers: {
-      'Content-Type': 'text/plain'
-    },
-    maxContentLength: Infinity, // Allow large file uploads
-    maxBodyLength: Infinity // Allow large file uploads
-  });
-  
-  console.log('\n=== GitHub Processing Trigger Start ===');
-  console.log('File uploaded to R2:', {
-    fileName,
-    size: fileContent.length,
-    uploadUrl
-  });
-  
   try {
+    // Get pre-signed upload URL
+    const uploadUrl = await getUploadUrl(fileName);
+    
+    // Upload file directly to R2
+    await axios.put(uploadUrl, fileContent, {
+      headers: {
+        'Content-Type': 'text/plain'
+      },
+      maxContentLength: Infinity, // Allow large file uploads
+      maxBodyLength: Infinity // Allow large file uploads
+    });
+    
+    console.log('\n=== GitHub Processing Trigger Start ===');
+    console.log('File uploaded to R2:', {
+      fileName,
+      size: fileContent.length
+    });
+    
     // Get GitHub token - check both local and Vercel env vars
     const githubToken = process.env.GITHUB_ACCESS_TOKEN || process.env.VERCEL_GITHUB_TOKEN;
     console.log('Token validation:', {
@@ -44,36 +43,26 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Prepare the payload with file reference
+    // Prepare the payload with only file reference - no large content
     const payload = {
       event_type: 'process_highlights',
       client_payload: {
-        fileName,
+        fileName, // Only send the R2 file reference
         userId,
         timestamp: new Date().toISOString(),
-        clientIp
+        clientIp,
+        fileSize: fileContent.length // Send file size for information
       }
     };
 
     console.log('\nPreparing GitHub dispatch:', {
       url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
       payloadSize: JSON.stringify(payload).length,
-      fileName,
-      uploadUrl
+      fileName
     });
-
-    return fileName;
 
     // Send the dispatch request
     try {
-      console.log('\nStarting GitHub API request...');
-      console.log('Request headers:', {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'BookSync-App',
-        'Content-Type': 'application/json',
-        'Authorization': 'token <redacted>'
-      });
-
       const response = await axios.post(
         'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
         payload,
@@ -87,11 +76,9 @@ export async function triggerProcessing(
         }
       );
 
-      console.log('\nGitHub API Response received');
-      console.log('Response details:', {
+      console.log('\nGitHub API Response:', {
         status: response.status,
         statusText: response.statusText,
-        headers: response.headers,
         rateLimit: {
           limit: response.headers['x-ratelimit-limit'],
           remaining: response.headers['x-ratelimit-remaining'],
@@ -101,25 +88,15 @@ export async function triggerProcessing(
 
       if (response.status === 204) {
         console.log('\n✅ Successfully triggered GitHub workflow');
+        return fileName;
       } else {
         throw new Error(`Unexpected response status: ${response.status}`);
       }
     } catch (apiError: any) {
-      console.error('\nGitHub API Error Details:', {
-        isAxiosError: apiError.isAxiosError,
+      console.error('\nGitHub API Error:', {
         status: apiError.response?.status,
-        statusText: apiError.response?.statusText,
         message: apiError.response?.data?.message,
-        documentation: apiError.response?.data?.documentation_url,
-        headers: apiError.response?.headers,
-        code: apiError.code,
-        name: apiError.name,
-        stack: apiError.stack?.split('\n')[0],  // First line of stack trace
-        config: {
-          url: apiError.config?.url,
-          method: apiError.config?.method,
-          timeout: apiError.config?.timeout
-        }
+        documentation: apiError.response?.data?.documentation_url
       });
 
       if (apiError.response?.status === 404) {
@@ -130,12 +107,10 @@ export async function triggerProcessing(
         throw new Error(`GitHub API error: ${apiError.response?.data?.message || apiError.message}`);
       }
     }
-
   } catch (error: any) {
     console.error('\n❌ Error in triggerProcessing:', {
       message: error.message,
-      cause: error.cause,
-      stack: error.stack
+      cause: error.cause
     });
     throw error;
   } finally {
