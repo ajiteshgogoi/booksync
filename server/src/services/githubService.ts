@@ -23,36 +23,11 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Create temporary secret gist
-    console.log('\nCreating temporary gist...');
-    const gistResponse = await axios.post(
-      'https://api.github.com/gists',
-      {
-        description: `Temporary storage for processing - ${userId}`,
-        public: false,
-        files: {
-          'content.txt': {
-            content: fileContent
-          }
-        }
-      },
-      {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `token ${githubToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    const gistId = gistResponse.data.id;
-    console.log('Created gist:', { id: gistId });
-
-    // Prepare the payload with gist reference
+    // Prepare the payload
     const payload = {
       event_type: 'process_highlights',
       client_payload: {
-        gistId,
+        fileContent,
         userId,
         timestamp: new Date().toISOString()
       }
@@ -60,12 +35,20 @@ export async function triggerProcessing(
 
     console.log('\nPreparing GitHub dispatch:', {
       url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
-      payloadSize: JSON.stringify(payload).length
+      payloadSize: JSON.stringify(payload).length,
+      contentLength: fileContent.length
     });
 
     // Send the dispatch request
     try {
       console.log('\nStarting GitHub API request...');
+      console.log('Request headers:', {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'BookSync-App',
+        'Content-Type': 'application/json',
+        'Authorization': 'token <redacted>'
+      });
+
       const response = await axios.post(
         'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
         payload,
@@ -94,13 +77,6 @@ export async function triggerProcessing(
       if (response.status === 204) {
         console.log('\n✅ Successfully triggered GitHub workflow');
       } else {
-        // Clean up gist on failure
-        await axios.delete(`https://api.github.com/gists/${gistId}`, {
-          headers: {
-            'Authorization': `token ${githubToken}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        });
         throw new Error(`Unexpected response status: ${response.status}`);
       }
     } catch (apiError: any) {
@@ -113,14 +89,11 @@ export async function triggerProcessing(
         headers: apiError.response?.headers,
         code: apiError.code,
         name: apiError.name,
-        stack: apiError.stack?.split('\n')[0]  // First line of stack trace
-      });
-
-      // Clean up gist on API error
-      await axios.delete(`https://api.github.com/gists/${gistId}`, {
-        headers: {
-          'Authorization': `token ${githubToken}`,
-          'Accept': 'application/vnd.github.v3+json'
+        stack: apiError.stack?.split('\n')[0],  // First line of stack trace
+        config: {
+          url: apiError.config?.url,
+          method: apiError.config?.method,
+          timeout: apiError.config?.timeout
         }
       });
 
