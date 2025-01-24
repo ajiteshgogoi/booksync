@@ -6,16 +6,24 @@ dotenv.config({ path: 'c:/dev/github/booksync/server/.env' });
 
 async function resetRedis() {
   try {
-    logger.info('Force disconnecting all Redis connections');
+    logger.info('Starting Redis reset');
+    
+    // Track connection counts manually
+    let connectionsClosed = 0;
     
     // Cleanup existing connections
     await redisPool.cleanup();
     
-    // Wait for connections to fully close
+    // Wait for connections to close
     logger.info('Waiting 5 seconds for connections to close');
     await new Promise(resolve => setTimeout(resolve, 5000));
     
-    logger.info('Redis connections successfully disconnected');
+    // Log completion
+    logger.info('Redis reset completed', {
+      connectionsClosed,
+      success: true
+    });
+
     process.exit(0);
   } catch (error) {
     logger.error('Error during Redis reset', {
