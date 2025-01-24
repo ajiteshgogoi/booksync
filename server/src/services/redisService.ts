@@ -393,6 +393,7 @@ class RedisPool {
 
   public async cleanup(): Promise<void> {
     this.stopConnectionReaper();
+    this.stopHealthCheck();
     
     const quitPromises = this.pool.map(async (connection) => {
       try {
