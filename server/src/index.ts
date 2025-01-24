@@ -531,7 +531,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
     });
 
-    // Trigger GitHub workflow in background
+    // Trigger GitHub workflow in background //
     try {
       // Verify Redis connection before proceeding
       console.log('\n=== Verifying Redis Connection ===');
