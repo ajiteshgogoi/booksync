@@ -42,7 +42,8 @@ function App() {
     setSyncStatus('parsing');
 
     try {
-      const userId = localStorage.getItem('userId') || 'anonymous';
+      const searchParams = new URLSearchParams(window.location.search);
+      const userId = searchParams.get('userId') || localStorage.getItem('userId') || 'anonymous';
       const timestamp = Date.now();
       const fileKey = `clippings-${userId}-${timestamp}.txt`;
       const { count } = await uploadFileToR2(selectedFile, fileKey);
@@ -265,7 +266,7 @@ const handleSync = async () => {
                            <div>• Processing runs in the background every 30 minutes.</div>
                            <div>• Highlights are added to Notion as they are processed.</div>
                            <div>• If you have a lot of highlights, it may take a few hours for everything to sync.</div>
-                           <div>• To prevent syncing issues, you are limited to 2 'My Clippings.txt' uploads every 30 minutes.</div>
+                           <div>• To prevent syncing issues, you are limited to 2 'My Clippings.txt' uploads per hour.</div>
                          </div>
                        </div>
                      </div>
