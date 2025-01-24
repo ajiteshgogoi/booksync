@@ -1,6 +1,6 @@
 {
   "buildConfig": {
-    "buildCommand": "npm install && npm run build",
+    "buildCommand": "npm run build",
     "outputDirectory": "client/dist",
     "nodeVersion": "18",
     "rootDirectory": "."
