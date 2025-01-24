@@ -3,17 +3,17 @@ import type { Redis as RedisType } from 'ioredis';
 import { logger } from '../utils/logger.js';
 
 // Connection pool configuration - optimized for Redis Cloud free tier (30 max connections)
-const POOL_SIZE = process.env.VERCEL ? 3 : 5; // More conservative pool size
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 5000 : 10000; // Increased timeouts
-const MAX_RETRIES = process.env.VERCEL ? 3 : 5; // Increased retries
-const RETRY_DELAY = 500; // Initial retry delay
-const RETRY_BACKOFF = 1.5; // Exponential backoff multiplier
+const POOL_SIZE = process.env.VERCEL ? 5 : 10; // Increased pool size
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 10000 : 15000; // Increased timeouts
+const MAX_RETRIES = process.env.VERCEL ? 5 : 7; // Increased retries
+const RETRY_DELAY = 1000; // Increased initial retry delay
+const RETRY_BACKOFF = 2; // More aggressive exponential backoff
 
-const CONNECTION_TIMEOUT = 30000; // Connection timeout (30 seconds)
-const CONNECTION_MAX_AGE = 600000; // 10 minutes max age
-const CONNECTION_IDLE_TIMEOUT = 60000; // 1 minute idle timeout
-const REAPER_INTERVAL = 30000; // 30 seconds reaper interval
-const MAX_CONNECTION_WAITERS = 5; // Conservative number of waiters
+const CONNECTION_TIMEOUT = 45000; // Connection timeout (45 seconds)
+const CONNECTION_MAX_AGE = 300000; // 5 minutes max age (more frequent rotation)
+const CONNECTION_IDLE_TIMEOUT = 30000; // 30 seconds idle timeout (release faster)
+const REAPER_INTERVAL = 15000; // 15 seconds reaper interval (clean up faster)
+const MAX_CONNECTION_WAITERS = 3; // Very conservative number of waiters
 
 interface PoolConnection {
   client: RedisType;
@@ -72,22 +72,31 @@ class RedisPool {
     }
 
     const options = {
-      maxRetriesPerRequest: 2,
-      connectTimeout: 8000,
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000,
       retryStrategy(times: number) {
         if (times > MAX_RETRIES) {
           return null;
         }
-        const delay = Math.min(times * RETRY_DELAY, 5000);
+        const delay = Math.min(Math.min(times * RETRY_DELAY, 5000), POOL_ACQUIRE_TIMEOUT);
         return delay;
       },
       reconnectOnError(err: Error) {
-        const targetErrors = ['READONLY', 'ERR max number of clients reached'];
+        const targetErrors = [
+          'READONLY',
+          'ERR max number of clients reached',
+          'LOADING Redis is loading the dataset in memory',
+          'CLUSTERDOWN',
+          'CONNECTING'
+        ];
         return targetErrors.some(e => err.message.includes(e));
       },
       enableOfflineQueue: true,
       enableReadyCheck: true,
-      commandTimeout: 8000
+      commandTimeout: 10000,
+      autoResubscribe: false, // Disable auto resubscribe since we don't use pub/sub
+      autoResendUnfulfilledCommands: false, // Disable auto resend to prevent command buildup
+      lazyConnect: true // Only connect when actually needed
     };
 
     const redis = new Redis(process.env.REDIS_URL, options);

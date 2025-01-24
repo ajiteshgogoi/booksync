@@ -1,5 +1,12 @@
 import { logger } from '../utils/logger.js';
-import { getRedis, initializeStream, getNextJob, setJobStatus, acknowledgeJob } from './redisService.js';
+import {
+  getRedis,
+  initializeStream,
+  getNextJob,
+  setJobStatus,
+  acknowledgeJob,
+  RedisService
+} from './redisService.js';
 import { processFile } from './processService.js';
 import type { JobStatus } from './redisService.js';
 
@@ -81,6 +88,14 @@ class WorkerService {
   async stop(): Promise<void> {
     logger.info('Stopping worker service');
     this.isRunning = false;
+    
+    // Clean up Redis connections
+    try {
+      await RedisService.cleanup();
+      logger.info('Successfully cleaned up Redis connections');
+    } catch (error) {
+      logger.error('Error cleaning up Redis connections', { error });
+    }
   }
 
   getCurrentJob(): string | null {

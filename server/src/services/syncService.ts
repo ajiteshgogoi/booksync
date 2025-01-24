@@ -7,7 +7,8 @@ import {
   getJobStatus,
   JOB_TTL,
   setJobStatus,
-  JobStatus
+  JobStatus,
+  redisPool
 } from './redisService.js';
 
 // Extend Highlight interface to include processing-specific fields
@@ -91,13 +92,9 @@ export async function queueSyncJob(
     await addJobToQueue(jobId);
     return jobId;
   } finally {
-    // Clean up Redis connection
+    // Return connection to pool
     if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        console.error('Error while closing Redis connection:', quitError);
-      }
+      redisPool.release(redis);
     }
   }
 }
@@ -279,13 +276,9 @@ export async function processSyncJob(
     });
     throw error;
   } finally {
-    // Clean up Redis connection
+    // Return connection to pool
     if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        console.error('Error while closing Redis connection:', quitError);
-      }
+      redisPool.release(redis);
     }
   }
 }
@@ -342,13 +335,9 @@ async function getHighlightsFromQueue(jobId: string): Promise<ProcessedHighlight
     console.error('Error retrieving highlights from queue:', error);
     throw error;
   } finally {
-    // Clean up Redis connection
+    // Return connection to pool
     if (redis) {
-      try {
-        await redis.quit();
-      } catch (quitError) {
-        console.error('Error while closing Redis connection:', quitError);
-      }
+      redisPool.release(redis);
     }
   }
 }
