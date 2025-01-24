@@ -8,10 +8,10 @@ import {
   getJobStatus,
   JOB_TTL,
   setJobStatus,
-  JobStatus,
   redisPool,
   STREAM_NAME
 } from './redisService.js';
+import { JobStatus } from '../types/job.js';
 import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 
 // Extend Highlight interface to include processing-specific fields

@@ -8,7 +8,8 @@ import {
   RedisService
 } from './redisService.js';
 import { processFile } from './processService.js';
-import type { JobStatus } from './redisService.js';
+import type { JobStatus } from '../types/job.js';
+import { jobCleanupService } from './jobCleanupService.js';
 
 // Maximum number of empty polls before exiting
 const MAX_EMPTY_POLLS = 10; // Will exit after ~10 seconds of no jobs
@@ -50,13 +51,25 @@ class WorkerService {
     }
 
     // Register cleanup handlers
-    this.cleanupHandlers.push(async () => {
-      try {
-        await this.stop();
-      } catch (error) {
-        logger.error('Error during worker cleanup', { error });
+    this.cleanupHandlers.push(
+      async () => {
+        try {
+          await this.stop();
+        } catch (error) {
+          logger.error('Error during worker cleanup', { error });
+        }
+      },
+      async () => {
+        try {
+          await jobCleanupService.stop();
+        } catch (error) {
+          logger.error('Error stopping job cleanup service', { error });
+        }
       }
-    });
+    );
+
+    // Start job cleanup service
+    await jobCleanupService.start();
 
     this.isRunning = true;
     logger.info('Starting worker service');
@@ -251,5 +264,4 @@ class WorkerService {
 }
 
 // Create singleton instance
-const workerService = new WorkerService();
-export default workerService;
+export const workerService = new WorkerService();
