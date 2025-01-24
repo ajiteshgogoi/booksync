@@ -3,17 +3,22 @@ import type { Redis as RedisType } from 'ioredis';
 import { logger } from '../utils/logger.js';
 
 // Connection pool configuration - optimized for Redis Cloud free tier (30 max connections)
-const POOL_SIZE = process.env.VERCEL ? 5 : 10; // Increased pool size
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 10000 : 15000; // Increased timeouts
-const MAX_RETRIES = process.env.VERCEL ? 5 : 7; // Increased retries
-const RETRY_DELAY = 1000; // Increased initial retry delay
-const RETRY_BACKOFF = 2; // More aggressive exponential backoff
+const POOL_SIZE = process.env.VERCEL ? 3 : 5; // Reduced pool size
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 5000 : 10000; // Reduced timeouts
+const MAX_RETRIES = process.env.VERCEL ? 3 : 5; // Reduced retries
+const RETRY_DELAY = 500; // Reduced initial retry delay
+const RETRY_BACKOFF = 1.5; // Less aggressive exponential backoff
 
-const CONNECTION_TIMEOUT = 45000; // Connection timeout (45 seconds)
-const CONNECTION_MAX_AGE = 300000; // 5 minutes max age (more frequent rotation)
-const CONNECTION_IDLE_TIMEOUT = 30000; // 30 seconds idle timeout (release faster)
-const REAPER_INTERVAL = 15000; // 15 seconds reaper interval (clean up faster)
-const MAX_CONNECTION_WAITERS = 3; // Very conservative number of waiters
+const CONNECTION_TIMEOUT = 30000; // Connection timeout (30 seconds)
+const CONNECTION_MAX_AGE = 180000; // 3 minutes max age (more frequent rotation)
+const CONNECTION_IDLE_TIMEOUT = 15000; // 15 seconds idle timeout (release faster)
+const REAPER_INTERVAL = 10000; // 10 seconds reaper interval (clean up faster)
+const MAX_CONNECTION_WAITERS = 2; // Very conservative number of waiters
+
+// Track connection usage
+let totalConnectionsCreated = 0;
+let totalConnectionsReused = 0;
+let totalConnectionsRecycled = 0;
 
 interface PoolConnection {
   client: RedisType;
@@ -270,10 +275,20 @@ class RedisPool {
               connection.lastUsed = Date.now();
               connection.acquiredAt = Date.now();
               this.connectionWaiters--;
+              totalConnectionsReused++;
+              logger.info('Reusing existing connection', {
+                connectionId: connection.id,
+                totalReused: totalConnectionsReused
+              });
               return connection.client;
             }
             
             // If stale, replace it immediately
+            totalConnectionsRecycled++;
+            logger.info('Recycling stale connection', {
+              connectionId: connection.id,
+              totalRecycled: totalConnectionsRecycled
+            });
             await this.replaceConnection(connection);
             continue;
           } catch (error) {
@@ -329,6 +344,14 @@ class RedisPool {
       connection.inUse = false;
       connection.lastUsed = Date.now();
       connection.acquiredAt = null;
+      
+      logger.info('Released connection', {
+        connectionId: connection.id,
+        durationUsed: connection.lastUsed - (connection.acquiredAt || connection.lastUsed),
+        totalConnectionsCreated,
+        totalConnectionsReused,
+        totalConnectionsRecycled
+      });
     }
   }
 
