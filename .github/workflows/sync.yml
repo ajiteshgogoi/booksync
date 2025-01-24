@@ -77,10 +77,7 @@ jobs:
               console.log('Starting worker...');
               await startWorker();
               console.log('Worker completed successfully');
-              
-              // Cleanup
-              await RedisService.cleanup();
-              console.log('Redis connection cleaned up');
+              process.exit(0);
             } catch (error) {
               console.error('Error:', error);
               process.exit(1);
@@ -97,11 +94,13 @@ jobs:
           (async () => {
             try {
               if (global.redisService) {
-                await global.redisService.close();
-                console.log('Redis connection pool closed');
+                await RedisService.cleanup();
+                console.log('Redis connection cleaned up');
               }
+              process.exit(0);
             } catch (error) {
               console.error('Error during Redis cleanup:', error);
+              process.exit(1);
             }
           })();
           "
