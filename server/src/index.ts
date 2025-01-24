@@ -166,7 +166,7 @@ function generateState() {
 }
 
 // Rate limit check endpoint
-app.get(`${apiBasePath}/rate-limit-check`, (req: Request, res: Response) => {
+app.get(`/api/rate-limit-check`, (req: Request, res: Response) => {
   const xForwardedFor = req.headers['x-forwarded-for'];
   const clientIp = Array.isArray(xForwardedFor)
     ? xForwardedFor[0]

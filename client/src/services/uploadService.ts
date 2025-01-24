@@ -1,9 +1,11 @@
 async function checkRateLimit(): Promise<void> {
   try {
-    const response = await fetch('/api/rate-limit-check');
+    const response = await fetch('/api/rate-limit-check', {
+      method: 'GET',
+      credentials: 'include'
+    });
     
     if (!response.ok) {
-      const data = await response.json();
       if (response.status === 429) {
         const data = await response.json();
         const remainingTime = Math.ceil(data.remainingTime / 60);
