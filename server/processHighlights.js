@@ -136,7 +136,12 @@ main().catch(error => {
 });
 
 // Handle process termination
+let isCleaningUp = false;
+
 async function cleanupAndExit() {
+  if (isCleaningUp) return;
+  isCleaningUp = true;
+  
   debug('Starting cleanup process...');
   try {
     // Clear any active intervals
@@ -158,6 +163,24 @@ async function cleanupAndExit() {
   }
 }
 
+// Handle process termination signals
 process.on('SIGTERM', cleanupAndExit);
 process.on('SIGINT', cleanupAndExit);
 process.on('exit', cleanupAndExit);
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  cleanupAndExit().finally(() => process.exit(1));
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  cleanupAndExit().finally(() => process.exit(1));
+});
+
+// Handle process warnings
+process.on('warning', (warning) => {
+  console.warn('Process Warning:', warning);
+});
