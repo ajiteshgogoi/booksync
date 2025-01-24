@@ -14,10 +14,6 @@ export async function processFileContent(
       contentLength: fileContent.length
     });
 
-    // Reset Redis connections before starting
-    const redisPool = RedisPool.getInstance();
-    await redisPool.reset();
-    
     // Queue sync job to process highlights
     const jobId = await queueSyncJob(databaseId, fileContent);
     logger.info('Sync job queued successfully', { jobId });

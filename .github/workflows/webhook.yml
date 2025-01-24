@@ -62,6 +62,23 @@ jobs:
           npm run build
           echo "Build complete"
 
+      - name: Reset Redis Connections
+        working-directory: server
+        run: |
+          echo "Resetting Redis connections..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              const { redisPool } = await import('./build/src/services/redisService.js');
+              await redisPool.reset();
+              console.log('Redis connections reset successfully');
+            } catch (error) {
+              console.error('Error during Redis reset:', error);
+              process.exit(1);
+            }
+          })();
+          "
+
       - name: Process File
         if: success()
         working-directory: server
