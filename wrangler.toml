@@ -10,6 +10,13 @@ bucket_name = "booksync"
 [env.production]
 node_version = "18"
 
+[build]
+command = "npm install && npm run build"
+pages_build_output_dir = "client/dist"
+
+[site]
+bucket = "client/dist"
+
 [functions]
 directory = "functions"
 node_compat = true
