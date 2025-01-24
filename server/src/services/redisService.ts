@@ -53,6 +53,52 @@ class RedisPool {
     lastAcquireDuration: 0
   };
   private reaperInterval: NodeJS.Timeout | null = null;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+
+  private async performHealthCheck(): Promise<void> {
+    try {
+      const now = Date.now();
+      const activeConnections = this.pool.filter(conn => conn.inUse);
+      
+      // Check for long-running connections
+      for (const conn of activeConnections) {
+        if (conn.acquiredAt && now - conn.acquiredAt > CONNECTION_TIMEOUT) {
+          logger.warn('Long-running connection detected', {
+            connectionId: conn.id,
+            duration: now - conn.acquiredAt
+          });
+          await this.replaceConnection(conn);
+        }
+      }
+      
+      // Log pool statistics
+      logger.debug('Redis pool health check', {
+        totalConnections: this.pool.length,
+        activeConnections: activeConnections.length,
+        connectionWaiters: this.connectionWaiters,
+        ...this.connectionStats
+      });
+    } catch (error) {
+      logger.error('Error during Redis pool health check', { error });
+    }
+  }
+
+  private startHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+    this.healthCheckInterval = setInterval(
+      () => this.performHealthCheck(),
+      REAPER_INTERVAL * 2 // Run health check less frequently than reaper
+    );
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
 
   private static instance: RedisPool | null = null;
 
@@ -65,6 +111,7 @@ class RedisPool {
 
   constructor() {
     this.startConnectionReaper();
+    this.startHealthCheck();
   }
 
   private async createClient(): Promise<RedisType> {
@@ -332,6 +379,18 @@ class RedisPool {
     }
   }
 
+  public async reset(): Promise<void> {
+    try {
+      logger.info('Resetting Redis connections');
+      await this.cleanup();
+      await this.initializePool();
+      logger.info('Redis connections reset successfully');
+    } catch (error) {
+      logger.error('Error resetting Redis connections', { error });
+      throw error;
+    }
+  }
+
   public async cleanup(): Promise<void> {
     this.stopConnectionReaper();
     
@@ -357,6 +416,8 @@ class RedisPool {
     RedisPool.instance = null;
   }
 }
+
+export { RedisPool };
 
 // Stream configuration
 export const STREAM_NAME = 'sync_jobs_stream';

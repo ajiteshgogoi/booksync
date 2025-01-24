@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger.js';
-import { getRedis, setJobStatus } from './redisService.js';
+import { getRedis, setJobStatus, RedisPool } from './redisService.js';
 import { queueSyncJob, processSyncJob } from './syncService.js';
 
 export async function processFileContent(
@@ -14,6 +14,10 @@ export async function processFileContent(
       contentLength: fileContent.length
     });
 
+    // Reset Redis connections before starting
+    const redisPool = RedisPool.getInstance();
+    await redisPool.reset();
+    
     // Queue sync job to process highlights
     const jobId = await queueSyncJob(databaseId, fileContent);
     logger.info('Sync job queued successfully', { jobId });

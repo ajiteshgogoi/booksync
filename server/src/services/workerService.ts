@@ -18,12 +18,45 @@ class WorkerService {
   private isRunning: boolean = false;
   private currentJobId: string | null = null;
   private emptyPollCount: number = 0;
+  private cleanupHandlers: (() => Promise<void>)[] = [];
+
+  constructor() {
+    // Setup signal handlers for graceful shutdown
+    process.on('SIGTERM', () => this.gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => this.gracefulShutdown('SIGINT'));
+  }
+
+  private async gracefulShutdown(signal: string): Promise<void> {
+    logger.info(`Received ${signal}, initiating graceful shutdown...`);
+    this.isRunning = false;
+    
+    // Run all cleanup handlers
+    for (const handler of this.cleanupHandlers) {
+      try {
+        await handler();
+      } catch (error) {
+        logger.error('Error during cleanup handler execution', { error });
+      }
+    }
+    
+    // Force exit after cleanup
+    process.exit(0);
+  }
 
   async start(): Promise<void> {
     if (this.isRunning) {
       logger.warn('Worker is already running');
       return;
     }
+
+    // Register cleanup handlers
+    this.cleanupHandlers.push(async () => {
+      try {
+        await this.stop();
+      } catch (error) {
+        logger.error('Error during worker cleanup', { error });
+      }
+    });
 
     this.isRunning = true;
     logger.info('Starting worker service');
