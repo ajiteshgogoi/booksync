@@ -207,7 +207,7 @@ const handleSync = async () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f5f2e9] bg-[url('/src/assets/parchment-texture.png')] bg-cover bg-center flex flex-col justify-center">
+    <div className="min-h-screen bg-[#f5f2e9] bg-[url('/src/assets/parchment-texture.png')] bg-cover bg-center flex flex-col items-center justify-center">
       <main className="max-w-4xl w-full mx-auto px-4 py-8 my-auto overflow-y-auto">
         <div className="text-center mb-8">
           <h1 
