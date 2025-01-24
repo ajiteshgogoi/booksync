@@ -1,7 +1,19 @@
 import { getUploadUrl } from '../services/r2Service.js';
 import { Request, Response } from 'express';
 
+// Handle CORS preflight requests
+export const corsHandler = (req: Request, res: Response) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://booksync.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  res.status(204).end();
+};
+
 export const uploadUrlHandler = async (req: Request, res: Response) => {
+  // Set CORS headers for all requests
+  res.setHeader('Access-Control-Allow-Origin', 'https://booksync.vercel.app');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   console.log('Upload URL request received:', {
     method: req.method,
     url: req.originalUrl,

@@ -84,10 +84,12 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
+      mode: 'cors',
       body: file,
       headers: {
         'Content-Type': file.type,
         'Content-Length': file.size.toString(),
+        'Origin': window.location.origin
       },
     });
 
