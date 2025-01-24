@@ -97,15 +97,25 @@ function generateHighlightHash(highlight: string[], location: string, bookTitle:
 }
 
 function storeHashes(hashes: string[]): string {
-  // Deduplicate and limit to 2000 characters
-  const uniqueHashes = Array.from(new Set(hashes));
+  // Deduplicate and truncate hashes to 8 characters
+  const uniqueHashes = Array.from(new Set(hashes.map(h => h.slice(0, 8))));
   let hashString = '';
   
   for (const hash of uniqueHashes) {
     const newLength = hashString.length + hash.length + 1; // +1 for comma
-    if (newLength > 2000) break;
+    if (newLength > 2000) {
+      console.warn('Truncating hash list at 2000 characters');
+      break;
+    }
     hashString += (hashString ? ',' : '') + hash;
   }
+  
+  console.debug('Stored hashes info:', {
+    originalCount: hashes.length,
+    uniqueCount: uniqueHashes.length,
+    storedLength: hashString.length,
+    sampleHashes: uniqueHashes.slice(0, 3)
+  });
   
   return hashString;
 }
@@ -342,7 +352,8 @@ async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> 
     if (richTextProperty.rich_text[0]?.type === 'text' &&
         richTextProperty.rich_text[0].plain_text) {
       const hashString = hashProperty.rich_text[0].plain_text;
-      const hashes = new Set(hashString.split(',').filter(h => h.length === 8));
+      // Split by comma and take first 8 chars of each hash for comparison
+      const hashes = new Set(hashString.split(',').map(h => h.slice(0, 8)));
       
       console.debug('Parsed existing hashes:', {
         pageId,
@@ -524,7 +535,8 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
 
           // Filter out duplicates and log results
           const newHighlights = book.highlights.filter(h => {
-            const isDuplicate = existingHashes.has(h.hash);
+            // Compare using truncated hash
+            const isDuplicate = existingHashes.has(h.hash.slice(0, 8));
             if (isDuplicate) {
               console.debug('Skipping duplicate highlight:', {
                 hash: h.hash,
