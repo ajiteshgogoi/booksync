@@ -84,7 +84,9 @@ import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
-import { setJobStatus, getRedis } from './services/redisService.js';
+import { setJobStatus } from './services/redisService.js';
+import type { JobStatus } from './types/job.js';
+import { verifyRedisConnection } from './utils/redisUtils.js';
 import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
@@ -533,21 +535,36 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     // Trigger GitHub workflow in background //
     try {
-      // Verify Redis connection before proceeding
+      // Verify Redis connection using utility
       console.log('\n=== Verifying Redis Connection ===');
-      let redis;
       try {
-        redis = await getRedis();
-        await redis.ping();
-        console.log('✅ Redis connection verified successfully');
+        const redisTest = await verifyRedisConnection({
+          maxRetries: 3,
+          retryDelay: 1000,
+          timeout: 5000
+        });
+
+        console.log('✅ Redis connection verified successfully', {
+          pingResponse: redisTest.pingResponse,
+          testOperation: redisTest.testOperation,
+          connectionTime: redisTest.connectionTime,
+          retryCount: redisTest.retryCount
+        });
       } catch (redisError) {
-        console.error('❌ Redis connection failed:', redisError);
+        console.error('❌ Redis connection failed:', {
+          error: redisError instanceof Error ? redisError.stack : redisError,
+          redisUrl: process.env.REDIS_URL,
+          connectionTime: new Date().toISOString()
+        });
+        
         await setJobStatus(jobId, {
           state: 'failed',
           message: 'Redis connection failed - please try again',
-          progress: 0
+          progress: 0,
+          errorDetails: redisError instanceof Error ? redisError.message : 'Unknown Redis error'
         });
-        throw redisError;
+        
+        throw new Error('Redis connection failed');
       }
 
       console.log('=== Starting File Processing ===');

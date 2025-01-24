@@ -8,4 +8,5 @@ export interface JobStatus {
   completedAt?: number;
   lastProcessedIndex?: number;
   userId?: string;  // Optional for backward compatibility
+  errorDetails?: string;
 }

@@ -523,18 +523,7 @@ class RedisService {
 // Create Redis pool instance
 const redisPool = RedisPool.getInstance();
 
-// Job status types
-export type JobStatus = {
-  state: 'pending' | 'processing' | 'completed' | 'failed' | 'queued';
-  progress?: number;
-  message?: string;
-  result?: any;
-  total?: number;
-  lastCheckpoint?: number;
-  completedAt?: number;
-  lastProcessedIndex?: number;
-  userId?: string;  // Optional for backward compatibility
-};
+import type { JobStatus } from '../types/job.js';
 
 // Helper function to get userId from job status
 export async function getJobUserId(jobId: string): Promise<string | null> {
