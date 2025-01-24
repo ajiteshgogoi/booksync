@@ -1,4 +1,12 @@
 {
+  "scripts": {
+    "start": "node build/src/index.js",
+    "build": "tsc",
+    "dev": "ts-node-dev src/index.ts",
+    "test": "jest",
+    "worker": "node scripts/runWorker.js",
+    "worker:schedule": "node scripts/scheduleWorker.js"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.733.0",
     "@aws-sdk/s3-request-presigner": "^3.733.0",

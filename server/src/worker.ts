@@ -15,6 +15,12 @@ export async function startWorker(): Promise<void> {
   try {
     logger.info('Starting worker process');
     await workerService.start();
+    
+    // If running locally, exit after processing
+    if (process.env.NODE_ENV === 'development') {
+      isWorkerRunning = false;
+      return;
+    }
   } catch (error) {
     logger.error('Worker process error', error);
   } finally {

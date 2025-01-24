@@ -6,6 +6,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { config } from 'dotenv';
+import { exec, ChildProcess } from 'child_process';
 
 // Configure dotenv
 function loadEnv() {
@@ -573,14 +574,24 @@ if (!process.env.VERCEL) {
     }
     
     if (process.env.NODE_ENV !== 'production') {
-      // Start continuous background worker for local development
-      workerInterval = setInterval(async () => {
-        try {
-          await startWorker();
-        } catch (error) {
-          console.error('Worker iteration error:', error);
-        }
-      }, 30000); // Run every 30 seconds in development
+      // Start worker scheduler for local development
+      const workerProcess = exec('node scripts/scheduleWorker.js');
+      
+      if (workerProcess.stdout) {
+        workerProcess.stdout.on('data', (data) => {
+          console.log(`Worker: ${data}`);
+        });
+      }
+
+      if (workerProcess.stderr) {
+        workerProcess.stderr.on('data', (data) => {
+          console.error(`Worker error: ${data}`);
+        });
+      }
+
+      workerProcess.on('exit', (code) => {
+        console.log(`Worker process exited with code ${code}`);
+      });
     }
   });
 
