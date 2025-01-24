@@ -205,15 +205,58 @@ export async function processSyncJob(
 ) {
   let redis;
   let retries = 0;
-  let jobUserId: string | null = null;
+  let jobUserId: string | undefined = undefined;
   const MAX_CONNECTION_RETRIES = 3;
   const RETRY_DELAY = 1000;
 
-  // Get initial job status to get userId
-  const initialStatus = await getJobStatus(jobId);
-  jobUserId = initialStatus?.userId || null;
-  if (!jobUserId) {
-    throw new Error('Cannot process job: userId not found in job status');
+  // Get initial job status with retry logic for userId
+  let initialStatus;
+  let retryCount = 0;
+  const MAX_USERID_RETRIES = 3;
+  const USERID_RETRY_DELAY = 1000;
+  
+  while (retryCount < MAX_USERID_RETRIES) {
+    try {
+      initialStatus = await getJobStatus(jobId);
+      jobUserId = initialStatus?.userId;
+      
+      if (!jobUserId) {
+        logger.warn('userId not found in job status, retrying...', {
+          jobId,
+          attempt: retryCount + 1,
+          status: initialStatus
+        });
+        
+        // If we have the initial status but no userId, try to get it from Redis
+        if (initialStatus) {
+          const redis = await getRedis();
+          const jobData = await redis.get(`job:${jobId}`);
+          if (jobData) {
+            const parsedData = JSON.parse(jobData);
+            if (parsedData.userId) {
+              jobUserId = parsedData.userId;
+              logger.info('Retrieved userId from Redis job data', { jobId, userId: jobUserId });
+              break;
+            }
+          }
+        }
+        
+        if (retryCount === MAX_USERID_RETRIES - 1) {
+          throw new Error('Cannot process job: userId not found in job status after retries');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, USERID_RETRY_DELAY * Math.pow(2, retryCount)));
+        retryCount++;
+        continue;
+      }
+      break;
+    } catch (error) {
+      if (retryCount === MAX_USERID_RETRIES - 1) {
+        throw new Error(`Failed to get job status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, USERID_RETRY_DELAY * Math.pow(2, retryCount)));
+      retryCount++;
+    }
   }
 
   const getRedisWithRetry = async () => {
@@ -452,6 +495,9 @@ export async function processSyncJob(
         totalCount: total,
         remaining: total - currentProcessed
       });
+      if (!jobUserId) {
+        throw new Error('Cannot requeue job: userId is required');
+      }
       await addJobToQueue(jobId, jobUserId);
     }
   } catch (error) {
