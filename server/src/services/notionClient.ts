@@ -363,8 +363,8 @@ async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> 
     if (richTextProperty.rich_text[0]?.type === 'text' &&
         richTextProperty.rich_text[0].plain_text) {
       const hashString = hashProperty.rich_text[0].plain_text;
-      // Split by comma and take first 8 chars of each hash for comparison
-      const hashes = new Set(hashString.split(',').map(h => h.slice(0, 8)));
+      // Hashes in Notion are already truncated, just split and filter empty
+      const hashes = new Set(hashString.split(',').filter(h => h.trim()));
       
       console.debug('Parsed existing hashes:', {
         pageId,
@@ -504,7 +504,16 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
                 rich_text: [{
                   text: {
                     content: ((existingHashes.size > 0 ? [...existingHashes] : [])
-                      .concat(book.highlights.map(h => h.hash.slice(0, 8))) // Always store truncated hashes
+                      .concat(book.highlights.map(h => {
+                        const truncatedHash = h.hash.slice(0, 8);
+                        console.debug('Adding new hash:', {
+                          fullHash: h.hash,
+                          truncatedHash,
+                          location: h.location,
+                          bookTitle: book.title
+                        });
+                        return truncatedHash;
+                      }))
                       .filter((h, i, arr) => arr.indexOf(h) === i) // Remove duplicates
                       .join(','))
                       .substring(0, 1900) // Leave some buffer for Notion's limit
@@ -546,8 +555,17 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
 
           // Filter out duplicates and log results
           const newHighlights = book.highlights.filter(h => {
-            // Compare using truncated hash
-            const isDuplicate = existingHashes.has(h.hash.slice(0, 8));
+            // existingHashes already contains 8-char hashes, so truncate incoming hash to match
+            const truncatedHash = h.hash.slice(0, 8);
+            const isDuplicate = existingHashes.has(truncatedHash);
+            if (isDuplicate) {
+              console.debug('Found duplicate:', {
+                fullHash: h.hash,
+                truncatedHash,
+                location: h.location,
+                bookTitle: book.title
+              });
+            }
             if (isDuplicate) {
               console.debug('Skipping duplicate highlight:', {
                 hash: h.hash,
