@@ -17,14 +17,7 @@ export async function processFileContent(
 
     // Queue sync job to process highlights
     const jobId = await queueSyncJob(databaseId, fileContent);
-    logger.info('Sync job queued', { jobId });
-
-    // Process the sync job
-    await processSyncJob(jobId, async (progress: number, message: string) => {
-      logger.info('Sync progress', { progress, message });
-    });
-    
-    logger.info('File content processed successfully');
+    logger.info('Sync job queued successfully', { jobId });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Error processing file content', {
