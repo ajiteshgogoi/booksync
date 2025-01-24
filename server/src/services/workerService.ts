@@ -10,9 +10,14 @@ import {
 import { processFile } from './processService.js';
 import type { JobStatus } from './redisService.js';
 
+// Maximum number of empty polls before exiting
+const MAX_EMPTY_POLLS = 10; // Will exit after ~10 seconds of no jobs
+const POLL_INTERVAL = 1000; // 1 second between polls
+
 class WorkerService {
   private isRunning: boolean = false;
   private currentJobId: string | null = null;
+  private emptyPollCount: number = 0;
 
   async start(): Promise<void> {
     if (this.isRunning) {
@@ -33,11 +38,19 @@ class WorkerService {
           const result = await getNextJob();
           
           if (!result) {
+            this.emptyPollCount++;
+            if (this.emptyPollCount >= MAX_EMPTY_POLLS) {
+              logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, stopping worker`);
+              this.isRunning = false;
+              break;
+            }
             // No jobs available, wait before checking again
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
-
+          
+          // Reset empty poll count when job is found
+          this.emptyPollCount = 0;
           const { jobId, messageId } = result;
           this.currentJobId = jobId;
 
@@ -88,6 +101,12 @@ class WorkerService {
   async stop(): Promise<void> {
     logger.info('Stopping worker service');
     this.isRunning = false;
+    this.emptyPollCount = 0;
+    
+    // Log worker exit reason
+    if (this.currentJobId) {
+      logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
+    }
     
     // Clean up Redis connections
     try {
