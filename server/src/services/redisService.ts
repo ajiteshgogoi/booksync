@@ -2,16 +2,16 @@ import { Redis } from 'ioredis';
 import type { Redis as RedisType } from 'ioredis';
 import { logger } from '../utils/logger.js';
 
-// Connection pool configuration optimized for Vercel's 30s timeout
-const POOL_SIZE = process.env.VERCEL ? 1 : 5; // Single connection in Vercel
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 2000 : 10000; // 2s timeout in Vercel
-const MAX_RETRIES = process.env.VERCEL ? 2 : 5; // Fewer retries in Vercel
-const RETRY_DELAY = process.env.VERCEL ? 200 : 500; // Faster retries in Vercel
-const RETRY_BACKOFF = process.env.VERCEL ? 1.2 : 1.5; // Less aggressive backoff in Vercel
+// Connection pool configuration optimized for Vercel's 60s timeout
+const POOL_SIZE = process.env.VERCEL ? 3 : 5; // Single connection in Vercel
+const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 5000 : 10000; // 5s timeout in Vercel
+const MAX_RETRIES = process.env.VERCEL ? 3 : 5; // More retries in Vercel
+const RETRY_DELAY = process.env.VERCEL ? 500 : 500; // Same retry delay
+const RETRY_BACKOFF = process.env.VERCEL ? 1.5 : 1.5; // Same backoff factor
 
-const CONNECTION_TIMEOUT = process.env.VERCEL ? 5000 : 30000; // 5s connection timeout in Vercel
-const CONNECTION_MAX_AGE = process.env.VERCEL ? 25000 : 600000; // 25s max age in Vercel
-const CONNECTION_IDLE_TIMEOUT = process.env.VERCEL ? 10000 : 60000; // 10s idle timeout in Vercel
+const CONNECTION_TIMEOUT = process.env.VERCEL ? 15000 : 30000; // 15s connection timeout in Vercel
+const CONNECTION_MAX_AGE = process.env.VERCEL ? 45000 : 600000; // 45s max age in Vercel
+const CONNECTION_IDLE_TIMEOUT = process.env.VERCEL ? 30000 : 60000; // 30s idle timeout in Vercel
 const REAPER_INTERVAL = process.env.VERCEL ? 10000 : 30000; // 10s reaper interval in Vercel
 const KEEP_ALIVE_INTERVAL = process.env.VERCEL ? 5000 : 15000; // 5s keep-alive in Vercel
 const MAX_CONNECTION_WAITERS = process.env.VERCEL ? 1 : 2; // Single waiter in Vercel
@@ -79,8 +79,8 @@ class RedisPool {
     }
 
     const options = {
-      maxRetriesPerRequest: process.env.VERCEL ? 1 : 3,
-      connectTimeout: process.env.VERCEL ? 3000 : 10000,
+      maxRetriesPerRequest: process.env.VERCEL ? 2 : 3,
+      connectTimeout: process.env.VERCEL ? 5000 : 10000,
       retryStrategy(times: number) {
         if (times > MAX_RETRIES) {
           return null;
