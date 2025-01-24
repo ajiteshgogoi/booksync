@@ -170,6 +170,10 @@ class WorkerService {
 
   private async runWorkerCycle(): Promise<void> {
     try {
+      if (process.env.NODE_ENV === 'development') {
+        logger.info('Starting local worker cycle');
+      }
+      
       // Initialize Redis stream and consumer group
       await initializeStream();
 
