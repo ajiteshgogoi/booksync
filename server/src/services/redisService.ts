@@ -571,7 +571,7 @@ async function cleanupExpiredKeys(): Promise<void> {
 
 // OAuth token management
 const OAUTH_TOKEN_PREFIX = 'oauth:';
-const OAUTH_TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
+const OAUTH_TOKEN_TTL = 60 * 60 * 24; // 24 hours (matching JOB_TTL)
 
 export async function storeOAuthToken(
   tokenData: string,
