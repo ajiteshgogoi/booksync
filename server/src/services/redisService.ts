@@ -1,6 +1,5 @@
 import { Redis } from 'ioredis';
 import type { Redis as RedisType } from 'ioredis';
-import { RedisServiceFactory } from './redisServiceFactory.js';
 import { logger } from '../utils/logger.js';
 
 // Connection pool configuration
@@ -412,7 +411,7 @@ export const ACTIVE_USERS_SET = 'active_users'; // Set to track users with activ
 
 class RedisService {
   private static instance: RedisType | null = null;
-  private static pool = RedisServiceFactory.getService();
+  private static pool = RedisPool.getInstance();
 
   public static async init(): Promise<RedisService> {
     if (!RedisService.instance) {
