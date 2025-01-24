@@ -1,7 +1,7 @@
 import { logger } from './utils/logger.js';
 import { jobCleanupService } from './services/jobCleanupService.js';
 import { workerService } from './services/workerService.js';
-import { RedisServiceFactory } from './services/redisServiceFactory.js';
+import { RedisPool } from './services/redisService.js';
 
 let isWorkerRunning = false;
 
