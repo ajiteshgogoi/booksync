@@ -41,7 +41,8 @@ const MAX_HIGHLIGHTS_PER_RUN = isGitHubAction ? 1000 : // Process up to 1000 in 
 
 export async function queueSyncJob(
   databaseId: string,
-  fileContent: string
+  fileContent: string,
+  userId: string
 ): Promise<string> {
   let redis;
   try {
@@ -171,16 +172,17 @@ export async function queueSyncJob(
     if (errors.length > 0) {
       throw new Error(`Pipeline errors: ${errors.join(', ')}`);
     }
-    
     await setJobStatus(jobId, {
       state: 'pending',
       progress: 0,
       message: 'Job queued',
       total: uniqueHighlights.length,
-      lastProcessedIndex: 0
+      lastProcessedIndex: 0,
+      userId // Store userId with job status
     });
     
-    await addJobToQueue(jobId);
+    await addJobToQueue(jobId, userId);
+    return jobId;
     return jobId;
   } finally {
     // Return connection to pool
@@ -196,8 +198,16 @@ export async function processSyncJob(
 ) {
   let redis;
   let retries = 0;
+  let jobUserId: string | null = null;
   const MAX_CONNECTION_RETRIES = 3;
   const RETRY_DELAY = 1000;
+
+  // Get initial job status to get userId
+  const initialStatus = await getJobStatus(jobId);
+  jobUserId = initialStatus?.userId || null;
+  if (!jobUserId) {
+    throw new Error('Cannot process job: userId not found in job status');
+  }
 
   const getRedisWithRetry = async () => {
     for (let i = 0; i < MAX_CONNECTION_RETRIES; i++) {
@@ -322,7 +332,11 @@ export async function processSyncJob(
           message: 'Rate limit reached - will resume in next run',
           lastProcessedIndex: currentProcessed
         });
-        await addJobToQueue(jobId); // Re-queue for next run
+        const userId = status?.userId;
+        if (!userId) {
+          throw new Error('Cannot requeue job: userId not found in job status');
+        }
+        await addJobToQueue(jobId, userId); // Re-queue for next run
         return;
       }
 
@@ -399,7 +413,8 @@ export async function processSyncJob(
         state: 'completed',
         progress: 100,
         message: completionMessage,
-        lastProcessedIndex: total
+        lastProcessedIndex: total,
+        userId: jobUserId
       });
       logger.info('Highlights sync completed', {
         jobId,
@@ -414,7 +429,8 @@ export async function processSyncJob(
         state: 'pending',
         progress,
         message: pendingMessage,
-        lastProcessedIndex: currentProcessed
+        lastProcessedIndex: currentProcessed,
+        userId: jobUserId
       });
       logger.info('Partial highlights sync completed', {
         jobId,
@@ -423,14 +439,15 @@ export async function processSyncJob(
         totalCount: total,
         remaining: total - currentProcessed
       });
-      await addJobToQueue(jobId);
+      await addJobToQueue(jobId, jobUserId);
     }
   } catch (error) {
-    const currentStatus = await getJobStatus(jobId);
+    const errorStatus = await getJobStatus(jobId);
     await setJobStatus(jobId, {
       state: 'failed',
       message: error instanceof Error ? error.message : 'Sync failed',
-      lastProcessedIndex: currentStatus?.lastProcessedIndex || 0
+      lastProcessedIndex: errorStatus?.lastProcessedIndex || 0,
+      userId: jobUserId
     });
     throw error;
   } finally {

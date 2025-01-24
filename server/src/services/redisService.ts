@@ -440,7 +440,14 @@ export type JobStatus = {
   lastCheckpoint?: number;
   completedAt?: number;
   lastProcessedIndex?: number;
+  userId?: string;  // Optional for backward compatibility
 };
+
+// Helper function to get userId from job status
+export async function getJobUserId(jobId: string): Promise<string | null> {
+  const status = await getJobStatus(jobId);
+  return status?.userId || null;
+}
 
 // Initialize stream and consumer group
 export async function initializeStream(): Promise<void> {
@@ -459,11 +466,53 @@ export async function getRedis(): Promise<RedisType> {
   return await redisPool.acquire();
 }
 
-// Add job to queue
-export async function addJobToQueue(jobId: string): Promise<void> {
+// Check if user has pending job
+export async function hasUserPendingJob(userId: string): Promise<boolean> {
   const redis = await getRedis();
   try {
-    await redis.xadd(STREAM_NAME, '*', 'jobId', jobId);
+    // Read all stream entries
+    const results = await redis.xread('STREAMS', STREAM_NAME, '0-0') as RedisStreamResponse;
+    if (!results || results.length === 0) return false;
+
+    const streamMessages = results[0][1];
+    if (!streamMessages || streamMessages.length === 0) return false;
+
+    // Check each message's associated job status
+    for (const [_, fields] of streamMessages) {
+      const jobIdIndex = fields.indexOf('jobId');
+      if (jobIdIndex === -1 || jobIdIndex + 1 >= fields.length) continue;
+      
+      const jobId = fields[jobIdIndex + 1];
+      const userIdIndex = fields.indexOf('userId');
+      if (userIdIndex === -1 || userIdIndex + 1 >= fields.length) continue;
+      
+      const messageUserId = fields[userIdIndex + 1];
+      
+      if (messageUserId === userId) {
+        // Check if the job is still active
+        const status = await getJobStatus(jobId);
+        if (status && ['pending', 'processing', 'queued'].includes(status.state)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
+// Add job to queue
+export async function addJobToQueue(jobId: string, userId: string): Promise<void> {
+  const redis = await getRedis();
+  try {
+    // Check if user already has a pending job
+    const hasPendingJob = await hasUserPendingJob(userId);
+    if (hasPendingJob) {
+      throw new Error('User already has a pending file processing job');
+    }
+
+    await redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId);
     await setJobStatus(jobId, { state: 'pending' });
   } finally {
     redisPool.release(redis);
