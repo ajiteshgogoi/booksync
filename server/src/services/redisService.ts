@@ -52,6 +52,7 @@ class RedisPool {
     lastErrorTimestamp: 0,
     lastAcquireDuration: 0
   };
+  private reaperInterval: NodeJS.Timeout | null = null;
 
   private static instance: RedisPool | null = null;
 
@@ -120,7 +121,11 @@ class RedisPool {
   }
 
   private startConnectionReaper(): void {
-    setInterval(async () => {
+    if (this.reaperInterval) {
+      clearInterval(this.reaperInterval);
+    }
+    
+    this.reaperInterval = setInterval(async () => {
       for (const connection of this.pool) {
         try {
           const isStale = await this.isConnectionStale(connection);
@@ -132,6 +137,13 @@ class RedisPool {
         }
       }
     }, REAPER_INTERVAL);
+  }
+
+  private stopConnectionReaper(): void {
+    if (this.reaperInterval) {
+      clearInterval(this.reaperInterval);
+      this.reaperInterval = null;
+    }
   }
 
   private async isConnectionStale(connection: PoolConnection): Promise<boolean> {
@@ -321,14 +333,28 @@ class RedisPool {
   }
 
   public async cleanup(): Promise<void> {
-    for (const connection of this.pool) {
+    this.stopConnectionReaper();
+    
+    const quitPromises = this.pool.map(async (connection) => {
       try {
-        await connection.client.quit();
+        if (connection.client.status === 'ready' || connection.client.status === 'connecting') {
+          await Promise.race([
+            connection.client.quit(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Redis quit timeout')), 5000)
+            )
+          ]);
+        }
       } catch (error) {
-        logger.error('Error during cleanup', { error });
+        logger.error('Error during connection cleanup', { error });
+        // Force disconnect if quit times out or fails
+        connection.client.disconnect(false);
       }
-    }
+    });
+
+    await Promise.all(quitPromises);
     this.pool = [];
+    RedisPool.instance = null;
   }
 }
 

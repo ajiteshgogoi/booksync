@@ -119,8 +119,11 @@ async function main() {
         await RedisService.cleanup();
         await redisPool.cleanup();
         debug('Redis cleanup completed');
+        // Force exit after cleanup
+        process.exit(0);
       } catch (cleanupError) {
         console.error('Error during Redis cleanup:', cleanupError);
+        process.exit(1);
       }
     }
   }
@@ -138,7 +141,7 @@ main().catch(error => {
 // Handle process termination
 let isCleaningUp = false;
 
-async function cleanupAndExit() {
+async function cleanupAndExit(exitCode = 0) {
   if (isCleaningUp) return;
   isCleaningUp = true;
   
@@ -155,29 +158,27 @@ async function cleanupAndExit() {
     await redisPool.cleanup();
     
     debug('Cleanup completed');
+    process.exit(exitCode);
   } catch (error) {
     console.error('Error during cleanup:', error);
-  } finally {
-    debug('Exiting process');
-    process.exit(0);
+    process.exit(1);
   }
 }
 
 // Handle process termination signals
-process.on('SIGTERM', cleanupAndExit);
-process.on('SIGINT', cleanupAndExit);
-process.on('exit', cleanupAndExit);
+process.on('SIGTERM', () => cleanupAndExit(0));
+process.on('SIGINT', () => cleanupAndExit(0));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
-  cleanupAndExit().finally(() => process.exit(1));
+  cleanupAndExit(1);
 });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  cleanupAndExit().finally(() => process.exit(1));
+  cleanupAndExit(1);
 });
 
 // Handle process warnings
