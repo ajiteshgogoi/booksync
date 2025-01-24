@@ -87,8 +87,13 @@ export interface NotionBookPage {
 
 function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string, date: Date): string {
   const content = highlight.join('\n\n') + location + bookTitle + author + date.toISOString();
-  // Use full SHA-256 hash encoded in base64 for better uniqueness and storage efficiency
-  return createHash('sha256').update(content).digest('base64');
+  console.debug('Generating hash for content:', {
+    contentPreview: content.slice(0, 100) + '...',
+    length: content.length
+  });
+  const hash = createHash('sha256').update(content).digest('base64');
+  console.debug('Generated hash:', hash);
+  return hash;
 }
 
 function storeHashes(hashes: string[]): string {
