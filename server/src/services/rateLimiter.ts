@@ -32,7 +32,7 @@ class RateLimiter {
   private windowMs: number;
   private cleanupInterval: number;
 
-  constructor(limit = 2, windowMs = 30 * 60 * 1000, cleanupInterval = 60 * 60 * 1000) {
+  constructor(limit = 2, windowMs = 60 * 60 * 1000, cleanupInterval = 60 * 60 * 1000) {
     this.store = new InMemoryStore();
     this.limit = limit;
     this.windowMs = windowMs;

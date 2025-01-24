@@ -1,3 +1,22 @@
+async function checkRateLimit(): Promise<void> {
+  try {
+    const response = await fetch('/api/rate-limit-check');
+    
+    if (!response.ok) {
+      const data = await response.json();
+      if (response.status === 429) {
+        const data = await response.json();
+        const remainingTime = Math.ceil(data.remainingTime / 60);
+        throw new Error(`You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`);
+      }
+      throw new Error('Failed to check rate limit');
+    }
+  } catch (error) {
+    console.error('Rate limit check failed:', error);
+    throw error;
+  }
+}
+
 export async function getUploadUrl(fileName: string, fileKey: string, fileType: string): Promise<string> {
   try {
     console.log('Requesting upload URL for:', { fileName, fileKey, fileType });
@@ -38,6 +57,9 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
 
 export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number }> {
   try {
+    // Check rate limit first
+    await checkRateLimit();
+
     console.log('Starting file upload:', {
       fileName: file.name,
       fileKey,
@@ -104,7 +126,7 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
 
       if (parseResponse.status === 429) {
         const remainingTime = Math.ceil(errorData.remainingTime / 60);
-        throw new Error(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
+        throw new Error(`You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`);
       }
       throw new Error(errorData.message || await parseResponse.text());
     }
