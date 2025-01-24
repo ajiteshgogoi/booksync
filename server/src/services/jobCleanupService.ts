@@ -14,6 +14,10 @@ const STUCK_JOB_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours for processing jobs
 // - No need to keep them longer taking up Redis space
 const COMPLETED_JOB_TIMEOUT = 60 * 60 * 1000; // 1 hour for completed jobs
 
+// Stream entries should be cleaned up after same time as stuck jobs
+// to ensure we don't delete streams for jobs still being processed
+const STREAM_ENTRY_TIMEOUT = STUCK_JOB_TIMEOUT; // 24 hours for stream entries
+
 // Run cleanup every hour
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
@@ -75,18 +79,30 @@ class JobCleanupService {
         }
       }
       
-      // Clean up orphaned stream entries
+      // Clean up stream entries
       const streamData = await redis.xrange('sync_jobs_stream', '-', '+');
       logger.debug('Found stream entries', { count: streamData.length });
 
+      const now = Date.now();
       for (const [id, fields] of streamData) {
+        const streamTimestamp = Number(id.split('-')[0]); // Redis stream IDs are timestamp-sequence
         const jobIdIndex = fields.indexOf('jobId');
+        
         if (jobIdIndex === -1) continue;
         
         const jobId = fields[jobIdIndex + 1];
-        if (!await redis.exists(`job:${jobId}:status`)) {
+        const jobExists = await redis.exists(`job:${jobId}:status`);
+        
+        // Clean up stream entry if either:
+        // 1. Its corresponding job status doesn't exist (orphaned)
+        // 2. It's older than the stream timeout
+        if (!jobExists || (now - streamTimestamp) > STREAM_ENTRY_TIMEOUT) {
           await redis.xdel('sync_jobs_stream', id);
-          logger.info('Removed orphaned stream entry', { jobId });
+          logger.info('Removed stream entry', {
+            jobId,
+            reason: !jobExists ? 'orphaned' : 'timeout',
+            age: now - streamTimestamp
+          });
         }
       }
     } catch (error) {
