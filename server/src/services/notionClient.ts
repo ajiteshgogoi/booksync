@@ -97,8 +97,19 @@ function generateHighlightHash(highlight: string[], location: string, bookTitle:
 }
 
 function storeHashes(hashes: string[]): string {
-  // Deduplicate and truncate hashes to 8 characters
-  const uniqueHashes = Array.from(new Set(hashes.map(h => h.slice(0, 8))));
+  // Deduplicate and truncate hashes to 8 characters for Notion storage
+  const uniqueHashes = Array.from(new Set(hashes.map(h => {
+    const truncated = h.slice(0, 8);
+    const isAlreadyTruncated = h.length === 8;
+    if (!isAlreadyTruncated) {
+      console.debug('Truncating hash for Notion storage:', {
+        original: h,
+        truncated,
+        length: h.length
+      });
+    }
+    return truncated;
+  })));
   let hashString = '';
   
   for (const hash of uniqueHashes) {
@@ -493,7 +504,7 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
                 rich_text: [{
                   text: {
                     content: ((existingHashes.size > 0 ? [...existingHashes] : [])
-                      .concat(book.highlights.map(h => h.hash))
+                      .concat(book.highlights.map(h => h.hash.slice(0, 8))) // Always store truncated hashes
                       .filter((h, i, arr) => arr.indexOf(h) === i) // Remove duplicates
                       .join(','))
                       .substring(0, 1900) // Leave some buffer for Notion's limit
@@ -631,10 +642,11 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
                 rich_text: [{
                   text: {
                     content: storeHashes(
-                      book.highlights.map(h =>
-                        // Use existing hash from parseClippings
-                        h.hash || generateHighlightHash(h.highlight, h.location, h.bookTitle, h.author)
-                      )
+                      book.highlights.map(h => {
+                        // Use existing hash from parseClippings or generate new one, always truncate
+                        const fullHash = h.hash || generateHighlightHash(h.highlight, h.location, h.bookTitle, h.author);
+                        return fullHash.slice(0, 8);
+                      })
                     )
                   }
                 }]
