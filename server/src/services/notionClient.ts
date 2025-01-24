@@ -85,32 +85,15 @@ export interface NotionBookPage {
   lastSynced: Date;
 }
 
-function generateHighlightHash(highlight: string[], location: string): string {
-  // Validate inputs
-  if (!Array.isArray(highlight) || highlight.length === 0) {
-    throw new Error('Invalid highlight content');
-  }
-  if (typeof location !== 'string' || location.trim() === '') {
-    throw new Error('Invalid location');
-  }
-
-  // Normalize content by joining with newlines and trimming
-  const content = highlight.join('\n\n').trim();
-  
-  // Create hash using only content and location
-  const hashContent = content + location;
-  const hash = createHash('sha256')
-    .update(hashContent)
-    .digest('base64')
-    .slice(0, 8); // Use first 8 characters for shorter hash
-
-  console.debug('Generated hash:', {
-    contentPreview: content.slice(0, 100) + '...',
-    location,
-    hash
-  });
-
-  return hash;
+// This function is only kept for backward compatibility with existing data
+// New highlights should already come with their hash from parseClippings
+function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
+  // Generate hash consistently with parseClippings.ts
+  const firstChunk = highlight[0] || '';
+  const content = firstChunk + location + bookTitle + author;
+  // Generate full hash but return first 8 characters for Notion storage efficiency
+  // while maintaining hash strength and allowing flexibility to use more chars if needed
+  return createHash('sha256').update(content).digest('hex').slice(0, 8);
 }
 
 function storeHashes(hashes: string[]): string {
@@ -554,7 +537,8 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
                   text: {
                     content: storeHashes(
                       book.highlights.map(h =>
-                        generateHighlightHash(h.highlight, h.location)
+                        // Use existing hash from parseClippings
+                        h.hash || generateHighlightHash(h.highlight, h.location, h.bookTitle, h.author)
                       )
                     )
                   }
