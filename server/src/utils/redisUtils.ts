@@ -1,5 +1,5 @@
 import { Redis } from 'ioredis';
-import { getRedis } from '../services/redisService';
+import { getRedis } from '../services/redisService.js';
 
 interface RedisConnectionOptions {
   maxRetries?: number;
