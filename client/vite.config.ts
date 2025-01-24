@@ -7,6 +7,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -19,9 +20,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: process.env.NODE_ENV === 'production' 
+          ? 'https://booksync.pages.dev'  // Replace with your Cloudflare Pages domain
+          : 'http://localhost:3001',
         changeOrigin: true,
       },
     },
   },
+  preview: {
+    port: 4173,
+    open: true,
+  }
 });
