@@ -90,26 +90,14 @@ class RedisPool {
         const delay = Math.min(Math.min(times * RETRY_DELAY, maxDelay), POOL_ACQUIRE_TIMEOUT);
         return delay;
       },
-      reconnectOnError(err: Error) {
-        // Only retry on critical errors in Vercel
-        const targetErrors = process.env.VERCEL ? [
-          'READONLY',
-          'LOADING Redis is loading the dataset in memory'
-        ] : [
-          'READONLY',
-          'ERR max number of clients reached',
-          'LOADING Redis is loading the dataset in memory',
-          'CLUSTERDOWN',
-          'CONNECTING'
-        ];
-        return targetErrors.some(e => err.message.includes(e));
-      },
-      enableOfflineQueue: !process.env.VERCEL, // Disable offline queue in Vercel
-      enableReadyCheck: !process.env.VERCEL, // Disable ready check in Vercel
-      commandTimeout: process.env.VERCEL ? 3000 : 10000,
+      enableOfflineQueue: true, // Enable offline queue with limited size
+      enableReadyCheck: true, // Enable ready check
+      commandTimeout: process.env.VERCEL ? 5000 : 10000, // Slightly longer timeout
       autoResubscribe: false,
       autoResendUnfulfilledCommands: false,
       lazyConnect: true,
+      offlineQueueMaxSize: process.env.VERCEL ? 10 : 100, // Limit queue size in Vercel
+      reconnectOnError: () => true, // Always attempt to reconnect on errors
       // Add faster failure detection in Vercel
       ...(process.env.VERCEL ? {
         retryMaxDelay: 1000,
