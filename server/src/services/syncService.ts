@@ -54,16 +54,41 @@ export async function queueSyncJob(
     // Use Redis pipeline for batch operations
     const pipeline = redis.pipeline();
     
-    // Store all highlights in a single pipeline
-    console.debug('Storing highlights in pipeline...');
-    highlights.forEach((highlight, i) => {
-      const highlightWithDb = {
-        ...highlight,
-        databaseId
-      };
-      const key = `highlights:${jobId}:${i}`;
-      pipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
-    });
+    // Store highlights in chunks to reduce connection usage
+    console.debug('Storing highlights in chunks...');
+    const CHUNK_SIZE = 100;
+    let storedCount = 0;
+    
+    for (let i = 0; i < highlights.length; i += CHUNK_SIZE) {
+      const chunk = highlights.slice(i, i + CHUNK_SIZE);
+      const chunkPipeline = redis.pipeline();
+      
+      chunk.forEach((highlight, chunkIndex) => {
+        const highlightWithDb = {
+          ...highlight,
+          databaseId
+        };
+        const key = `highlights:${jobId}:${i + chunkIndex}`;
+        chunkPipeline.set(key, JSON.stringify(highlightWithDb), 'EX', JOB_TTL);
+      });
+      
+      // Execute and clear pipeline for each chunk
+      const results = await chunkPipeline.exec();
+      
+      // Check for errors
+      if (results) {
+        const errors = results
+          .filter(([err]) => err)
+          .map(([err], index) => `Operation ${index}: ${err}`);
+          
+        if (errors.length > 0) {
+          throw new Error(`Chunk storage errors: ${errors.join(', ')}`);
+        }
+      }
+      
+      storedCount += chunk.length;
+      console.debug(`Stored chunk ${i / CHUNK_SIZE + 1}, total stored: ${storedCount}`);
+    }
 
     // Execute pipeline with error handling
     console.debug('Executing Redis pipeline...');
@@ -315,6 +340,7 @@ export async function processSyncJob(
 async function getHighlightsFromQueue(jobId: string): Promise<ProcessedHighlight[]> {
   let redis;
   const highlights: ProcessedHighlight[] = [];
+  const CHUNK_SIZE = 100;
   
   try {
     redis = await getRedis();
@@ -325,10 +351,12 @@ async function getHighlightsFromQueue(jobId: string): Promise<ProcessedHighlight
     const allKeys = await redis.keys(pattern);
     console.debug(`Found ${allKeys.length} keys matching pattern:`, allKeys);
     
-    // Get all values at once using pipeline instead of mget
-    if (allKeys.length > 0) {
+    // Process keys in chunks to reduce memory and connection usage
+    for (let i = 0; i < allKeys.length; i += CHUNK_SIZE) {
+      const chunkKeys = allKeys.slice(i, i + CHUNK_SIZE);
       const pipeline = redis.pipeline();
-      allKeys.forEach(key => pipeline.get(key));
+      
+      chunkKeys.forEach(key => pipeline.get(key));
       const results = await pipeline.exec();
       
       if (results) {
