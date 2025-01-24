@@ -51,19 +51,7 @@ jobs:
           npm cache clean --force
           npm ci
 
-      - name: Initialize Redis connection
-        run: |
-          cd server
-          echo "Initializing Redis connection pool..."
-          node --experimental-vm-modules -e "
-          (async () => {
-            const { RedisService } = await import('./build/src/services/redisService.js');
-            global.redisService = await RedisService.init();
-            console.log('Redis connection pool initialized');
-          })();
-          "
-
-      - name: Build and run worker
+      - name: Build server
         run: |
           cd server
           # Build TypeScript files
@@ -71,36 +59,29 @@ jobs:
           npm run build
           echo "Build complete"
 
-          # Set environment variables for GitHub Actions
-          export MAX_RUNTIME='18000000'  # 5 hours
-          export JOB_TIMEOUT='3600000'   # 1 hour
-          export BATCH_SIZE='25'         # Match syncService.ts GitHub Actions batch size
-          export MAX_HIGHLIGHTS_PER_RUN='1000'  # Match syncService.ts GitHub Actions limit
-
-          echo "Starting worker process..."
+      - name: Initialize Redis and run worker
+        run: |
+          cd server
+          echo "Initializing Redis connection pool and starting worker..."
           node --experimental-vm-modules -e "
           (async () => {
             try {
-              console.log('Importing worker module...');
+              console.log('Importing modules...');
+              const { RedisService } = await import('./build/src/services/redisService.js');
               const { startWorker } = await import('./build/src/worker.js');
-              console.log('Worker module imported successfully');
               
-              process.env.MAX_RUNTIME = '18000000';  // 5 hours
-              process.env.JOB_TIMEOUT = '3600000';   // 1 hour
-              process.env.BATCH_SIZE = '25';         // Match syncService.ts GitHub Actions batch size
-              process.env.MAX_HIGHLIGHTS_PER_RUN = '1000';  // Match syncService.ts GitHub Actions limit
+              console.log('Initializing Redis...');
+              global.redisService = await RedisService.init();
               
-              console.log('Starting worker with environment:', {
-                MAX_RUNTIME: process.env.MAX_RUNTIME,
-                JOB_TIMEOUT: process.env.JOB_TIMEOUT,
-                BATCH_SIZE: process.env.BATCH_SIZE,
-                MAX_HIGHLIGHTS_PER_RUN: process.env.MAX_HIGHLIGHTS_PER_RUN
-              });
-              
+              console.log('Starting worker...');
               await startWorker();
               console.log('Worker completed successfully');
+              
+              // Cleanup
+              await RedisService.cleanup();
+              console.log('Redis connection cleaned up');
             } catch (error) {
-              console.error('Failed to run worker:', error);
+              console.error('Error:', error);
               process.exit(1);
             }
           })();
