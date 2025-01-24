@@ -9,7 +9,8 @@ import {
   JOB_TTL,
   setJobStatus,
   JobStatus,
-  redisPool
+  redisPool,
+  STREAM_NAME
 } from './redisService.js';
 import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 
@@ -209,45 +210,58 @@ export async function processSyncJob(
   const MAX_CONNECTION_RETRIES = 3;
   const RETRY_DELAY = 1000;
 
-  // Get initial job status with retry logic for userId
+  // Get initial job status with improved retry logic for userId
   let initialStatus;
   let retryCount = 0;
-  const MAX_USERID_RETRIES = 3;
-  const USERID_RETRY_DELAY = 1000;
+  const MAX_USERID_RETRIES = 5; // Increased retries
+  const USERID_RETRY_DELAY = 200; // Shorter initial delay
   
   while (retryCount < MAX_USERID_RETRIES) {
     try {
+      // First try getting from job status
       initialStatus = await getJobStatus(jobId);
       jobUserId = initialStatus?.userId;
       
       if (!jobUserId) {
-        logger.warn('userId not found in job status, retrying...', {
-          jobId,
-          attempt: retryCount + 1,
-          status: initialStatus
-        });
-        
-        // If we have the initial status but no userId, try to get it from Redis
-        if (initialStatus) {
-          const redis = await getRedis();
-          const jobData = await redis.get(`job:${jobId}`);
-          if (jobData) {
-            const parsedData = JSON.parse(jobData);
-            if (parsedData.userId) {
-              jobUserId = parsedData.userId;
-              logger.info('Retrieved userId from Redis job data', { jobId, userId: jobUserId });
+        // Then try getting from stream entry
+        const redis = await getRedis();
+        try {
+          const streamData = await redis.xrange(STREAM_NAME, '-', '+');
+          for (const [_, fields] of streamData) {
+            const jobIdIndex = fields.indexOf('jobId');
+            const userIdIndex = fields.indexOf('userId');
+            if (jobIdIndex !== -1 && fields[jobIdIndex + 1] === jobId && userIdIndex !== -1) {
+              jobUserId = fields[userIdIndex + 1];
+              logger.info('Retrieved userId from Redis stream', { jobId, userId: jobUserId });
+              // Update job status with found userId and ensure state is defined
+              await setJobStatus(jobId, {
+                ...initialStatus,
+                state: initialStatus?.state || 'processing',
+                userId: jobUserId
+              });
               break;
             }
           }
+        } finally {
+          redisPool.release(redis);
         }
         
-        if (retryCount === MAX_USERID_RETRIES - 1) {
-          throw new Error('Cannot process job: userId not found in job status after retries');
+        if (!jobUserId) {
+          logger.warn('userId not found, retrying...', {
+            jobId,
+            attempt: retryCount + 1,
+            status: initialStatus,
+            delay: USERID_RETRY_DELAY * Math.pow(1.5, retryCount)
+          });
+          
+          if (retryCount === MAX_USERID_RETRIES - 1) {
+            throw new Error('Cannot process job: userId not found after retries');
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, USERID_RETRY_DELAY * Math.pow(1.5, retryCount)));
+          retryCount++;
+          continue;
         }
-        
-        await new Promise(resolve => setTimeout(resolve, USERID_RETRY_DELAY * Math.pow(2, retryCount)));
-        retryCount++;
-        continue;
       }
       break;
     } catch (error) {
@@ -316,12 +330,19 @@ export async function processSyncJob(
     const highlightsToProcess = highlights.slice(lastProcessedIndex, endIndex);
     let currentProcessed = lastProcessedIndex;
 
-    // Update status to processing
+    // Get initial job status to preserve userId
+    const initialJobStatus = await getJobStatus(jobId);
+    if (!initialJobStatus?.userId) {
+      throw new Error('Cannot process job: userId not found in job status');
+    }
+    
+    // Update status to processing while preserving userId
     await setJobStatus(jobId, {
       state: 'processing',
       progress: Math.round((currentProcessed / total) * 100),
       message: 'Processing highlights...',
-      lastProcessedIndex: currentProcessed
+      lastProcessedIndex: currentProcessed,
+      userId: initialJobStatus.userId
     });
 
     // Log highlight state before batch processing
@@ -376,11 +397,18 @@ export async function processSyncJob(
 
       if (!await checkRateLimit(batch[0].databaseId)) {
         // Store progress and exit when rate limited
+        // Get current status to preserve userId
+        const currentStatus = await getJobStatus(jobId);
+        if (!currentStatus?.userId) {
+          throw new Error('Cannot process job: userId not found in job status');
+        }
+        
         await setJobStatus(jobId, {
           state: 'pending',
           progress: Math.round((currentProcessed / total) * 100),
           message: 'Rate limit reached - will resume in next run',
-          lastProcessedIndex: currentProcessed
+          lastProcessedIndex: currentProcessed,
+          userId: currentStatus.userId
         });
         const userId = status?.userId;
         if (!userId) {
@@ -423,11 +451,18 @@ export async function processSyncJob(
           const progress = Math.round((currentProcessed / total) * 100);
           const progressMessage = `Processing ${currentProcessed}/${total} highlights`;
           
+          // Get current status to preserve userId
+          const currentStatus = await getJobStatus(jobId);
+          if (!currentStatus?.userId) {
+            throw new Error('Cannot update job progress: userId not found in job status');
+          }
+          
           await setJobStatus(jobId, {
             state: 'processing',
             progress,
             message: progressMessage,
-            lastProcessedIndex: currentProcessed
+            lastProcessedIndex: currentProcessed,
+            userId: currentStatus.userId
           });
           
           // Log batch completion
@@ -463,6 +498,12 @@ export async function processSyncJob(
     }
 
     // Check if we've processed everything
+    // Get job status to preserve userId
+    const jobStatus = await getJobStatus(jobId);
+    if (!jobStatus?.userId) {
+      throw new Error('Cannot update job completion: userId not found in job status');
+    }
+
     if (currentProcessed >= total) {
       const completionMessage = 'Sync completed successfully';
       await setJobStatus(jobId, {
@@ -470,7 +511,7 @@ export async function processSyncJob(
         progress: 100,
         message: completionMessage,
         lastProcessedIndex: total,
-        userId: jobUserId
+        userId: jobStatus.userId
       });
       logger.info('Highlights sync completed', {
         jobId,
@@ -486,7 +527,7 @@ export async function processSyncJob(
         progress,
         message: pendingMessage,
         lastProcessedIndex: currentProcessed,
-        userId: jobUserId
+        userId: jobStatus.userId
       });
       logger.info('Partial highlights sync completed', {
         jobId,
@@ -502,11 +543,15 @@ export async function processSyncJob(
     }
   } catch (error) {
     const errorStatus = await getJobStatus(jobId);
+    const currentUserId = errorStatus?.userId || initialStatus?.userId || jobUserId;
+    if (!currentUserId) {
+      throw new Error('Cannot set error status: userId not found');
+    }
     await setJobStatus(jobId, {
       state: 'failed',
       message: error instanceof Error ? error.message : 'Sync failed',
       lastProcessedIndex: errorStatus?.lastProcessedIndex || 0,
-      userId: jobUserId
+      userId: currentUserId
     });
     throw error;
   } finally {
