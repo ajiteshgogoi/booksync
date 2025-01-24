@@ -1,5 +1,6 @@
 import { parseClippings } from '../utils/parseClippings.js';
 import { updateNotionDatabase, Highlight } from './notionClient.js';
+import { logger } from '../utils/logger.js';
 import {
   getRedis,
   checkRateLimit,
@@ -122,7 +123,7 @@ export async function processSyncJob(
   };
 
   try {
-    console.debug(`Starting sync job processing for ${jobId}`);
+    logger.info(`Starting sync job processing`, { jobId });
     redis = await getRedisWithRetry();
     
     // Get current progress with retry
@@ -130,7 +131,7 @@ export async function processSyncJob(
     try {
       status = await getJobStatus(jobId);
     } catch (error) {
-      console.error('Failed to get job status, retrying...', error);
+      logger.warn('Failed to get job status, retrying...', { jobId, error });
       redis = await getRedisWithRetry();
       status = await getJobStatus(jobId);
     }
@@ -141,14 +142,16 @@ export async function processSyncJob(
     try {
       highlights = await getHighlightsFromQueue(jobId);
     } catch (error) {
-      console.error('Failed to get highlights from queue, retrying...', error);
+      logger.warn('Failed to get highlights from queue, retrying...', { jobId, error });
       redis = await getRedisWithRetry();
       highlights = await getHighlightsFromQueue(jobId);
     }
     const total = highlights.length;
     
+    logger.info('Retrieved highlights for processing', { jobId, total, lastProcessedIndex });
+    
     if (lastProcessedIndex >= total) {
-      console.debug('All highlights already processed');
+      logger.info('All highlights already processed', { jobId });
       await setJobStatus(jobId, {
         state: 'completed',
         progress: 100,
@@ -219,15 +222,26 @@ export async function processSyncJob(
           
           // Update progress
           const progress = Math.round((currentProcessed / total) * 100);
+          const progressMessage = `Processing ${currentProcessed}/${total} highlights`;
+          
           await setJobStatus(jobId, {
             state: 'processing',
             progress,
-            message: `Processing ${currentProcessed}/${total} highlights`,
+            message: progressMessage,
             lastProcessedIndex: currentProcessed
           });
           
+          // Log batch completion
+          logger.info('Batch synced to Notion', {
+            jobId,
+            batchSize: batch.length,
+            currentProcessed,
+            total,
+            progress
+          });
+          
           if (onProgress) {
-            await onProgress(progress, `Processing ${currentProcessed}/${total} highlights`);
+            await onProgress(progress, progressMessage);
           }
 
           success = true;
@@ -251,19 +265,34 @@ export async function processSyncJob(
 
     // Check if we've processed everything
     if (currentProcessed >= total) {
+      const completionMessage = 'Sync completed successfully';
       await setJobStatus(jobId, {
         state: 'completed',
         progress: 100,
-        message: 'Sync completed successfully',
+        message: completionMessage,
         lastProcessedIndex: total
+      });
+      logger.info('Highlights sync completed', {
+        jobId,
+        totalSynced: total,
+        totalBatches: Math.ceil(total / BATCH_SIZE)
       });
     } else {
       // More to process in next run
+      const progress = Math.round((currentProcessed / total) * 100);
+      const pendingMessage = `Processed ${currentProcessed}/${total} highlights - will continue in next run`;
       await setJobStatus(jobId, {
         state: 'pending',
-        progress: Math.round((currentProcessed / total) * 100),
-        message: `Processed ${currentProcessed}/${total} highlights - will continue in next run`,
+        progress,
+        message: pendingMessage,
         lastProcessedIndex: currentProcessed
+      });
+      logger.info('Partial highlights sync completed', {
+        jobId,
+        progress,
+        processedCount: currentProcessed,
+        totalCount: total,
+        remaining: total - currentProcessed
       });
       await addJobToQueue(jobId);
     }
