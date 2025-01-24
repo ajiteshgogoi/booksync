@@ -70,15 +70,36 @@ jobs:
           (async () => {
             try {
               const { redisPool, RedisService } = await import('./build/src/services/redisService.js');
-              // Cleanup existing connections first
+              
+              // Step 1: Cleanup existing connections
               await RedisService.cleanup();
               await redisPool.cleanup();
-              // Then reset
+              
+              // Step 2: Wait for connections to fully close
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              
+              // Step 3: Temporarily reduce pool size during reset
+              process.env.REDIS_POOL_SIZE = '2';
+              
+              // Step 4: Reset with validation
               await redisPool.reset();
+              
+              // Step 5: Verify connection
+              const redis = await redisPool.acquire();
+              try {
+                await redis.ping();
+                console.log('Redis connection verified');
+              } finally {
+                redisPool.release(redis);
+              }
+              
               console.log('Redis connections reset successfully');
             } catch (error) {
               console.error('Error during Redis reset:', error);
               process.exit(1);
+            } finally {
+              // Restore original pool size
+              delete process.env.REDIS_POOL_SIZE;
             }
           })();
           "
