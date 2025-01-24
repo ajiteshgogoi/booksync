@@ -85,14 +85,31 @@ export interface NotionBookPage {
   lastSynced: Date;
 }
 
-function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string, date: Date): string {
-  const content = highlight.join('\n\n') + location + bookTitle + author + date.toISOString();
-  console.debug('Generating hash for content:', {
+function generateHighlightHash(highlight: string[], location: string): string {
+  // Validate inputs
+  if (!Array.isArray(highlight) || highlight.length === 0) {
+    throw new Error('Invalid highlight content');
+  }
+  if (typeof location !== 'string' || location.trim() === '') {
+    throw new Error('Invalid location');
+  }
+
+  // Normalize content by joining with newlines and trimming
+  const content = highlight.join('\n\n').trim();
+  
+  // Create hash using only content and location
+  const hashContent = content + location;
+  const hash = createHash('sha256')
+    .update(hashContent)
+    .digest('base64')
+    .slice(0, 8); // Use first 8 characters for shorter hash
+
+  console.debug('Generated hash:', {
     contentPreview: content.slice(0, 100) + '...',
-    length: content.length
+    location,
+    hash
   });
-  const hash = createHash('sha256').update(content).digest('base64');
-  console.debug('Generated hash:', hash);
+
   return hash;
 }
 
@@ -537,7 +554,7 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
                   text: {
                     content: storeHashes(
                       book.highlights.map(h =>
-                        generateHighlightHash(h.highlight, h.location, book.title, book.author, h.date)
+                        generateHighlightHash(h.highlight, h.location)
                       )
                     )
                   }
