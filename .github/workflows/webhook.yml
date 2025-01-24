@@ -69,7 +69,11 @@ jobs:
           node --experimental-vm-modules -e "
           (async () => {
             try {
-              const { redisPool } = await import('./build/src/services/redisService.js');
+              const { redisPool, RedisService } = await import('./build/src/services/redisService.js');
+              // Cleanup existing connections first
+              await RedisService.cleanup();
+              await redisPool.cleanup();
+              // Then reset
               await redisPool.reset();
               console.log('Redis connections reset successfully');
             } catch (error) {
