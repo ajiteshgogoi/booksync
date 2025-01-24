@@ -1,7 +1,7 @@
 export default {
   root: "client",
   build: {
-    command: "cd client && npm install && npm run build",
+    command: "npm install && npm run build",
     output: "dist"
   },
   functions: {

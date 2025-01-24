@@ -1,4 +1,9 @@
 {
+  "buildConfig": {
+    "buildCommand": "chmod +x build.sh && ./build.sh",
+    "outputDirectory": "client/dist",
+    "nodeVersion": "18"
+  },
   "deploymentConfigs": {
     "pages": {
       "routes": [
