@@ -1,5 +1,6 @@
 import { logger } from '../utils/logger.js';
-import { getRedis, setJobStatus, RedisPool } from './redisService.js';
+import { getRedis, setJobStatus } from './redisService.js';
+import { RedisServiceFactory } from './redisServiceFactory.js';
 import { queueSyncJob, processSyncJob } from './syncService.js';
 
 export async function processFileContent(

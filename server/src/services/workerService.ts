@@ -4,9 +4,9 @@ import {
   initializeStream,
   getNextJob,
   setJobStatus,
-  acknowledgeJob,
-  RedisService
+  acknowledgeJob
 } from './redisService.js';
+import { RedisServiceFactory } from './redisServiceFactory.js';
 import { processFile } from './processService.js';
 import type { JobStatus } from '../types/job.js';
 
@@ -163,7 +163,8 @@ class WorkerService {
     
     // Clean up Redis connections
     try {
-      await RedisService.cleanup();
+      const redisService = RedisServiceFactory.getService();
+      await redisService.cleanup();
       logger.info('Successfully cleaned up Redis connections');
     } catch (error) {
       logger.error('Error cleaning up Redis connections', { error });
@@ -239,7 +240,8 @@ class WorkerService {
       throw error;
     } finally {
       try {
-        await RedisService.cleanup();
+        const redisService = RedisServiceFactory.getService();
+        await redisService.cleanup();
         logger.info('Successfully cleaned up Redis connections after worker cycle');
       } catch (error) {
         logger.error('Error cleaning up Redis connections after worker cycle', { error });

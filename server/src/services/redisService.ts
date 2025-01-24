@@ -2,19 +2,19 @@ import { Redis } from 'ioredis';
 import type { Redis as RedisType } from 'ioredis';
 import { logger } from '../utils/logger.js';
 
-// Connection pool configuration optimized for Vercel's 30s timeout
-const POOL_SIZE = process.env.VERCEL ? 1 : 5; // Single connection in Vercel
-const POOL_ACQUIRE_TIMEOUT = process.env.VERCEL ? 2000 : 10000; // 2s timeout in Vercel
-const MAX_RETRIES = process.env.VERCEL ? 2 : 5; // Fewer retries in Vercel
-const RETRY_DELAY = process.env.VERCEL ? 200 : 500; // Faster retries in Vercel
-const RETRY_BACKOFF = process.env.VERCEL ? 1.2 : 1.5; // Less aggressive backoff in Vercel
+// Connection pool configuration
+const POOL_SIZE = 5;
+const POOL_ACQUIRE_TIMEOUT = 10000;
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 500;
+const RETRY_BACKOFF = 1.5;
 
-const CONNECTION_TIMEOUT = process.env.VERCEL ? 5000 : 30000; // 5s connection timeout in Vercel
-const CONNECTION_MAX_AGE = process.env.VERCEL ? 25000 : 600000; // 25s max age in Vercel
-const CONNECTION_IDLE_TIMEOUT = process.env.VERCEL ? 10000 : 60000; // 10s idle timeout in Vercel
-const REAPER_INTERVAL = process.env.VERCEL ? 10000 : 30000; // 10s reaper interval in Vercel
-const KEEP_ALIVE_INTERVAL = process.env.VERCEL ? 5000 : 15000; // 5s keep-alive in Vercel
-const MAX_CONNECTION_WAITERS = process.env.VERCEL ? 1 : 2; // Single waiter in Vercel
+const CONNECTION_TIMEOUT = 30000;
+const CONNECTION_MAX_AGE = 600000;
+const CONNECTION_IDLE_TIMEOUT = 60000;
+const REAPER_INTERVAL = 30000;
+const KEEP_ALIVE_INTERVAL = 15000;
+const MAX_CONNECTION_WAITERS = 2;
 
 // Track connection usage
 let totalConnectionsCreated = 0;
@@ -79,33 +79,24 @@ class RedisPool {
     }
 
     const options = {
-      maxRetriesPerRequest: process.env.VERCEL ? 1 : 3,
-      connectTimeout: process.env.VERCEL ? 3000 : 10000,
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000,
       retryStrategy(times: number) {
         if (times > MAX_RETRIES) {
           return null;
         }
-        // Faster retries in Vercel
-        const maxDelay = process.env.VERCEL ? 1000 : 5000;
+        const maxDelay = 5000;
         const delay = Math.min(Math.min(times * RETRY_DELAY, maxDelay), POOL_ACQUIRE_TIMEOUT);
         return delay;
       },
-      enableOfflineQueue: true, // Enable offline queue with limited size
-      enableReadyCheck: true, // Enable ready check
-      commandTimeout: process.env.VERCEL ? 5000 : 10000, // Slightly longer timeout
+      enableOfflineQueue: true,
+      enableReadyCheck: true,
+      commandTimeout: 10000,
       autoResubscribe: false,
       autoResendUnfulfilledCommands: false,
       lazyConnect: true,
-      offlineQueueMaxSize: process.env.VERCEL ? 10 : 100, // Limit queue size in Vercel
-      reconnectOnError: () => true, // Always attempt to reconnect on errors
-      // Add faster failure detection in Vercel
-      ...(process.env.VERCEL ? {
-        retryMaxDelay: 1000,
-        enableAutoPipelining: false,
-        noDelay: true, // Disable Nagle's algorithm
-        keepAlive: 1000, // Faster keep-alive
-        connectionName: `vercel-${process.pid}` // Help identify connections
-      } : {})
+      offlineQueueMaxSize: 100,
+      reconnectOnError: () => true
     };
 
     const redis = new Redis(process.env.REDIS_URL, options);
@@ -114,30 +105,7 @@ class RedisPool {
   }
 
   private async initializePool(): Promise<void> {
-    // In Vercel, initialize connections with a timeout wrapper
-    const initializeWithTimeout = async (): Promise<PoolConnection> => {
-      if (process.env.VERCEL) {
-        // Wrap initialization in a timeout to fail fast
-        return Promise.race<PoolConnection>([
-          (async () => {
-            const client = await this.createClient();
-            const now = Date.now();
-            return {
-              client,
-              inUse: false,
-              lastUsed: now,
-              acquiredAt: null,
-              createdAt: now,
-              id: `conn-vercel-${now}`
-            };
-          })(),
-          new Promise<PoolConnection>((_, reject) =>
-            setTimeout(() => reject(new Error('Pool initialization timeout')), 5000)
-          )
-        ]);
-      }
-
-      // Normal initialization for non-Vercel environments
+    const initializeConnection = async (): Promise<PoolConnection> => {
       const client = await this.createClient();
       const now = Date.now();
       return {
@@ -153,20 +121,13 @@ class RedisPool {
     // Initialize connections
     for (let i = 0; i < POOL_SIZE; i++) {
       try {
-        const connection = await initializeWithTimeout();
+        const connection = await initializeConnection();
         this.pool.push(connection);
-        if (process.env.VERCEL) {
-          logger.info('Vercel connection initialized', {
-            connectionId: connection.id,
-            poolSize: this.pool.length
-          });
-        }
+        logger.info('Connection initialized', {
+          connectionId: connection.id,
+          poolSize: this.pool.length
+        });
       } catch (error) {
-        if (process.env.VERCEL) {
-          // In Vercel, if we can't initialize the pool quickly, fail fast
-          logger.error('Failed to initialize Redis pool in Vercel', { error });
-          throw error;
-        }
         logger.warn('Connection initialization failed, retrying...', { error });
         i--; // Retry this connection
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -407,41 +368,13 @@ class RedisPool {
   public async cleanup(): Promise<void> {
     this.stopConnectionReaper();
     
-    // In Vercel, use faster cleanup with shorter timeouts
-    const CLEANUP_TIMEOUT = process.env.VERCEL ? 1000 : 5000;
-    
-    // Track cleanup timing in Vercel
-    const cleanupStart = Date.now();
+    const CLEANUP_TIMEOUT = 5000;
     
     try {
-      // In Vercel, immediately force disconnect all connections if we're close to timeout
-      const forceDisconnect = async () => {
-        logger.warn('Force disconnecting all Redis connections');
-        this.pool.forEach(conn => {
-          try {
-            conn.client.disconnect(false);
-          } catch (error) {
-            logger.error('Error force disconnecting', { error });
-          }
-        });
-      };
-
-      // In Vercel, add an overall timeout
-      if (process.env.VERCEL) {
-        setTimeout(forceDisconnect, 25000); // Force cleanup after 25s
-      }
-
       // Clean up connections in parallel with individual timeouts
       await Promise.all(this.pool.map(async (connection) => {
         try {
           if (connection.client.status === 'ready' || connection.client.status === 'connecting') {
-            if (process.env.VERCEL) {
-              // In Vercel, use faster disconnect without waiting for quit
-              connection.client.disconnect(false);
-              return;
-            }
-
-            // In non-Vercel, try graceful quit first
             await Promise.race([
               connection.client.quit(),
               new Promise((_, reject) =>
@@ -453,8 +386,7 @@ class RedisPool {
           logger.error('Error during connection cleanup', {
             error,
             connectionId: connection.id,
-            status: connection.client.status,
-            cleanupTime: Date.now() - cleanupStart
+            status: connection.client.status
           });
           connection.client.disconnect(false);
         }
@@ -464,12 +396,6 @@ class RedisPool {
     } finally {
       this.pool = [];
       RedisPool.instance = null;
-      
-      if (process.env.VERCEL) {
-        logger.info('Redis cleanup completed', {
-          duration: Date.now() - cleanupStart
-        });
-      }
     }
   }
 }
