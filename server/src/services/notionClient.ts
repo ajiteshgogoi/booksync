@@ -85,10 +85,24 @@ export interface NotionBookPage {
   lastSynced: Date;
 }
 
-function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string): string {
-  const content = highlight.join('\n\n') + location + bookTitle + author;
-  // Only use first 8 characters of hash for storage efficiency while maintaining uniqueness
-  return createHash('sha256').update(content).digest('hex').substring(0, 8);
+function generateHighlightHash(highlight: string[], location: string, bookTitle: string, author: string, date: Date): string {
+  const content = highlight.join('\n\n') + location + bookTitle + author + date.toISOString();
+  // Use full SHA-256 hash encoded in base64 for better uniqueness and storage efficiency
+  return createHash('sha256').update(content).digest('base64');
+}
+
+function storeHashes(hashes: string[]): string {
+  // Deduplicate and limit to 2000 characters
+  const uniqueHashes = Array.from(new Set(hashes));
+  let hashString = '';
+  
+  for (const hash of uniqueHashes) {
+    const newLength = hashString.length + hash.length + 1; // +1 for comma
+    if (newLength > 2000) break;
+    hashString += (hashString ? ',' : '') + hash;
+  }
+  
+  return hashString;
 }
 
 // Client management with better initialization
@@ -516,11 +530,11 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
               'Highlight Hash': {
                 rich_text: [{
                   text: {
-                    content: book.highlights
-                      .map(h => h.hash)
-                      .filter((h, i, arr) => arr.indexOf(h) === i) // Remove duplicates
-                      .join(',')
-                      .substring(0, 1900) // Leave some buffer for Notion's limit
+                    content: storeHashes(
+                      book.highlights.map(h =>
+                        generateHighlightHash(h.highlight, h.location, book.title, book.author, h.date)
+                      )
+                    )
                   }
                 }]
               }
