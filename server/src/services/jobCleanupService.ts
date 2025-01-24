@@ -1,9 +1,21 @@
-import { getRedis } from './redisService.js';
+import { getRedis, redisPool } from './redisService.js';
 import { logger } from '../utils/logger.js';
 import { JobStatus } from '../types/job.js';
 
+// Processing jobs get 24 hours before considered stuck - they can take a long time due to:
+// - Large number of highlights to process
+// - Rate limiting and batching
+// - Retries and error handling
+const STUCK_JOB_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours for processing jobs
+
+// Completed/failed jobs only need 1 hour retention since:
+// - Their highlights are already in Notion
+// - Just need enough time to show status to user
+// - No need to keep them longer taking up Redis space
+const COMPLETED_JOB_TIMEOUT = 60 * 60 * 1000; // 1 hour for completed jobs
+
+// Run cleanup every hour
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
-const STUCK_JOB_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
 class JobCleanupService {
   private interval: NodeJS.Timeout | null = null;
@@ -11,10 +23,9 @@ class JobCleanupService {
   async start() {
     if (this.interval) return;
     
-    // Run initial cleanup
-    await this.cleanupJobs();
-    
     // Set up periodic cleanup
+    // Note: No immediate cleanup - let the interval handle it to avoid
+    // cleaning up jobs that are just getting started
     this.interval = setInterval(() => this.cleanupJobs(), CLEANUP_INTERVAL);
     logger.info('Job cleanup service started');
   }
@@ -28,34 +39,46 @@ class JobCleanupService {
   }
 
   private async cleanupJobs() {
-    const redis = await getRedis();
+    let redis;
     try {
-      // Clean up completed/failed jobs
+      redis = await getRedis();
+
+      // Get all job status keys
       const jobKeys = await redis.keys('job:*:status');
-      const now = Date.now();
-      
+      logger.debug('Found job status keys', { count: jobKeys.length });
+
+      // Process each job
       for (const key of jobKeys) {
         const status = await redis.get(key);
         if (!status) continue;
         
-        const jobStatus: JobStatus = JSON.parse(status);
-        
-        // Clean up old completed/failed jobs
-        if (['completed', 'failed'].includes(jobStatus.state)) {
-          if (now - (jobStatus.completedAt || 0) > STUCK_JOB_TIMEOUT) {
-            await this.cleanupJob(key, jobStatus);
+        try {
+          const jobStatus: JobStatus = JSON.parse(status);
+          const jobId = key.split(':')[1];
+          
+          logger.debug('Checking job for cleanup', {
+            jobId,
+            state: jobStatus.state,
+            lastUpdate: jobStatus.lastProcessedIndex || jobStatus.lastCheckpoint || 0,
+            completedAt: jobStatus.completedAt
+          });
+
+          // Check if job should be cleaned up
+          if (await this.shouldCleanupJob(jobId, jobStatus)) {
+            await this.cleanupJob(jobId, jobStatus);
           }
-        }
-        
-        // Clean up stuck processing jobs
-        if (jobStatus.state === 'processing' && 
-            now - (jobStatus.lastProcessedIndex || 0) > STUCK_JOB_TIMEOUT) {
-          await this.cleanupJob(key, jobStatus);
+        } catch (error) {
+          logger.error('Error processing job status', {
+            key,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
         }
       }
       
       // Clean up orphaned stream entries
       const streamData = await redis.xrange('sync_jobs_stream', '-', '+');
+      logger.debug('Found stream entries', { count: streamData.length });
+
       for (const [id, fields] of streamData) {
         const jobIdIndex = fields.indexOf('jobId');
         if (jobIdIndex === -1) continue;
@@ -63,17 +86,62 @@ class JobCleanupService {
         const jobId = fields[jobIdIndex + 1];
         if (!await redis.exists(`job:${jobId}:status`)) {
           await redis.xdel('sync_jobs_stream', id);
+          logger.info('Removed orphaned stream entry', { jobId });
         }
       }
+    } catch (error) {
+      logger.error('Error in cleanup job process', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     } finally {
-      redis.quit();
+      // Return connection to pool
+      if (redis) {
+        redisPool.release(redis);
+      }
     }
   }
 
-  private async cleanupJob(key: string, status: JobStatus) {
-    const redis = await getRedis();
+  private async shouldCleanupJob(jobId: string, status: JobStatus): Promise<boolean> {
+    let redis;
     try {
-      const jobId = key.split(':')[1];
+      redis = await getRedis();
+
+      if (status.state === 'completed' || status.state === 'failed') {
+        // Clean up completed/failed jobs after 1 hour
+        return Date.now() - (status.completedAt || 0) > COMPLETED_JOB_TIMEOUT;
+      }
+
+      if (status.state === 'processing') {
+        // Check if job is in the stream and being processed
+        const streamData = await redis.xrange('sync_jobs_stream', '-', '+');
+        const isInStream = streamData.some(([_, fields]) => {
+          const jobIdIndex = fields.indexOf('jobId');
+          return jobIdIndex !== -1 && fields[jobIdIndex + 1] === jobId;
+        });
+
+        if (isInStream) {
+          // Job is still being processed
+          return false;
+        }
+
+        // If not in stream, check if it's been stuck for too long
+        const lastUpdate = status.lastProcessedIndex || status.lastCheckpoint || 0;
+        return Date.now() - lastUpdate > STUCK_JOB_TIMEOUT;
+      }
+
+      return false;
+    } finally {
+      // Return connection to pool
+      if (redis) {
+        redisPool.release(redis);
+      }
+    }
+  }
+
+  private async cleanupJob(jobId: string, status: JobStatus) {
+    let redis;
+    try {
+      redis = await getRedis();
       
       // Clean up highlights
       const highlightKeys = await redis.keys(`highlights:${jobId}:*`);
@@ -82,16 +150,24 @@ class JobCleanupService {
       }
       
       // Clean up job status
-      await redis.del(key);
+      await redis.del(`job:${jobId}:status`);
       
       // Remove from active users
       if (status.userId) {
         await redis.srem('active_users', status.userId);
       }
       
-      logger.info('Cleaned up job', { jobId, status: status.state });
+      logger.info('Cleaned up job', { 
+        jobId, 
+        status: status.state,
+        reason: status.state === 'processing' ? 'stuck' : 'completed/failed timeout',
+        age: Date.now() - (status.completedAt || 0)
+      });
     } finally {
-      redis.quit();
+      // Return connection to pool
+      if (redis) {
+        redisPool.release(redis);
+      }
     }
   }
 }
