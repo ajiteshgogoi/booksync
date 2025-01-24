@@ -2,15 +2,15 @@ import { Redis } from 'ioredis';
 import { logger } from '../utils/logger.js';
 
 // Vercel-specific connection pool configuration
-const POOL_SIZE = 1; // Single connection in Vercel
-const CONNECT_TIMEOUT = 2000; // 2s timeout
-const COMMAND_TIMEOUT = 2000; // 2s timeout
-const MAX_RETRIES = 2; // Fewer retries in Vercel
-const RETRY_DELAY = 200; // Faster retries
-const KEEP_ALIVE = 1000; // 1s keep-alive
-const CONNECTION_MAX_AGE = 25000; // 25s max age
-const CONNECTION_IDLE_TIMEOUT = 10000; // 10s idle timeout
-const REAPER_INTERVAL = 10000; // 10s reaper interval
+const POOL_SIZE = 3; // Multiple connections for better throughput
+const CONNECT_TIMEOUT = 10000; // 10s timeout for initial connection
+const COMMAND_TIMEOUT = 30000; // 30s timeout for commands
+const MAX_RETRIES = 5; // More retries for Vercel's environment
+const RETRY_DELAY = 500; // Slightly longer retry delay
+const KEEP_ALIVE = 5000; // 5s keep-alive
+const CONNECTION_MAX_AGE = 60000; // 60s max age to match Vercel timeout
+const CONNECTION_IDLE_TIMEOUT = 30000; // 30s idle timeout
+const REAPER_INTERVAL = 30000; // 30s reaper interval
 
 interface RedisConnection {
   client: Redis;
@@ -77,10 +77,17 @@ class VercelRedisService {
       maxRetriesPerRequest: MAX_RETRIES,
       connectTimeout: CONNECT_TIMEOUT,
       commandTimeout: COMMAND_TIMEOUT,
-      retryStrategy: (times: number) => Math.min(times * RETRY_DELAY, 1000),
+      retryStrategy: (times: number) => {
+        // Exponential backoff with max delay of 5 seconds
+        const delay = Math.min(times * RETRY_DELAY, 5000);
+        logger.debug(`Redis connection retry attempt ${times}, delaying ${delay}ms`);
+        return delay;
+      },
       keepAlive: KEEP_ALIVE,
       noDelay: true,
       lazyConnect: true,
+      enableOfflineQueue: true, // Allow commands to queue while reconnecting
+      autoResendUnfulfilledCommands: true, // Retry failed commands after reconnect
       ...(process.env.REDIS_TLS === 'true' ? { tls: {} } : {})
     };
 
