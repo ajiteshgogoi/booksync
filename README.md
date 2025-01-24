@@ -29,6 +29,11 @@ A modern web application to sync Kindle highlights to Notion, using Redis stream
   - Fair usage limits per user
   - Automatic scaling based on queue size
   - Detailed processing metrics
+  - Dynamic batch processing with:
+    - Base batch size of 50 highlights
+    - Automatic adjustment based on API response times
+    - Exponential backoff for rate limits
+    - Real-time batch size optimization
 
 ## Architecture
 

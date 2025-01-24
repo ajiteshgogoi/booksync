@@ -23,9 +23,16 @@ const isProd = process.env.NODE_ENV === 'production';
 const isGitHubAction = process.env.GITHUB_ACTIONS === 'true';
 
 // Optimize settings based on environment
-const BATCH_SIZE = isGitHubAction ? 25 : // Large batches in GitHub Actions
-                  isProd ? 3 : // Small batches in Vercel
-                  10;  // Normal batches locally
+const BASE_BATCH_SIZE = isGitHubAction ? 50 : // Larger base batch size in GitHub Actions
+                       isProd ? 3 : // Small batches in Vercel
+                       10;  // Normal batches locally
+
+// Dynamic batch size based on API response times
+let currentBatchSize = BASE_BATCH_SIZE;
+const MIN_BATCH_SIZE = 10;
+const MAX_BATCH_SIZE = 100;
+const BATCH_SIZE_ADJUSTMENT_FACTOR = 1.5;
+const RESPONSE_TIME_THRESHOLD = 500; // ms
 
 const BATCH_DELAY = isGitHubAction ? 200 : // Normal delay in GitHub Actions
                    isProd ? 10 : // Minimal delay in Vercel
@@ -303,8 +310,8 @@ export async function processSyncJob(
     }
 
     // Process highlights in batches
-    for (let i = 0; i < highlightsToProcess.length; i += BATCH_SIZE) {
-      const batch = highlightsToProcess.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < highlightsToProcess.length; i += currentBatchSize) {
+      const batch = highlightsToProcess.slice(i, i + currentBatchSize);
       
       if (batch.length === 0) continue;
       
@@ -315,8 +322,8 @@ export async function processSyncJob(
 
       // Log batch details
       console.debug('Processing batch:', {
-        batchIndex: Math.floor(i / BATCH_SIZE) + 1,
-        batchSize: batch.length,
+        batchIndex: Math.floor(i / currentBatchSize) + 1,
+        batchSize: currentBatchSize,
         sampleHashes: batch.slice(0, 3).map(h => ({
           hash: h.hash,
           bookTitle: h.bookTitle,
@@ -419,7 +426,7 @@ export async function processSyncJob(
       logger.info('Highlights sync completed', {
         jobId,
         totalSynced: total,
-        totalBatches: Math.ceil(total / BATCH_SIZE)
+        totalBatches: Math.ceil(total / currentBatchSize)
       });
     } else {
       // More to process in next run
