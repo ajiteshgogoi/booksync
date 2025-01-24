@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env ts-node
 import { WorkerService } from '../src/services/workerService.js';
 import { logger } from '../src/utils/logger.js';
 import { redisPool } from '../src/services/redisService.js';
