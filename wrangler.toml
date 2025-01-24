@@ -1,25 +1,41 @@
 name = "booksync"
 compatibility_date = "2024-01-25"
+compatibility_flags = ["nodejs_compat"]
 
-# Configure R2 bucket binding
+# Configure R2 bucket binding for Pages Functions
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "booksync"
 
+# Configure environment variables
+[vars]
+NODE_ENV = "production"
+
+# Development variables
+[env.development]
+NODE_ENV = "development"
+
 [site]
 bucket = "./client/dist"
-include = ["*"]
-exclude = ["api/*"]
+public_path = "./client/dist"
 
+# Build configuration for Pages
 [build]
-command = "npm run build"
+command = "cd client && npm install && npm run build"
+output_directory = "dist"
+base_directory = "client"
+
+# Static asset caching
+[cache]
+[cache.assets]
+browser_ttl = 31536000
+serve_stale = true
 
 [functions]
 directory = "functions"
 
-# Environment Variables
-[vars]
-NODE_ENV = "production"
-
-[env.development]
-NODE_ENV = "development"
+# Redirect all page requests to index.html for SPA routing
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
