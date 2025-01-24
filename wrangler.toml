@@ -1,25 +1,27 @@
 name = "booksync"
 compatibility_date = "2024-01-25"
+compatibility_flags = ["nodejs_compat"]
 
 # Configure R2 bucket binding
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "booksync"
 
-[site]
-bucket = "./client/dist"
-include = ["*"]
-exclude = ["api/*"]
+[env.production]
+node_version = "18"
 
 [build]
 command = "npm run build"
+output_directory = "client/dist"
+base_directory = "."
+publish_directory = "client/dist"
+
+[site]
+bucket = "client/dist"
 
 [functions]
 directory = "functions"
+node_compat = true
 
-# Environment Variables
-[vars]
-NODE_ENV = "production"
-
-[env.development]
-NODE_ENV = "development"
+[dev]
+port = 5173

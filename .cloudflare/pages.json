@@ -1,0 +1,26 @@
+{
+  "buildConfig": {
+    "buildCommand": "npm run build",
+    "outputDirectory": "client/dist",
+    "nodeVersion": "18",
+    "rootDirectory": "."
+  },
+  "deploymentConfigs": {
+    "pages": {
+      "routes": [
+        { 
+          "pattern": "/api/*", 
+          "zone": "api" 
+        },
+        {
+          "pattern": "/*",
+          "serve": "/index.html",
+          "staticPageHeaders": {
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+          }
+        }
+      ],
+      "functionsDirectory": "functions"
+    }
+  }
+}
