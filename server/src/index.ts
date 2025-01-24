@@ -86,8 +86,9 @@ import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
 import { setJobStatus, getRedis } from './services/redisService.js';
 import { triggerProcessing } from './services/githubService.js';
-import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
+import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
+import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { rateLimiter } from './services/rateLimiter.js';
 import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
 import qs from 'querystring';
@@ -113,6 +114,50 @@ app.use(cookieParser());
 
 // Upload URL endpoint
 app.post('/api/upload-url', uploadUrlHandler);
+
+// R2 parse endpoint
+app.post('/api/parse-r2', async (req: Request, res: Response) => {
+  console.log('Parse R2 request received:', {
+    method: req.method,
+    url: req.url,
+    headers: req.headers
+  });
+
+  try {
+    const { fileKey } = req.body;
+
+    if (!fileKey) {
+      console.error('Missing required parameter: fileKey');
+      return res.status(400).json({ error: 'FileKey is required' });
+    }
+
+    console.log('Streaming file from R2:', fileKey);
+    const fileStream = await streamFile(fileKey);
+    console.log('File stream obtained');
+
+    // Convert stream to buffer to parse content
+    const chunks: Buffer[] = [];
+    await new Promise((resolve, reject) => {
+      fileStream.on('data', (chunk: Buffer | string) => chunks.push(Buffer.from(chunk)));
+      fileStream.on('error', reject);
+      fileStream.on('end', resolve);
+    });
+
+    const fileContent = Buffer.concat(chunks).toString('utf-8');
+    console.log('File content length:', fileContent.length);
+
+    const highlights = await parseClippings(fileContent);
+    console.log('Parsed highlights count:', highlights.length);
+    
+    res.json({ count: highlights.length });
+  } catch (error) {
+    console.error('Error parsing file from R2:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to parse file',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Generate random state for OAuth
 function generateState() {
