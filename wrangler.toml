@@ -6,6 +6,13 @@ compatibility_flags = ["nodejs_compat"]
 binding = "R2"
 bucket_name = "booksync"
 
+[site]
+bucket = "./client/dist"
+pages_build_output_dir = "client/dist"
+
+[build]
+command = "cd client && npm install && npm run build"
+
 [functions]
 directory = "functions"
 node_compat = true
