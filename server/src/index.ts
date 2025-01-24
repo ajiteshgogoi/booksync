@@ -100,6 +100,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Use API base path for Vercel deployment
 const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
+// Import upload URL handler
+import { uploadUrlHandler } from './api/upload-url.js';
+
 // Middlewares
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
@@ -107,6 +110,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Upload URL endpoint
+app.post('/api/upload-url', uploadUrlHandler);
 
 // Generate random state for OAuth
 function generateState() {
@@ -563,6 +569,7 @@ let workerInterval: NodeJS.Timeout | undefined;
 if (!process.env.VERCEL) {
   const server = app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
+    
     
     // Start Redis cleanup scheduler
     try {
