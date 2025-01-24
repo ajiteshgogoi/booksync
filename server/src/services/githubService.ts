@@ -84,6 +84,73 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
+    // Verify token permissions with timeout and rate limit checking
+    try {
+      const tokenInfo = await axios.get('https://api.github.com/user', {
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'BookSync-App'
+        },
+        timeout: 5000 // 5 second timeout
+      });
+
+      // Check rate limits
+      const rateLimitRemaining = parseInt(tokenInfo.headers['x-ratelimit-remaining'] || '0');
+      if (rateLimitRemaining < 10) {
+        console.warn('Low GitHub API rate limit remaining:', rateLimitRemaining);
+      }
+
+      console.log('Token permissions:', {
+        scopes: tokenInfo.headers['x-oauth-scopes'],
+        userId: tokenInfo.data.id,
+        login: tokenInfo.data.login,
+        rateLimit: {
+          limit: tokenInfo.headers['x-ratelimit-limit'],
+          remaining: tokenInfo.headers['x-ratelimit-remaining'],
+          reset: new Date(parseInt(tokenInfo.headers['x-ratelimit-reset'] || '0') * 1000).toISOString()
+        }
+      });
+
+      if (!tokenInfo.headers['x-oauth-scopes']?.includes('workflow')) {
+        throw new Error('Token missing workflow scope. Required scopes: workflow');
+      }
+
+      // Verify token has repository access
+      const repoAccess = await axios.get(
+        'https://api.github.com/repos/ajiteshgogoi/booksync',
+        {
+          headers: {
+            'Authorization': `token ${githubToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'BookSync-App'
+          },
+          timeout: 5000
+        }
+      );
+
+      if (repoAccess.status !== 200) {
+        throw new Error('Token lacks repository access');
+      }
+    } catch (error: unknown) {
+      const tokenError = error as {
+        response?: {
+          status?: number;
+          data?: {
+            message?: string;
+            documentation_url?: string;
+          };
+        };
+      };
+      
+      console.error('Token verification failed:', {
+        status: tokenError.response?.status,
+        message: tokenError.response?.data?.message,
+        documentation: tokenError.response?.data?.documentation_url
+      });
+      throw new Error('Invalid GitHub token permissions');
+    }
+
     // Prepare the payload with only file reference - no large content
     const payload = {
       event_type: 'process_highlights',
