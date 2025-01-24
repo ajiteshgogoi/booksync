@@ -9,10 +9,10 @@ const MAX_RETRIES = process.env.VERCEL ? 3 : 5; // Increased retries
 const RETRY_DELAY = 500; // Initial retry delay
 const RETRY_BACKOFF = 1.5; // Exponential backoff multiplier
 
-const CONNECTION_TIMEOUT = 15000; // Connection timeout
-const CONNECTION_MAX_AGE = 180000; // 3 minutes max age
-const CONNECTION_IDLE_TIMEOUT = 20000; // 20 seconds idle timeout
-const REAPER_INTERVAL = 10000; // 10 seconds reaper interval
+const CONNECTION_TIMEOUT = 30000; // Connection timeout (30 seconds)
+const CONNECTION_MAX_AGE = 600000; // 10 minutes max age
+const CONNECTION_IDLE_TIMEOUT = 60000; // 1 minute idle timeout
+const REAPER_INTERVAL = 30000; // 30 seconds reaper interval
 const MAX_CONNECTION_WAITERS = 5; // Conservative number of waiters
 
 interface PoolConnection {
@@ -167,7 +167,12 @@ class RedisPool {
             });
           }
         } else {
-          logger.debug('Skipping quit for already closed connection', {
+          // Skip quietly for normal connection state transitions
+          if (connection.client.status === 'end') {
+            return;
+          }
+          // Only log unexpected states
+          logger.info('Connection in unexpected state during cleanup', {
             status: connection.client.status
           });
         }
