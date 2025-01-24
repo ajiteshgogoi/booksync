@@ -1,4 +1,4 @@
-import { getUploadUrl } from '../services/r2Service';
+import { getUploadUrl } from '../services/r2Service.js';
 import { Request, Response } from 'express';
 
 export const uploadUrlHandler = async (req: Request, res: Response) => {
