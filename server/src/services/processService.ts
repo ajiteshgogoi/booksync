@@ -15,7 +15,7 @@ export async function processFileContent(
     });
 
     // Queue sync job to process highlights
-    const jobId = await queueSyncJob(databaseId, fileContent);
+    const jobId = await queueSyncJob(databaseId, fileContent, userId);
     logger.info('Sync job queued successfully', { jobId });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
