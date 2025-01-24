@@ -1,13 +1,6 @@
 import { createHash } from 'crypto';
 
-export interface Highlight {
-  bookTitle: string;
-  author: string;
-  highlight: string[];
-  location: string;
-  date: Date;
-  hash: string;
-}
+import { Highlight } from '../types/highlight.js';
 
 const BATCH_SIZE = 100; // Process 100 entries at a time
 

@@ -1,5 +1,5 @@
 import { parseClippings } from '../utils/parseClippings.js';
-import { updateNotionDatabase, Highlight } from './notionClient.js';
+import { updateNotionDatabase, Highlight, getClient } from './notionClient.js';
 import { logger } from '../utils/logger.js';
 import {
   getRedis,
@@ -11,6 +11,7 @@ import {
   JobStatus,
   redisPool
 } from './redisService.js';
+import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 
 // Extend Highlight interface to include processing-specific fields
 interface ProcessedHighlight extends Highlight {
@@ -48,6 +49,70 @@ export async function queueSyncJob(
     const jobId = `sync:${databaseId}:${Date.now()}`;
     const highlights = await parseClippings(fileContent);
     console.debug('Parsed highlights count:', highlights.length);
+
+    // Get Notion client to check for existing highlights
+    const notionClient = await getClient();
+
+    // Group highlights by book title
+    const bookHighlights = new Map<string, Highlight[]>();
+    for (const highlight of highlights) {
+      if (!bookHighlights.has(highlight.bookTitle)) {
+        bookHighlights.set(highlight.bookTitle, []);
+      }
+      bookHighlights.get(highlight.bookTitle)!.push(highlight);
+    }
+
+    // Check for duplicates and filter them out before queueing
+    const uniqueHighlights: Highlight[] = [];
+    for (const [bookTitle, bookHighlightList] of bookHighlights.entries()) {
+      // Get existing hashes for this book from Notion
+      const existingHashes = await getBookHighlightHashes(notionClient, databaseId, bookTitle);
+      console.debug('Existing hashes for book:', {
+        bookTitle,
+        existingHashCount: existingHashes.size,
+        sampleHashes: Array.from(existingHashes).slice(0, 3)
+      });
+
+      // Filter out duplicates using truncated hashes
+      const newHighlights = bookHighlightList.filter(h => {
+        const truncatedHash = truncateHash(h.hash);
+        const isDuplicate = existingHashes.has(truncatedHash);
+        if (isDuplicate) {
+          console.debug('Skipping duplicate highlight:', {
+            hash: h.hash,
+            truncatedHash,
+            location: h.location,
+            bookTitle: h.bookTitle
+          });
+        }
+        return !isDuplicate;
+      });
+
+      console.debug('Deduplication results:', {
+        bookTitle,
+        originalCount: bookHighlightList.length,
+        newCount: newHighlights.length,
+        duplicatesSkipped: bookHighlightList.length - newHighlights.length
+      });
+
+      uniqueHighlights.push(...newHighlights);
+    }
+
+    console.debug('Total unique highlights to queue:', uniqueHighlights.length);
+
+    // Only proceed if we have unique highlights to process
+    if (uniqueHighlights.length === 0) {
+      console.debug('No new unique highlights to process');
+      await setJobStatus(jobId, {
+        state: 'completed',
+        progress: 100,
+        message: 'No new highlights to process',
+        total: 0,
+        lastProcessedIndex: 0
+      });
+      return jobId;
+    }
+
     redis = await getRedis();
     console.debug('Redis client initialized');
     
@@ -59,8 +124,8 @@ export async function queueSyncJob(
     const CHUNK_SIZE = 100;
     let storedCount = 0;
     
-    for (let i = 0; i < highlights.length; i += CHUNK_SIZE) {
-      const chunk = highlights.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < uniqueHighlights.length; i += CHUNK_SIZE) {
+      const chunk = uniqueHighlights.slice(i, i + CHUNK_SIZE);
       const chunkPipeline = redis.pipeline();
       
       chunk.forEach((highlight, chunkIndex) => {
@@ -111,7 +176,7 @@ export async function queueSyncJob(
       state: 'pending',
       progress: 0,
       message: 'Job queued',
-      total: highlights.length,
+      total: uniqueHighlights.length,
       lastProcessedIndex: 0
     });
     

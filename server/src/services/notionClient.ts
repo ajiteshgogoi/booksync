@@ -9,6 +9,11 @@ import {
   deleteOAuthToken as deleteRedisOAuthToken
 } from './redisService.js';
 import type { NotionToken } from '../types.js';
+import { Highlight } from '../types/highlight.js';
+import { withRetry } from '../utils/retry.js';
+
+// Make Highlight type available for external use
+export type { Highlight };
 
 // Define necessary types
 type PageObjectResponse = {
@@ -26,7 +31,10 @@ type PageObjectResponse = {
   };
 };
 
-import { withRetry } from '../utils/retry.js';
+interface NotionHighlight extends Required<Highlight> {
+  version: number;
+  lastModified: Date;
+}
 
 // Enhanced book cover fetching with retry mechanism
 async function getBookCoverUrl(title: string, author: string): Promise<string | null> {
@@ -65,16 +73,13 @@ async function getBookCoverUrl(title: string, author: string): Promise<string | 
   }
 }
 
-// Enhanced types and interfaces
-export interface Highlight {
-  bookTitle: string;
-  author: string;
-  highlight: string[];
-  location: string;
-  date: Date;
-  hash: string;
-  version: number;
-  lastModified?: Date;
+// Add version number when processing highlights for Notion
+function addVersionToHighlight(highlight: Highlight): NotionHighlight {
+  return {
+    ...highlight,
+    version: highlight.version ?? 1, // Default to version 1 if not specified
+    lastModified: highlight.lastModified ?? new Date()
+  };
 }
 
 export interface NotionBookPage {
@@ -96,22 +101,15 @@ function generateHighlightHash(highlight: string[], location: string, bookTitle:
   return createHash('sha256').update(content).digest('hex').slice(0, 8);
 }
 
+import { truncateHash } from '../utils/notionUtils.js';
+
 function storeHashes(hashes: string[]): string {
-  // Deduplicate and truncate hashes to 8 characters for Notion storage
-  const uniqueHashes = Array.from(new Set(hashes.map(h => {
-    const truncated = h.slice(0, 8);
-    const isAlreadyTruncated = h.length === 8;
-    if (!isAlreadyTruncated) {
-      console.debug('Truncating hash for Notion storage:', {
-        original: h,
-        truncated,
-        length: h.length
-      });
-    }
-    return truncated;
-  })));
+  // Deduplicate and truncate hashes for Notion storage
+  const uniqueHashes = Array.from(new Set(
+    hashes.map(h => truncateHash(h))
+  ));
   let hashString = '';
-  
+
   for (const hash of uniqueHashes) {
     const newLength = hashString.length + hash.length + 1; // +1 for comma
     if (newLength > 2000) {
@@ -120,7 +118,7 @@ function storeHashes(hashes: string[]): string {
     }
     hashString += (hashString ? ',' : '') + hash;
   }
-  
+
   console.debug('Stored hashes info:', {
     originalCount: hashes.length,
     uniqueCount: uniqueHashes.length,
