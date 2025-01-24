@@ -12,18 +12,6 @@
           "zone": "api" 
         },
         {
-          "pattern": "/assets/*",
-          "staticPageHeaders": {
-            "Cache-Control": "public, max-age=31536000, immutable"
-          }
-        },
-        {
-          "pattern": "/*.{js,css,ico,png,svg,jpg,jpeg,json,txt}",
-          "staticPageHeaders": {
-            "Cache-Control": "public, max-age=31536000, immutable"
-          }
-        },
-        {
           "pattern": "/*",
           "serve": "/index.html",
           "staticPageHeaders": {

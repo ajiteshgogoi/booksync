@@ -13,18 +13,6 @@
       "zone_id": "api"
     },
     {
-      "pattern": "/assets/*",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    },
-    {
-      "pattern": "/*.{js,css,ico,png,svg,jpg,jpeg,json,txt}",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    },
-    {
       "pattern": "/*",
       "serve": "/index.html",
       "headers": {
