@@ -1,9 +1,9 @@
 {
   "buildConfig": {
-    "buildCommand": "npm install && npm run build",
-    "outputDirectory": "client/dist",
+    "buildCommand": "cd client && npm install && npm run build",
+    "outputDirectory": "dist",
     "nodeVersion": "18",
-    "rootDirectory": "."
+    "rootDirectory": "client"
   },
   "deploymentConfigs": {
     "pages": {
