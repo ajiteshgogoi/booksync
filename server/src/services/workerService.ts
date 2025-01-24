@@ -71,9 +71,9 @@ class WorkerService {
         }
       };
 
-      // Run immediately and then every 30 seconds
+      // Run immediately and then every 120 seconds
       runWorker();
-      setInterval(runWorker, 30000);
+      setInterval(runWorker, 120000);
       return;
     }
 
