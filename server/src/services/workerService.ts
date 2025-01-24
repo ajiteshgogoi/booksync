@@ -61,6 +61,24 @@ class WorkerService {
     this.isRunning = true;
     logger.info('Starting worker service');
 
+    // In local environment, run periodically every 30 seconds
+    if (process.env.NODE_ENV === 'development') {
+      const runWorker = async () => {
+        try {
+          await this.runWorkerCycle();
+        } catch (error) {
+          logger.error('Error in worker cycle', error);
+        }
+      };
+
+      // Run immediately and then every 30 seconds
+      runWorker();
+      setInterval(runWorker, 30000);
+      return;
+    }
+
+    // Production behavior - run continuously
+
     try {
       // Initialize Redis stream and consumer group
       await initializeStream();
@@ -147,6 +165,79 @@ class WorkerService {
       logger.info('Successfully cleaned up Redis connections');
     } catch (error) {
       logger.error('Error cleaning up Redis connections', { error });
+    }
+  }
+
+  private async runWorkerCycle(): Promise<void> {
+    try {
+      // Initialize Redis stream and consumer group
+      await initializeStream();
+
+      // Process jobs until MAX_EMPTY_POLLS is reached
+      let emptyPolls = 0;
+      while (this.isRunning && emptyPolls < MAX_EMPTY_POLLS) {
+        try {
+          const result = await getNextJob();
+          
+          if (!result) {
+            emptyPolls++;
+            // No jobs available, wait before checking again
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+            continue;
+          }
+          
+          // Reset empty poll count when job is found
+          emptyPolls = 0;
+          const { jobId, messageId } = result;
+          this.currentJobId = jobId;
+
+          // Update job status to processing
+          await setJobStatus(jobId, {
+            state: 'processing',
+            message: 'Starting file processing'
+          });
+
+          try {
+            // Process the job
+            await processFile(jobId);
+
+            // Update job status to completed
+            await setJobStatus(jobId, {
+              state: 'completed',
+              message: 'File processing completed',
+              completedAt: Date.now()
+            });
+
+          } catch (error) {
+            // Handle job processing error
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            await setJobStatus(jobId, {
+              state: 'failed',
+              message: `File processing failed: ${errorMessage}`
+            });
+            logger.error('Job processing failed', { jobId, error });
+          }
+
+          // Acknowledge message after processing (whether successful or failed)
+          await acknowledgeJob(messageId);
+          this.currentJobId = null;
+
+        } catch (error) {
+          logger.error('Error in worker loop', error);
+          // Wait before retrying on error
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+    } catch (error) {
+      logger.error('Error in worker cycle', error);
+      throw error;
+    } finally {
+      try {
+        await RedisService.cleanup();
+        logger.info('Successfully cleaned up Redis connections after worker cycle');
+      } catch (error) {
+        logger.error('Error cleaning up Redis connections after worker cycle', { error });
+      }
     }
   }
 
