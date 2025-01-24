@@ -141,6 +141,9 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
       error: error instanceof Error ? error.stack : error,
       timestamp: new Date().toISOString()
     });
+    if (error instanceof Error) {
+      throw error; // Preserve the original error message
+    }
     throw new Error('Failed to upload and process file. Please try again later.');
   }
 }
