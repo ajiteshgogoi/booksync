@@ -110,10 +110,13 @@ const handleSync = async () => {
       window.history.replaceState({}, document.title, window.location.pathname);
       
       if (authResult === 'success') {
+        const userId = searchParams.get('userId');
         setIsAuthenticated(true);
         localStorage.setItem('isAuthenticated', 'true');
         localStorage.setItem('authTimestamp', Date.now().toString());
-        localStorage.setItem('authTimestamp', Date.now().toString());
+        if (userId) {
+          localStorage.setItem('userId', userId);
+        }
       } else if (authResult === 'error' || error) {
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
@@ -275,6 +278,7 @@ const handleSync = async () => {
                     onClick={async () => {
                       localStorage.removeItem('isAuthenticated');
                       localStorage.removeItem('authTimestamp');
+                      localStorage.removeItem('userId');
                       await fetch(`${apiBase}/auth/disconnect`, {
                         method: 'POST',
                         credentials: 'include'

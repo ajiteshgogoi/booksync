@@ -407,9 +407,11 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
         password: process.env.NOTION_OAUTH_CLIENT_SECRET!,
       }
     });
+const userId = response.data.owner?.user?.id;
+await setOAuthToken(response.data);
 
-    await setOAuthToken(response.data);
-    
+// Include userId in redirect URL
+res.redirect(`${process.env.CLIENT_URL}?auth=success&userId=${userId}`);
     res.redirect(`${process.env.CLIENT_URL}?auth=success`);
   } catch (error) {
     console.error('OAuth callback error:', error);
