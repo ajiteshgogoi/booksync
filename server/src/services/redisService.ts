@@ -389,6 +389,7 @@ export const STREAM_NAME = 'sync_jobs_stream';
 export const CONSUMER_GROUP = 'sync_processors';
 export const CONSUMER_NAME = `consumer-${process.pid}`;
 export const JOB_TTL = 60 * 60 * 24; // 24 hours
+export const ACTIVE_USERS_SET = 'active_users'; // Set to track users with active jobs
 
 class RedisService {
   private static instance: RedisType | null = null;
