@@ -10,9 +10,10 @@ const RETRY_DELAY = 500; // Reduced initial retry delay
 const RETRY_BACKOFF = 1.5; // Less aggressive exponential backoff
 
 const CONNECTION_TIMEOUT = 30000; // Connection timeout (30 seconds)
-const CONNECTION_MAX_AGE = 180000; // 3 minutes max age (more frequent rotation)
-const CONNECTION_IDLE_TIMEOUT = 15000; // 15 seconds idle timeout (release faster)
-const REAPER_INTERVAL = 10000; // 10 seconds reaper interval (clean up faster)
+const CONNECTION_MAX_AGE = 600000; // 10 minutes max age
+const CONNECTION_IDLE_TIMEOUT = 60000; // 60 seconds idle timeout
+const REAPER_INTERVAL = 30000; // 30 seconds reaper interval
+const KEEP_ALIVE_INTERVAL = 15000; // 15 seconds keep-alive ping
 const MAX_CONNECTION_WAITERS = 2; // Very conservative number of waiters
 
 // Track connection usage
