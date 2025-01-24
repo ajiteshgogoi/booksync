@@ -62,11 +62,23 @@ jobs:
           npm run build
           echo "Build complete"
 
-      - name: Reset Redis Connections
+      - name: Cleanup Redis
+        if: always()
         working-directory: server
         run: |
-          echo "Resetting Redis connections..."
-          node resetRedis.js
+          echo "Cleaning up Redis connections..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              const { redisPool, RedisService } = await import('./build/src/services/redisService.js');
+              await RedisService.cleanup();
+              await redisPool.cleanup();
+              console.log('Redis connections cleaned up');
+            } catch (error) {
+              console.error('Error during Redis cleanup:', error);
+            }
+          })();
+          "
 
       - name: Process File
         if: success()
