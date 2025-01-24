@@ -52,7 +52,7 @@ export async function triggerProcessing(
   
   try {
     // Get pre-signed upload URL
-    const uploadUrl = await getUploadUrl(fileName);
+    const uploadUrl = await getUploadUrl(fileName, 'text/plain');
     
     // Upload file directly to R2
     await axios.put(uploadUrl, fileContent, {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
+import { uploadFileToR2 } from './services/uploadService';
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error';
 
@@ -40,28 +41,13 @@ function App() {
     setErrorMessage(null);
     setSyncStatus('parsing');
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
     try {
-      const response = await fetch(`${apiBase}/parse`, {
-        method: 'POST',
-        body: formData,
-      });
+      const userId = localStorage.getItem('userId') || 'anonymous';
+      const timestamp = Date.now();
+      const fileKey = `clippings-${userId}-${timestamp}.txt`;
+      const { count } = await uploadFileToR2(selectedFile, fileKey);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 429) {
-          const remainingTime = Math.ceil(errorData.remainingTime / 60);
-          setErrorMessage(`You have exceeded the upload limit of 2 uploads every 30 minutes. Please try again in ${remainingTime} minutes.`);
-          setSyncStatus('idle');
-          return;
-        }
-        throw new Error(errorData.message || await response.text());
-      }
-
-      const data = await response.json();
-      setHighlightCount(data.count);
+      setHighlightCount(count);
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');

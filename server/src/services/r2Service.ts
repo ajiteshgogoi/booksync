@@ -42,11 +42,11 @@ const s3Client = new S3Client({
   },
 });
 
-export async function getUploadUrl(fileName: string): Promise<string> {
+export async function getUploadUrl(fileName: string, fileType: string): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: fileName,
-    ContentType: 'text/plain',
+    ContentType: fileType,
   });
 
   try {
