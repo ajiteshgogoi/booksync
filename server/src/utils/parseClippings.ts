@@ -246,19 +246,62 @@ export async function parseClippings(fileContent: string): Promise<Highlight[]> 
   }
 
   // Post-process all groups to handle duplicates
-  for (const group of highlightGroups.values()) {
+  for (const [groupKey, group] of highlightGroups.entries()) {
+    console.debug(`Processing group: ${groupKey}`);
+    console.debug(`Group size before deduplication: ${group.length}`);
+    
+    // Log all hashes in group to check for potential conflicts
+    const hashMap = new Map<string, Array<{date: Date, location: string}>>();
+    group.forEach(h => {
+      if (!hashMap.has(h.hash)) {
+        hashMap.set(h.hash, []);
+      }
+      hashMap.get(h.hash)!.push({
+        date: h.date,
+        location: h.location
+      });
+    });
+
+    // Log any hash conflicts
+    hashMap.forEach((entries, hash) => {
+      if (entries.length > 1) {
+        console.warn(`Hash conflict detected in group ${groupKey}:`, {
+          hash,
+          conflictCount: entries.length,
+          entries: entries.map(e => ({
+            date: e.date.toISOString(),
+            location: e.location
+          }))
+        });
+      }
+    });
+
     group.sort((a, b) => b.date.getTime() - a.date.getTime());
     
     const uniqueHighlights = new Set<string>();
+    const duplicateCount = {total: 0, byHash: new Map<string, number>()};
     
     for (const highlight of group) {
       const isDuplicate = uniqueHighlights.has(highlight.hash);
       
-      if (!isDuplicate) {
+      if (isDuplicate) {
+        duplicateCount.total++;
+        duplicateCount.byHash.set(
+          highlight.hash,
+          (duplicateCount.byHash.get(highlight.hash) || 0) + 1
+        );
+      } else {
         uniqueHighlights.add(highlight.hash);
         highlights.push(highlight);
       }
     }
+
+    console.debug(`Group ${groupKey} deduplication results:`, {
+      originalCount: group.length,
+      uniqueCount: uniqueHighlights.size,
+      duplicatesRemoved: duplicateCount.total,
+      duplicatesByHash: Array.from(duplicateCount.byHash.entries())
+    });
   }
 
   console.log(`Successfully parsed ${highlights.length} highlights`);

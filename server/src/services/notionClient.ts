@@ -312,14 +312,50 @@ async function getExistingHighlightHashes(pageId: string): Promise<Set<string>> 
 
     const hashProperty = page.properties['Highlight Hash'];
     
-    if (hashProperty?.type === 'rich_text' &&
-        Array.isArray(hashProperty.rich_text) &&
-        hashProperty.rich_text[0]?.type === 'text' &&
-        hashProperty.rich_text[0].plain_text) {
+    // Type check for rich_text property
+    if (hashProperty?.type !== 'rich_text') {
+      console.debug('Hash property is not rich_text type', {
+        pageId,
+        actualType: hashProperty?.type
+      });
+      return new Set();
+    }
+
+    const richTextProperty = hashProperty as {
+      type: 'rich_text';
+      rich_text: Array<{
+        type: string;
+        text?: { content: string };
+        plain_text?: string;
+      }>;
+    };
+
+    // Log the raw hash property for debugging
+    console.debug('Retrieved hash property:', {
+      pageId,
+      propertyType: richTextProperty.type,
+      hasRichText: Array.isArray(richTextProperty.rich_text),
+      firstTextType: richTextProperty.rich_text[0]?.type,
+      rawContent: richTextProperty.rich_text[0]?.plain_text
+    });
+
+    if (richTextProperty.rich_text[0]?.type === 'text' &&
+        richTextProperty.rich_text[0].plain_text) {
       const hashString = hashProperty.rich_text[0].plain_text;
-      return new Set(hashString.split(',').filter(h => h.length === 8));
+      const hashes = new Set(hashString.split(',').filter(h => h.length === 8));
+      
+      console.debug('Parsed existing hashes:', {
+        pageId,
+        hashCount: hashes.size,
+        sampleHashes: Array.from(hashes).slice(0, 5),
+        totalHashString: hashString.length,
+        hashStringPreview: hashString.substring(0, 100) + '...'
+      });
+      
+      return hashes;
     }
     
+    console.debug('No existing hashes found', { pageId });
     return new Set();
   } catch (error) {
     console.error('Error getting existing highlight hashes:', error);
@@ -456,10 +492,57 @@ export async function updateNotionDatabase(highlights: Highlight[], onProgress?:
             }
           });
 
-          // Add new highlights in batches with progress updates
-          const newHighlights = book.highlights.filter(h => !existingHashes.has(h.hash));
-          const batchSize = 100;
+          // Log existing hashes before filtering
+          console.debug('Deduplication check:', {
+            bookTitle: book.title,
+            totalHighlights: book.highlights.length,
+            existingHashCount: existingHashes.size,
+            sampleExistingHashes: Array.from(existingHashes).slice(0, 5)
+          });
 
+          // Check for potential hash conflicts
+          const hashConflicts = new Map<string, Array<{location: string}>>();
+          book.highlights.forEach(h => {
+            if (hashConflicts.has(h.hash)) {
+              hashConflicts.get(h.hash)!.push({ location: h.location });
+            } else {
+              hashConflicts.set(h.hash, [{ location: h.location }]);
+            }
+          });
+
+          // Log any hash conflicts within current batch
+          hashConflicts.forEach((locations, hash) => {
+            if (locations.length > 1) {
+              console.warn('Hash conflict in current batch:', {
+                hash,
+                bookTitle: book.title,
+                conflictCount: locations.length,
+                locations
+              });
+            }
+          });
+
+          // Filter out duplicates and log results
+          const newHighlights = book.highlights.filter(h => {
+            const isDuplicate = existingHashes.has(h.hash);
+            if (isDuplicate) {
+              console.debug('Skipping duplicate highlight:', {
+                hash: h.hash,
+                location: h.location,
+                bookTitle: book.title
+              });
+            }
+            return !isDuplicate;
+          });
+
+          console.debug('Deduplication results:', {
+            bookTitle: book.title,
+            originalCount: book.highlights.length,
+            newCount: newHighlights.length,
+            duplicatesSkipped: book.highlights.length - newHighlights.length
+          });
+
+          const batchSize = 100;
           for (let i = 0; i < newHighlights.length; i += batchSize) {
             onProgress?.();
             

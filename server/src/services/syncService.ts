@@ -199,6 +199,34 @@ export async function processSyncJob(
       lastProcessedIndex: currentProcessed
     });
 
+    // Log highlight state before batch processing
+    const hashCounts = new Map<string, number>();
+    highlightsToProcess.forEach(h => {
+      hashCounts.set(h.hash, (hashCounts.get(h.hash) || 0) + 1);
+    });
+
+    // Log any duplicates in the batch
+    const duplicateHashes = Array.from(hashCounts.entries())
+      .filter(([_, count]) => count > 1);
+    
+    if (duplicateHashes.length > 0) {
+      console.warn('Found duplicate hashes in batch to process:', {
+        totalHighlights: highlightsToProcess.length,
+        duplicateHashCount: duplicateHashes.length,
+        duplicates: duplicateHashes.map(([hash, count]) => ({
+          hash,
+          count,
+          highlights: highlightsToProcess
+            .filter(h => h.hash === hash)
+            .map(h => ({
+              bookTitle: h.bookTitle,
+              location: h.location,
+              date: h.date
+            }))
+        }))
+      });
+    }
+
     // Process highlights in batches
     for (let i = 0; i < highlightsToProcess.length; i += BATCH_SIZE) {
       const batch = highlightsToProcess.slice(i, i + BATCH_SIZE);
@@ -209,6 +237,17 @@ export async function processSyncJob(
         console.error('Missing databaseId in highlight:', batch[0]);
         continue;
       }
+
+      // Log batch details
+      console.debug('Processing batch:', {
+        batchIndex: Math.floor(i / BATCH_SIZE) + 1,
+        batchSize: batch.length,
+        sampleHashes: batch.slice(0, 3).map(h => ({
+          hash: h.hash,
+          bookTitle: h.bookTitle,
+          location: h.location
+        }))
+      });
 
       if (!await checkRateLimit(batch[0].databaseId)) {
         // Store progress and exit when rate limited

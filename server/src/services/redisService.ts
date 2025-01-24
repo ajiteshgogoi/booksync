@@ -277,19 +277,13 @@ class RedisPool {
               connection.acquiredAt = Date.now();
               this.connectionWaiters--;
               totalConnectionsReused++;
-              logger.info('Reusing existing connection', {
-                connectionId: connection.id,
-                totalReused: totalConnectionsReused
-              });
+              // Connection reused
               return connection.client;
             }
             
             // If stale, replace it immediately
             totalConnectionsRecycled++;
-            logger.info('Recycling stale connection', {
-              connectionId: connection.id,
-              totalRecycled: totalConnectionsRecycled
-            });
+            // Stale connection recycled
             await this.replaceConnection(connection);
             continue;
           } catch (error) {
@@ -346,13 +340,7 @@ class RedisPool {
       connection.lastUsed = Date.now();
       connection.acquiredAt = null;
       
-      logger.info('Released connection', {
-        connectionId: connection.id,
-        durationUsed: connection.lastUsed - (connection.acquiredAt || connection.lastUsed),
-        totalConnectionsCreated,
-        totalConnectionsReused,
-        totalConnectionsRecycled
-      });
+      // Connection released
     }
   }
 
