@@ -59,21 +59,8 @@ export async function processFile(jobId: string): Promise<void> {
       progress: fileInfo.size
     });
 
-    // Process the file
-    // Here you would implement your specific file processing logic
-    // For example, parsing highlights, extracting text, etc.
-    
-    // For demonstration, we'll just re-upload the file
-    await uploadObject(jobId + '_processed', fileData);
-
-    // Mark progress as complete
-    await setJobStatus(jobId, {
-      state: 'completed',
-      message: 'File processing completed',
-      progress: fileInfo.size,
-      total: fileInfo.size,
-      completedAt: Date.now()
-    });
+    // Process the file content
+    await processSyncJob(jobId);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
