@@ -1,6 +1,5 @@
 import { logger } from '../utils/logger.js';
 import { getRedis, setJobStatus } from './redisService.js';
-import { downloadObject, uploadObject, getObjectInfo } from './r2Service.js';
 import { queueSyncJob, processSyncJob } from './syncService.js';
 
 export async function processFileContent(
@@ -30,36 +29,14 @@ export async function processFileContent(
 }
 
 export async function processFile(jobId: string): Promise<void> {
-  const redis = await getRedis();
-  
   try {
-    // Get file info from R2
-    const fileInfo = await getObjectInfo(jobId);
-    if (!fileInfo) {
-      throw new Error('File not found in R2 storage');
-    }
-
-    // Update status with total size
+    // Update status to processing
     await setJobStatus(jobId, {
       state: 'processing',
-      message: 'Downloading file',
-      total: fileInfo.size
+      message: 'Processing highlights'
     });
 
-    // Download file from R2
-    const fileData = await downloadObject(jobId);
-    if (!fileData) {
-      throw new Error('Failed to download file from R2');
-    }
-
-    // Update status
-    await setJobStatus(jobId, {
-      state: 'processing',
-      message: 'Processing file contents',
-      progress: fileInfo.size
-    });
-
-    // Process the file content
+    // Process the highlights directly from Redis
     await processSyncJob(jobId);
 
   } catch (error) {
