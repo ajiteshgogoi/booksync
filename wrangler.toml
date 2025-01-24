@@ -1,0 +1,19 @@
+name = "booksync"
+compatibility_date = "2024-01-25"
+
+# Configure R2 bucket binding for Pages Functions
+[[r2_buckets]]
+binding = "R2"  # This matches the Env interface in your Functions
+bucket_name = "booksync"
+
+# Configure environment variables with defaults
+[vars]
+NODE_ENV = "production"
+
+# Override environment variables in development
+[env.development]
+NODE_ENV = "development"
+
+# Configure build output directory for Pages
+[site]
+bucket = "./client/dist"
