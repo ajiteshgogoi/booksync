@@ -370,6 +370,12 @@ export async function processSyncJob(
           await updateNotionDatabase(batch);
           currentProcessed += batch.length;
           
+          // Clean up processed Redis keys
+          const keysToDelete = batch.map((_, index) =>
+            `highlights:${jobId}:${i + index}`
+          );
+          await redis.del(...keysToDelete);
+          
           // Update progress
           const progress = Math.round((currentProcessed / total) * 100);
           const progressMessage = `Processing ${currentProcessed}/${total} highlights`;
