@@ -535,7 +535,7 @@ export async function getJobUserId(jobId: string): Promise<string | null> {
 export async function initializeStream(): Promise<void> {
   const redis = await getRedis();
   try {
-    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '0', 'MKSTREAM');
+    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '>', 'MKSTREAM');
   } catch (err: any) {
     if (!err.message.includes('BUSYGROUP')) {
       throw err;

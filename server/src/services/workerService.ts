@@ -226,9 +226,12 @@ class WorkerService {
           this.currentJobId = null;
 
         } catch (error) {
-          logger.error('Error in worker loop', error);
+          logger.error('Error in worker loop', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          });
           // Wait before retrying on error
-          await new Promise(resolve => setTimeout(resolve, UPLOAD_LIMITS.UPLOAD_LIMIT_RETRY_DELAY));
+          await new Promise(resolve => setTimeout(resolve, Math.max(POLL_INTERVAL, UPLOAD_LIMITS.UPLOAD_LIMIT_RETRY_DELAY)));
         }
       }
     } catch (error) {
