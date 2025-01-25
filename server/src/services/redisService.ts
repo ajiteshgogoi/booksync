@@ -590,11 +590,20 @@ export async function getActiveUploadCount(): Promise<number> {
   }
 }
 
-// Check if user has pending job
+// Check if user has pending job or active upload
 export async function hasUserPendingJob(userId: string): Promise<boolean> {
   const redis = await getRedis();
   try {
-    // Read all stream entries
+    // First check if user is in active set
+    const isUserActive = await redis.sismember(ACTIVE_USERS_SET, userId);
+    if (isUserActive) {
+      const uploadStatus = await redis.get(`UPLOAD_STATUS:${userId}`);
+      if (uploadStatus) {
+        return true;
+      }
+    }
+
+    // Then check stream entries
     const results = await redis.xread('STREAMS', STREAM_NAME, '0-0') as RedisStreamResponse;
     if (!results || results.length === 0) return false;
 

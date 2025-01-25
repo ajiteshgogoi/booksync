@@ -1,7 +1,6 @@
 import { parseClippings } from '../utils/parseClippings.js';
 import { updateNotionDatabase, Highlight, getClient } from './notionClient.js';
 import { logger } from '../utils/logger.js';
-import { validateSync } from './syncValidationService.js';
 import {
   getRedis,
   checkRateLimit,

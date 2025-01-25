@@ -14,12 +14,12 @@ export class ValidationError extends Error {
 export async function validateSync(userId: string): Promise<void> {
     // Check active uploads
     const activeUploads = await getActiveUploadCount();
-    logger.info('[UploadValidation] Checking active uploads', { activeUploads, userId });
+    logger.info('[SyncValidation] Checking active uploads', { activeUploads, userId });
     
     // Check if user already has an active upload
     const userHasActiveUpload = await hasUserPendingJob(userId);
     if (userHasActiveUpload) {
-        logger.warn('[UploadValidation] User already has active upload', {
+        logger.warn('[SyncValidation] User already has active upload', {
             userId,
             status: 'Upload blocked'
         });
@@ -28,7 +28,7 @@ export async function validateSync(userId: string): Promise<void> {
     
     // Check global upload limit
     if (activeUploads >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
-        logger.warn('[UploadValidation] Upload limit reached', {
+        logger.warn('[SyncValidation] Upload limit reached', {
             activeUploads,
             maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
             status: 'Upload blocked'

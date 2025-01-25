@@ -44,14 +44,8 @@ function App() {
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const userId = searchParams.get('userId') || localStorage.getItem('userId') || 'anonymous';
-      const timestamp = Date.now();
-      const fileKey = `clippings-${userId}-${timestamp}.txt`;
-      const { count } = await uploadFileToR2(selectedFile, fileKey);
-
-      setHighlightCount(count);
+      // Validate first before doing any processing
       setSyncStatus('validating');
-
-      // Start validation right after highlight count is displayed
       const validationResponse = await fetch(`${apiBase}/validate-sync`, {
         method: 'POST',
         headers: {
@@ -60,11 +54,25 @@ function App() {
         credentials: 'include'
       });
 
+      if (!validationResponse.ok) {
+        const validationResult = await validationResponse.json();
+        setSyncStatus('error');
+        setFile(null);
+        throw new Error(validationResult.error || 'Validation failed');
+      }
       const validationResult = await validationResponse.json();
       if (!validationResult.valid) {
+        setSyncStatus('error');
+        setFile(null);
         throw new Error(validationResult.error || 'Validation failed');
       }
 
+      // Only proceed with upload after validation passes
+      const timestamp = Date.now();
+      const fileKey = `clippings-${userId}-${timestamp}.txt`;
+      const { count } = await uploadFileToR2(selectedFile, fileKey);
+      
+      setHighlightCount(count);
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');
