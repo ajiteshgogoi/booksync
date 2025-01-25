@@ -102,7 +102,7 @@ class WorkerService {
             this.emptyPollCount++;
             if (this.emptyPollCount >= MAX_EMPTY_POLLS) {
               logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, stopping worker`);
-              this.isRunning = false;
+              await this.stop(); // Use stop() to properly cleanup
               break;
             }
             // No jobs available, wait before checking again
@@ -261,6 +261,12 @@ class WorkerService {
   }
 
   private async runWorkerCycle(): Promise<void> {
+    if (this.isRunning) {
+      logger.warn('Worker cycle already running');
+      return;
+    }
+
+    this.isRunning = true;
     try {
       if (process.env.NODE_ENV === 'development') {
         logger.info('Starting local worker cycle');
@@ -271,7 +277,7 @@ class WorkerService {
 
       // Process jobs until MAX_EMPTY_POLLS is reached
       let emptyPolls = 0;
-      while (this.isRunning && emptyPolls < MAX_EMPTY_POLLS) {
+      while (emptyPolls < MAX_EMPTY_POLLS) {
         try {
           const result = await getNextJob();
           
@@ -343,10 +349,13 @@ class WorkerService {
       throw error;
     } finally {
       try {
-        await RedisService.cleanup();
-        logger.info('Successfully cleaned up Redis connections after worker cycle');
+        await this.stop();
+        logger.info('Worker cycle completed');
       } catch (error) {
-        logger.error('Error cleaning up Redis connections after worker cycle', { error });
+        logger.error('Error during worker cycle cleanup', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
       }
     }
   }
