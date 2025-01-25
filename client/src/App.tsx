@@ -3,7 +3,7 @@ import BookIcon from '../public/book.svg';
 import './App.css';
 import { uploadFileToR2 } from './services/uploadService';
 
-type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error';
+type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting';
 
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
@@ -55,7 +55,7 @@ function App() {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
     }
   };
-const handleSync = async () => {
+  const handleSync = async () => {
   if (!file || highlightCount === 0) return;
   
   // Check auth expiration before sync
@@ -67,6 +67,7 @@ const handleSync = async () => {
     return;
   }
 
+  setSyncStatus('starting');
   setErrorMessage(null);
 
   try {
@@ -215,7 +216,7 @@ const handleSync = async () => {
 
               <div className="mt-4">
 <label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif cursor-pointer ${
-  syncStatus === 'parsing' || syncStatus === 'queued'
+  syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
     ? 'opacity-50 cursor-not-allowed'
     : 'cursor-pointer'
 }`}>
@@ -245,11 +246,12 @@ const handleSync = async () => {
 
                   <button
                     onClick={handleSync}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'queued'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
                     className="mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block"
                   >
                     {syncStatus === 'parsing' ? 'Parsing...' :
-                     syncStatus === 'queued' ? 'In Queue...' : 'Sync Highlights'}
+                     syncStatus === 'queued' ? 'In Queue...' :
+                     syncStatus === 'starting' ? 'Starting sync...' : 'Sync Highlights'}
                   </button>
 
                   {syncStatus === 'queued' && !errorMessage && (
