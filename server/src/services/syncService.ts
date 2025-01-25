@@ -77,7 +77,7 @@ export async function queueSyncJob(
       throw validationError;
     }
     
-    const jobId = `sync:${databaseId}:${Date.now()}`;
+    const jobId = `sync:${userId}:${Date.now()}`;
     const highlights = await parseClippings(fileContent);
     logger.debug('Parsed highlights', { count: highlights.length });
 
