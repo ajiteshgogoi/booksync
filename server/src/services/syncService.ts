@@ -1,6 +1,7 @@
 import { parseClippings } from '../utils/parseClippings.js';
 import { updateNotionDatabase, Highlight, getClient } from './notionClient.js';
 import { logger } from '../utils/logger.js';
+import { validateUpload } from './uploadValidationService.js';
 import {
   getRedis,
   checkRateLimit,
@@ -182,22 +183,11 @@ export async function queueSyncJob(
     if (errors.length > 0) {
       throw new Error(`Pipeline errors: ${errors.join(', ')}`);
     }
-    // Check active uploads before adding to queue
-    const activeUploads = await getActiveUploadCount();
-    logger.info('[Sync] Checking active uploads before queueing', { activeUploads });
-    
-    if (activeUploads >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
-      logger.warn('[Sync] Upload limit reached', {
-        activeUploads,
-        maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
-        status: 'GitHub trigger blocked'
-      });
-      throw new Error('Too many users are using the service right now. Please try again later.');
-    }
+    // Validate upload conditions
+    await validateUpload(userId);
 
-    logger.info('[Sync] Upload limit check passed', {
-      activeUploads,
-      maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
+    logger.info('[Sync] Upload validation passed', {
+      userId,
       status: 'Proceeding with GitHub trigger'
     });
     
