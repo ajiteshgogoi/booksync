@@ -84,11 +84,14 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
+    // Determine auth header format based on token length
+    const authHeader = githubToken.length > 50 ? `Bearer ${githubToken}` : `token ${githubToken}`;
+
     // Verify token permissions with timeout and rate limit checking
     try {
       const tokenInfo = await axios.get('https://api.github.com/user', {
         headers: {
-          'Authorization': `token ${githubToken}`,
+          'Authorization': authHeader,
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'BookSync-App'
         },
@@ -121,7 +124,7 @@ export async function triggerProcessing(
         'https://api.github.com/repos/ajiteshgogoi/booksync',
         {
           headers: {
-            'Authorization': `token ${githubToken}`,
+            'Authorization': authHeader,
             'Accept': 'application/vnd.github.v3+json',
             'User-Agent': 'BookSync-App'
           },
@@ -177,7 +180,7 @@ export async function triggerProcessing(
         {
           headers: {
             'Accept': 'application/vnd.github.v3+json',
-            'Authorization': `token ${githubToken}`,
+            'Authorization': authHeader,
             'User-Agent': 'BookSync-App',
             'Content-Type': 'application/json'
           }
