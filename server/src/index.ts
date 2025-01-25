@@ -172,7 +172,7 @@ function generateState() {
          Math.random().toString(36).substring(2, 15);
 }
 
-// Run sync validation after highlight count is shown
+// Sync validation endpoint
 app.post('/api/validate-sync', async (req: Request, res: Response) => {
   try {
     const userId = req.headers['x-user-id'] as string;
@@ -557,15 +557,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       }
     }
 
-    // Check validation result from frontend
-    const { syncValidation } = req.body;
-    if (!syncValidation || !syncValidation.valid) {
-      return res.status(400).json({
-        error: 'ValidationError',
-        message: syncValidation?.error || 'Please validate sync first'
-      });
-    }
-    console.log('Using stored sync validation for user:', userId);
 
     // Increment rate limit counter after validation passes
     rateLimiter.increment(clientIp);

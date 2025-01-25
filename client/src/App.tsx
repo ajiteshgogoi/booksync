@@ -3,7 +3,7 @@ import BookIcon from '../public/book.svg';
 import './App.css';
 import { uploadFileToR2 } from './services/uploadService';
 
-type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting';
+type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'validating';
 
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
@@ -39,7 +39,7 @@ function App() {
     
     setFile(selectedFile);
     setErrorMessage(null);
-    setSyncStatus('parsing');
+    setSyncStatus('validating');
 
     try {
       const searchParams = new URLSearchParams(window.location.search);
@@ -49,6 +49,22 @@ function App() {
       const { count } = await uploadFileToR2(selectedFile, fileKey);
 
       setHighlightCount(count);
+      setSyncStatus('validating');
+
+      // Start validation right after highlight count is displayed
+      const validationResponse = await fetch(`${apiBase}/validate-sync`, {
+        method: 'POST',
+        headers: {
+          'x-user-id': userId
+        },
+        credentials: 'include'
+      });
+
+      const validationResult = await validationResponse.json();
+      if (!validationResult.valid) {
+        throw new Error(validationResult.error || 'Validation failed');
+      }
+
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');
@@ -233,7 +249,7 @@ function App() {
 
               <div className="mt-4">
 <label className={`mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block ${
-  syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
+  syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting' || syncStatus === 'validating'
     ? 'opacity-50 cursor-not-allowed'
     : 'cursor-pointer'
 }`}>
@@ -241,7 +257,7 @@ function App() {
                     type="file"
                     accept=".txt"
                     onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting' || syncStatus === 'validating'}
                     className="hidden"
                   />
                   Upload My Clippings.txt
@@ -263,16 +279,17 @@ function App() {
 
                   <button
                     onClick={handleSync}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting' || syncStatus === 'validating'}
                     className={`mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif block ${
-                      syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
+                      syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting' || syncStatus === 'validating'
                         ? 'opacity-50 cursor-not-allowed'
                         : 'cursor-pointer'
                     }`}
                   >
                     {syncStatus === 'parsing' ? 'Parsing...' :
                      syncStatus === 'queued' ? 'In Queue...' :
-                     syncStatus === 'starting' ? 'Starting sync...' : 'Sync Highlights'}
+                     syncStatus === 'starting' ? 'Starting sync...' :
+                     syncStatus === 'validating' ? 'Please wait...' : 'Sync Highlights'}
                   </button>
 
                   {syncStatus === 'queued' && !errorMessage && (
