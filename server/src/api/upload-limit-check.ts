@@ -28,7 +28,7 @@ export default async function handler(
       return;
     }
 
-    console.log(`[API] Upload limit check passed (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS})`);
+    console.log(`[API] Upload limit check passed (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). GitHub trigger will be allowed.`);
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ activeUploads }));
