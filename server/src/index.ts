@@ -188,29 +188,6 @@ app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => 
   }
 });
 
-// Rate limit check endpoint
-app.get(`/api/rate-limit-check`, (req: Request, res: Response) => {
-  const xForwardedFor = req.headers['x-forwarded-for'];
-  const clientIp = Array.isArray(xForwardedFor)
-    ? xForwardedFor[0]
-    : (xForwardedFor || req.socket.remoteAddress);
-  
-  if (!clientIp || typeof clientIp !== 'string') {
-    return res.status(400).json({ error: 'Could not determine client IP' });
-  }
-
-  const rateLimit = rateLimiter.check(clientIp);
-  if (!rateLimit.allowed) {
-    const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
-    });
-  }
-
-  res.json({ allowed: true });
-});
-
 // Health check endpoint
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   const config = {
@@ -308,12 +285,22 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
     
     // Get client IP address (handle both string and string[] cases)
     const xForwardedFor = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(xForwardedFor) 
-      ? xForwardedFor[0] 
+    const clientIp = Array.isArray(xForwardedFor)
+      ? xForwardedFor[0]
       : (xForwardedFor || req.socket.remoteAddress);
     
-    if (!ip || typeof ip !== 'string') {
+    if (!clientIp || typeof clientIp !== 'string') {
       return res.status(400).json({ error: 'Could not determine client IP' });
+    }
+
+    // Check rate limit (but don't increment for parse)
+    const rateLimit = rateLimiter.check(clientIp);
+    if (!rateLimit.allowed) {
+      const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
+      });
     }
 
     if (!req.file) {
@@ -327,7 +314,6 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 
     const highlights = await parseClippings(fileContent);
     console.log('Parsed highlights count:', highlights.length);
-    
     const response = { count: highlights.length };
     console.log('Sending response:', response);
     res.json(response);
@@ -502,16 +488,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     
     if (!clientIp || typeof clientIp !== 'string') {
       return res.status(400).json({ error: 'Could not determine client IP' });
-    }
-
-    // Check rate limit when sync is requested
-    const rateLimit = rateLimiter.check(clientIp);
-    if (!rateLimit.allowed) {
-      const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
-      return res.status(429).json({
-        error: 'Rate limit exceeded',
-        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
-      });
     }
 
     if (!req.file) {

@@ -1,23 +1,3 @@
-async function checkRateLimit(): Promise<void> {
-  try {
-    const response = await fetch('/api/rate-limit-check', {
-      method: 'GET',
-      credentials: 'include'
-    });
-    
-    if (!response.ok) {
-      if (response.status === 429) {
-        const data = await response.json();
-        throw new Error(data.message);
-      }
-      throw new Error('Failed to check rate limit');
-    }
-  } catch (error) {
-    console.error('Rate limit check failed:', error);
-    throw error;
-  }
-}
-
 export async function getUploadUrl(fileName: string, fileKey: string, fileType: string): Promise<string> {
   try {
     console.log('Requesting upload URL for:', { fileName, fileKey, fileType });
@@ -58,9 +38,6 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
 
 export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number }> {
   try {
-    // Check rate limit first
-    await checkRateLimit();
-
     console.log('Starting file upload:', {
       fileName: file.name,
       fileKey,
