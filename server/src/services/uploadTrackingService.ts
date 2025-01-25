@@ -1,6 +1,5 @@
-import { getRedis, redisPool } from './redisService.js';
+import { getRedis, redisPool, JOB_TTL, ACTIVE_USERS_SET, getJobStatus } from './redisService.js';
 import type { JobStatus } from '../types/job.js';
-import { JOB_TTL } from './redisService.js';
 
 export async function startUpload(userId: string, uploadId: string): Promise<void> {
   const redis = await getRedis();
@@ -11,8 +10,11 @@ export async function startUpload(userId: string, uploadId: string): Promise<voi
       throw new Error('User already has an active file upload');
     }
 
-    // Mark upload as active
-    await redis.set(`UPLOAD_STATUS:${userId}`, uploadId, 'EX', JOB_TTL);
+    // Mark upload as active and add user to active set
+    await Promise.all([
+      redis.set(`UPLOAD_STATUS:${userId}`, uploadId, 'EX', JOB_TTL),
+      redis.sadd(ACTIVE_USERS_SET, userId)
+    ]);
   } finally {
     redisPool.release(redis);
   }
@@ -35,7 +37,17 @@ export async function completeJob(uploadId: string, jobId: string): Promise<bool
     
     // If no more jobs, clean up upload tracking
     if (remainingJobs === 0) {
-      await redis.del(`UPLOAD_JOBS:${uploadId}`);
+      // Get userId before cleaning up
+      const status = await getJobStatus(jobId);
+      if (status?.userId) {
+        // Remove user from active set and clean up upload tracking
+        await Promise.all([
+          redis.srem(ACTIVE_USERS_SET, status.userId),
+          redis.del(`UPLOAD_JOBS:${uploadId}`)
+        ]);
+      } else {
+        await redis.del(`UPLOAD_JOBS:${uploadId}`);
+      }
       return true;
     }
     return false;
