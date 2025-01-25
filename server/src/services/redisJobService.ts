@@ -1,4 +1,4 @@
-import { getRedis, redisPool, setJobStatus, getJobStatus } from './redisService.js';
+import { getRedis, redisPool, setJobStatus, getJobStatus, hasUserPendingJob } from './redisService.js';
 import type { JobStatus } from '../types/job.js';
 import {
   STREAM_NAME,
@@ -65,9 +65,18 @@ export async function completeJob(jobId: string, messageId: string): Promise<voi
       if (uploadComplete) {
         await redis.del(`UPLOAD_STATUS:${status.userId}`);
       }
-    } else {
-      // Single job upload - use completeUploadJob to handle cleanup
-      await completeUploadJob(jobId, jobId); // For single jobs, jobId is used as uploadId
+    }
+    
+    // For both single jobs and multi-job uploads, ensure user is removed from active set
+    // if they have no more pending jobs
+    const hasPendingJob = await hasUserPendingJob(status.userId);
+    if (!hasPendingJob) {
+      const redis = await getRedis();
+      try {
+        await redis.srem(ACTIVE_USERS_SET, status.userId);
+      } finally {
+        redisPool.release(redis);
+      }
     }
   } finally {
     redisPool.release(redis);
