@@ -231,7 +231,7 @@ function App() {
               </p>
 
               <div className="mt-4">
-<label className={`block bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif cursor-pointer ${
+<label className={`mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white text-center font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block ${
   syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
     ? 'opacity-50 cursor-not-allowed'
     : 'cursor-pointer'
@@ -240,7 +240,7 @@ function App() {
                     type="file"
                     accept=".txt"
                     onChange={handleFileChange}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'queued'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
                     className="hidden"
                   />
                   Upload My Clippings.txt
@@ -263,7 +263,11 @@ function App() {
                   <button
                     onClick={handleSync}
                     disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
-                    className="mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block"
+                    className={`mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif block ${
+                      syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'cursor-pointer'
+                    }`}
                   >
                     {syncStatus === 'parsing' ? 'Parsing...' :
                      syncStatus === 'queued' ? 'In Queue...' :
@@ -304,12 +308,8 @@ function App() {
                       });
                       window.location.href = '/';
                     }}
-                    className={`mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:cursor-not-allowed transition-colors font-serif block ${
-                      ['parsing', 'queued'].includes(syncStatus)
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'cursor-pointer'
-                    }`}
-                    disabled={['parsing', 'queued'].includes(syncStatus)}
+                    className="mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block"
+                    disabled={['parsing', 'queued', 'starting'].includes(syncStatus)}
                   >
                   Disconnect Notion
                 </button>
