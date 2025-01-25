@@ -61,7 +61,7 @@ function App() {
           error.message) :
         'Failed to parse highlights';
       
-      setErrorMessage(`❌ ${message}`);
+      setErrorMessage(`${message}`);
     }
   };
   const handleSync = async () => {
@@ -108,13 +108,22 @@ function App() {
       }
     } catch (error) {
       setSyncStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
+      
+      const message = error instanceof Error ? 
+        (error.message.includes('User already has an active file upload') ?
+          'You already have a sync in progress. Please wait until it completes before uploading again.' :
+          error.message) :
+        'Failed to sync highlights';
+      
+      setErrorMessage(`${message}`);
       
       // Log the error to console for debugging
       console.error('Sync error:', error);
       
       // Reset file state if validation failed
-      if (error instanceof Error && error.message.includes('Validation failed')) {
+      if (error instanceof Error && 
+          (error.message.includes('Validation failed') || 
+           error.message.includes('User already has an active file upload'))) {
         setFile(null);
         setHighlightCount(0);
       }
