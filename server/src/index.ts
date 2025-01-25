@@ -525,18 +525,9 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     console.log('File content length:', fileContent.length);
     console.log('Preview:', fileContent.slice(0, 200));
     
-    // Return immediate response with job ID
-    res.json({
-      success: true,
-      jobId,
-      message: 'Upload received. Processing will begin shortly.',
-      info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
-    });
-
-    // Trigger GitHub workflow in background //
+    // Verify Redis connection first
+    console.log('\n=== Verifying Redis Connection ===');
     try {
-      // Verify Redis connection using utility
-      console.log('\n=== Verifying Redis Connection ===');
       try {
         const redisTest = await verifyRedisConnection({
           maxRetries: 3,
@@ -593,6 +584,14 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           message: 'File uploaded and processing triggered',
           progress: 0,
           result: { fileName: result }
+        });
+  
+        // Send response only after successful processing
+        res.json({
+          success: true,
+          jobId,
+          message: 'Upload received and processing started.',
+          info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
         });
       } catch (error) {
         console.error('Failed to trigger GitHub processing:', error);
