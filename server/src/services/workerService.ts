@@ -4,6 +4,7 @@ import {
   initializeStream,
   getNextJob,
   setJobStatus,
+  getJobStatus,
   acknowledgeJob,
   RedisService,
   STREAM_NAME,
@@ -48,6 +49,7 @@ class WorkerService {
   private currentUploadId: string | null = null;
   private uploadQueue: string[] = [];
   private uploadProcessing = false;
+  private activeUserUploads: Map<string, string> = new Map(); // userId → uploadId
 
   async start(): Promise<void> {
     if (this.isRunning) {
@@ -113,8 +115,20 @@ class WorkerService {
           const { jobId, messageId, uploadId } = result;
           
           // If this is a new upload, add to queue
+          // Get userId from job status
+          const status = await getJobStatus(jobId);
+          if (!status?.userId) {
+            throw new Error('Cannot process job: userId not found');
+          }
+
+          // Check if user already has an upload in progress
+          if (this.activeUserUploads.has(status.userId)) {
+            throw new Error(`User ${status.userId} already has an upload in progress`);
+          }
+
           if (uploadId && !this.uploadQueue.includes(uploadId)) {
             this.uploadQueue.push(uploadId);
+            this.activeUserUploads.set(status.userId, uploadId);
           }
 
           // Wait if another upload is being processed
@@ -151,11 +165,17 @@ class WorkerService {
 
             // If this was the last job in the upload, mark upload complete
             if (uploadId) {
+              const status = await getJobStatus(jobId);
               const uploadComplete = await this.checkUploadCompletion(uploadId);
               if (uploadComplete) {
                 this.uploadProcessing = false;
                 this.currentUploadId = null;
                 this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+                
+                // Clean up user tracking
+                if (status?.userId) {
+                  this.activeUserUploads.delete(status.userId);
+                }
               }
             }
 
