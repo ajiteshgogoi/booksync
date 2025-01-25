@@ -8,8 +8,7 @@ async function checkRateLimit(): Promise<void> {
     if (!response.ok) {
       if (response.status === 429) {
         const data = await response.json();
-        const remainingTime = data.remainingTime ? Math.round(data.remainingTime / 60) : 60;
-        throw new Error(`You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`);
+        throw new Error(data.message);
       }
       throw new Error('Failed to check rate limit');
     }
@@ -129,8 +128,7 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
       });
 
       if (parseResponse.status === 429) {
-        const remainingTime = errorData.remainingTime ? Math.round(errorData.remainingTime / 60) : 60;
-        throw new Error(`You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`);
+        throw new Error(errorData.message);
       }
       throw new Error(errorData.message || await parseResponse.text());
     }

@@ -201,10 +201,10 @@ app.get(`/api/rate-limit-check`, (req: Request, res: Response) => {
 
   const rateLimit = rateLimiter.check(clientIp);
   if (!rateLimit.allowed) {
-    const remainingTime = Math.ceil(rateLimit.remainingTime / 60);
+    const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
     return res.status(429).json({
       error: 'Rate limit exceeded',
-      message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`
+      message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
     });
   }
 
@@ -507,10 +507,10 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     // Check rate limit when sync is requested
     const rateLimit = rateLimiter.check(clientIp);
     if (!rateLimit.allowed) {
-      const remainingTime = Math.ceil(rateLimit.remainingTime / 60);
+      const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
       return res.status(429).json({
         error: 'Rate limit exceeded',
-        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingTime} minutes.`
+        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
       });
     }
 

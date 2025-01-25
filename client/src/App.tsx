@@ -24,7 +24,6 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
-  const [validationStatus, setValidationStatus] = useState<{ valid: boolean; error?: string } | null>(null);
   const [showClippingsModal, setShowClippingsModal] = useState(false);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,7 +34,6 @@ function App() {
       setFile(null);
       setErrorMessage("Please upload 'My Clippings.txt' only.");
       setSyncStatus('error');
-      setValidationStatus(null);
       return;
     }
     
@@ -63,8 +61,6 @@ function App() {
       });
 
       const validationResult = await validationResponse.json();
-      setValidationStatus(validationResult);
-      
       if (!validationResult.valid) {
         throw new Error(validationResult.error || 'Validation failed');
       }
@@ -74,7 +70,6 @@ function App() {
       setSyncStatus('error');
       setFile(null);
       setHighlightCount(0);
-      setValidationStatus(null);
       
       setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
     }
@@ -88,12 +83,6 @@ function App() {
       localStorage.removeItem('isAuthenticated');
       localStorage.removeItem('authTimestamp');
       setErrorMessage('Your session has expired. Please reconnect to Notion.');
-      return;
-    }
-
-    // If validation previously failed, show error without starting sync
-    if (validationStatus && !validationStatus.valid) {
-      setErrorMessage(validationStatus.error || 'Please wait for current upload to complete');
       return;
     }
 
