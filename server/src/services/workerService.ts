@@ -14,6 +14,7 @@ import {
 import { processFile } from './processService.js';
 import type { JobStatus } from '../types/job.js';
 import { workerStateService } from './workerStateService.js';
+import { completeJob as completeUpload } from './uploadTrackingService.js';
 
 // Maximum number of empty polls before exiting
 const MAX_EMPTY_POLLS = 10; // Will exit after ~10 seconds of no jobs
@@ -177,15 +178,14 @@ class WorkerService {
             if (uploadId) {
               const status = await getJobStatus(jobId);
               const uploadComplete = await this.checkUploadCompletion(uploadId);
-              if (uploadComplete) {
+              if (uploadComplete && status?.userId) {
+                // Call upload tracking service to handle complete cleanup
+                await completeUpload(uploadId, jobId);
+                // Clean up worker state
                 await workerStateService.setProcessingUpload(null);
                 this.currentUploadId = null;
                 await workerStateService.removeFromUploadQueue(uploadId);
-                
-                // Clean up user tracking
-                if (status?.userId) {
-                  await workerStateService.removeActiveUserUpload(status.userId);
-                }
+                await workerStateService.removeActiveUserUpload(status.userId);
               }
             }
 
@@ -199,8 +199,11 @@ class WorkerService {
             });
             logger.error('Job processing failed', { jobId, error });
 
-            // If upload failed, clear it from processing and clean up jobs
-            if (uploadId) {
+            // If upload failed, perform complete cleanup
+            if (uploadId && status?.userId) {
+              // Call upload tracking service to handle complete cleanup
+              await completeUpload(uploadId, jobId);
+              // Clean up worker state
               await workerStateService.setProcessingUpload(null);
               this.currentUploadId = null;
               await workerStateService.removeFromUploadQueue(uploadId);
@@ -208,7 +211,7 @@ class WorkerService {
               // Clean up all jobs for this upload
               const redis = await getRedis();
               try {
-                // Remove all jobs with this uploadId
+                // Remove all jobs with this uploadId from stream
                 await redis.xdel(STREAM_NAME, uploadId);
               } catch (error) {
                 logger.error('Error cleaning up failed upload jobs', { uploadId, error });
@@ -292,20 +295,34 @@ class WorkerService {
             await processFile(jobId);
 
             // Update job status to completed
+            const status = await getJobStatus(jobId);
             await setJobStatus(jobId, {
+              ...status,
               state: 'completed',
               message: 'File processing completed',
               completedAt: Date.now()
             });
 
+            // Handle upload completion in dev mode
+            if (status?.uploadId && status?.userId) {
+              await completeUpload(status.uploadId, jobId);
+            }
+
           } catch (error) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const status = await getJobStatus(jobId);
             await setJobStatus(jobId, {
+              ...status,
               state: 'failed',
               message: `File processing failed: ${errorMessage}`
             });
             logger.error('Job processing failed', { jobId, error });
+
+            // Handle upload failure in dev mode
+            if (status?.uploadId && status?.userId) {
+              await completeUpload(status.uploadId, jobId);
+            }
           }
 
           // Acknowledge message after processing (whether successful or failed)

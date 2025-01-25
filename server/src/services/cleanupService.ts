@@ -192,11 +192,42 @@ export class CleanupService {
   /**
    * Main cleanup method that coordinates the entire cleanup process
    */
+  /**
+   * Health check to verify active users set consistency
+   */
+  private static async verifyActiveUsersSetConsistency(): Promise<void> {
+    const redis = await getRedis();
+    try {
+      const activeUsers = await redis.smembers(ACTIVE_USERS_SET);
+      
+      for (const userId of activeUsers) {
+        const [hasActiveUploads, hasActiveJobs] = await Promise.all([
+          this.checkUserUploads(userId),
+          this.checkUserJobs(userId)
+        ]);
+
+        if (!hasActiveUploads && !hasActiveJobs) {
+          // User found in active set but has no active work
+          await redis.srem(ACTIVE_USERS_SET, userId);
+          logger.warn(`Health check: Removed user ${userId} from active set (no active work found)`);
+        }
+      }
+    } catch (error) {
+      logger.error('Error in active users set health check:', error);
+    } finally {
+      redisPool.release(redis);
+    }
+  }
+
   public static async cleanup(): Promise<void> {
     const startTime = Date.now();
     logger.info('Starting unified cleanup process');
     
     try {
+      // Run health check first
+      await this.verifyActiveUsersSetConsistency();
+      logger.info('Active users set health check completed');
+
       await this.cleanupStaleJobs();
       logger.info('Stale jobs cleanup completed');
 
