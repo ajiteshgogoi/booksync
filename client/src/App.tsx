@@ -3,7 +3,7 @@ import BookIcon from '../public/book.svg';
 import './App.css';
 import { uploadFileToR2 } from './services/uploadService';
 
-type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting';
+type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'validating';
 
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
@@ -263,7 +263,7 @@ function App() {
 
                   <button
                     onClick={handleSync}
-                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'}
+                    disabled={syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting' || syncStatus === 'validating'}
                     className={`mt-4 max-w-sm mx-auto bg-[#8b7355] hover:bg-[#6b5a46] text-white font-medium px-6 py-2 rounded-md transition-colors font-serif block ${
                       syncStatus === 'parsing' || syncStatus === 'queued' || syncStatus === 'starting'
                         ? 'opacity-50 cursor-not-allowed'
