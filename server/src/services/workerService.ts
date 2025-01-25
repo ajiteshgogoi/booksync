@@ -68,8 +68,18 @@ class WorkerService {
       }
     );
 
-    this.isRunning = true;
     logger.info('Starting worker service with sequential upload processing');
+
+    // Initialize Redis stream and consumer group
+    try {
+      await initializeStream();
+      logger.info('Redis stream and consumer group initialized');
+    } catch (error) {
+      logger.error('Failed to initialize Redis stream', error);
+      throw error;
+    }
+
+    this.isRunning = true;
 
     // In local environment, run periodically every 30 seconds
     if (process.env.NODE_ENV === 'development') {
@@ -261,20 +271,11 @@ class WorkerService {
   }
 
   private async runWorkerCycle(): Promise<void> {
-    if (this.isRunning) {
-      logger.warn('Worker cycle already running');
-      return;
-    }
-
-    this.isRunning = true;
     try {
       if (process.env.NODE_ENV === 'development') {
         logger.info('Starting local worker cycle');
       }
       
-      // Initialize Redis stream and consumer group
-      await initializeStream();
-
       // Process jobs until MAX_EMPTY_POLLS is reached
       let emptyPolls = 0;
       while (emptyPolls < MAX_EMPTY_POLLS) {
