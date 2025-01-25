@@ -13,6 +13,7 @@ import {
 } from './redisService.js';
 import { processFile } from './processService.js';
 import type { JobStatus } from '../types/job.js';
+import { workerStateService } from './workerStateService.js';
 
 // Maximum number of empty polls before exiting
 const MAX_EMPTY_POLLS = 10; // Will exit after ~10 seconds of no jobs
@@ -48,9 +49,6 @@ class WorkerService {
   }
 
   private currentUploadId: string | null = null;
-  private uploadQueue: string[] = [];
-  private uploadProcessing = false;
-  private activeUserUploads: Map<string, string> = new Map(); // userId → uploadId
 
   async start(): Promise<void> {
     if (this.isRunning) {
@@ -123,32 +121,35 @@ class WorkerService {
           }
 
           // Check if user already has an upload in progress
-          if (this.activeUserUploads.has(status.userId)) {
+          const activeUpload = await workerStateService.getActiveUserUpload(status.userId);
+          if (activeUpload) {
             throw new Error(`User ${status.userId} already has an upload in progress`);
           }
 
           // Check upload limit
-          if (this.uploadQueue.length >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
+          const queueLength = await workerStateService.getUploadQueueLength();
+          if (queueLength >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
             throw new Error(
               `Maximum active uploads reached (${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). ` +
               'Please try again later.'
             );
           }
 
-          if (uploadId && !this.uploadQueue.includes(uploadId)) {
-            this.uploadQueue.push(uploadId);
-            this.activeUserUploads.set(status.userId, uploadId);
+          if (uploadId && !(await workerStateService.isInUploadQueue(uploadId))) {
+            await workerStateService.addToUploadQueue(uploadId);
+            await workerStateService.setActiveUserUpload(status.userId, uploadId);
           }
 
           // Wait if another upload is being processed
-          while (this.uploadProcessing && this.currentUploadId !== uploadId) {
+          while (await workerStateService.isUploadProcessing() &&
+                 (await workerStateService.getCurrentProcessingUpload()) !== uploadId) {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
 
           // Start processing this upload
           if (uploadId) {
             this.currentUploadId = uploadId;
-            this.uploadProcessing = true;
+            await workerStateService.setProcessingUpload(uploadId);
           }
 
           this.currentJobId = jobId;
@@ -177,13 +178,13 @@ class WorkerService {
               const status = await getJobStatus(jobId);
               const uploadComplete = await this.checkUploadCompletion(uploadId);
               if (uploadComplete) {
-                this.uploadProcessing = false;
+                await workerStateService.setProcessingUpload(null);
                 this.currentUploadId = null;
-                this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+                await workerStateService.removeFromUploadQueue(uploadId);
                 
                 // Clean up user tracking
                 if (status?.userId) {
-                  this.activeUserUploads.delete(status.userId);
+                  await workerStateService.removeActiveUserUpload(status.userId);
                 }
               }
             }
@@ -200,9 +201,9 @@ class WorkerService {
 
             // If upload failed, clear it from processing and clean up jobs
             if (uploadId) {
-              this.uploadProcessing = false;
+              await workerStateService.setProcessingUpload(null);
               this.currentUploadId = null;
-              this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+              await workerStateService.removeFromUploadQueue(uploadId);
               
               // Clean up all jobs for this upload
               const redis = await getRedis();
