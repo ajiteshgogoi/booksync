@@ -52,7 +52,7 @@ jobs:
         working-directory: server
         run: |
           echo "Installing dependencies..."
-          npm ci
+          npm ci --include=dev
           echo "Dependencies installed"
 
       - name: Build
