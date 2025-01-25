@@ -106,7 +106,7 @@ const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
 // Import handlers and services
 import { uploadUrlHandler } from './api/upload-url.js';
-import { validateSync, ValidationError, waitForValidation } from './services/syncValidationService.js';
+import { validateSync, ValidationError } from './services/syncValidationService.js';
 
 // Middlewares
 app.use(cors({
@@ -557,18 +557,17 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       }
     }
 
-    // Wait for validation to complete
-    try {
-      await waitForValidation(userId);
-      console.log('Validation completed for user:', userId);
-    } catch (error) {
+    // Check validation result from frontend
+    const { syncValidation } = req.body;
+    if (!syncValidation || !syncValidation.valid) {
       return res.status(400).json({
         error: 'ValidationError',
-        message: error instanceof Error ? error.message : 'Validation failed'
+        message: syncValidation?.error || 'Please validate sync first'
       });
     }
+    console.log('Using stored sync validation for user:', userId);
 
-    // Increment rate limit counter after validation completes
+    // Increment rate limit counter after validation passes
     rateLimiter.increment(clientIp);
     console.log('Processing for user:', userId);
     
