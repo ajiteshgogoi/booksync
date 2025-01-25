@@ -58,45 +58,59 @@ function App() {
     }
   };
   const handleSync = async () => {
-  if (!file || highlightCount === 0) return;
-  
-  // Check auth expiration before sync
-  if (!checkAuthExpiration()) {
-    setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('authTimestamp');
-    setErrorMessage('Your session has expired. Please reconnect to Notion.');
-    return;
-  }
-
-  setSyncStatus('starting');
-  setErrorMessage(null);
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(`${apiBase}/sync`, {
-      method: 'POST',
-      body: formData,
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || await response.text());
+    if (!file || highlightCount === 0) return;
+    
+    // Check auth expiration before sync
+    if (!checkAuthExpiration()) {
+      setIsAuthenticated(false);
+      localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('authTimestamp');
+      setErrorMessage('Your session has expired. Please reconnect to Notion.');
+      return;
     }
 
-    const syncResponse = await response.json();
-    if (syncResponse.success) {
-      setSyncStatus('queued');
-      setErrorMessage(null);
-    } else {
-      setSyncStatus('idle');
-      setErrorMessage(syncResponse.message || 'Failed to sync highlights');
-    }
+    setSyncStatus('starting');
+    setErrorMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${apiBase}/sync`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        // Handle validation errors specifically
+        if (errorData.errorType === 'ValidationError') {
+          throw new Error(`Validation failed: ${errorData.message}`);
+        }
+        throw new Error(errorData.message || await response.text());
+      }
+
+      const syncResponse = await response.json();
+      if (syncResponse.success) {
+        setSyncStatus('queued');
+        setErrorMessage(null);
+      } else {
+        setSyncStatus('idle');
+        setErrorMessage(syncResponse.message || 'Failed to sync highlights');
+      }
     } catch (error) {
+      setSyncStatus('error');
       setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
+      
+      // Log the error to console for debugging
+      console.error('Sync error:', error);
+      
+      // Reset file state if validation failed
+      if (error instanceof Error && error.message.includes('Validation failed')) {
+        setFile(null);
+        setHighlightCount(0);
+      }
     }
   };
 

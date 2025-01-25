@@ -71,7 +71,10 @@ export async function queueSyncJob(
         userId,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      throw error;
+      // Add error type for better client-side handling
+      const validationError = new Error(error instanceof Error ? error.message : 'Validation failed');
+      (validationError as any).errorType = 'ValidationError';
+      throw validationError;
     }
     
     const jobId = `sync:${databaseId}:${Date.now()}`;
