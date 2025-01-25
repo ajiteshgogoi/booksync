@@ -173,7 +173,7 @@ function generateState() {
 }
 
 // Sync validation endpoint
-app.post('/api/validate-sync', async (req: Request, res: Response) => {
+app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => {
   try {
     const userId = req.headers['x-user-id'] as string;
     await validateSync(userId);

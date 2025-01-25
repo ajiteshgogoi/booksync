@@ -576,10 +576,10 @@ export async function getActiveUploadCount(): Promise<number> {
     
     let activeUploads = 0;
     for (const userId of activeUsers) {
-      const hasPending = await hasUserPendingJob(userId);
-      if (hasPending) {
+      const uploadStatus = await redis.get(`UPLOAD_STATUS:${userId}`);
+      if (uploadStatus) {
         activeUploads++;
-        console.log(`[Redis] User ${userId} has pending upload`);
+        console.log(`[Redis] User ${userId} has active upload`);
       }
     }
     
