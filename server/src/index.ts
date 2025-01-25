@@ -172,6 +172,22 @@ function generateState() {
          Math.random().toString(36).substring(2, 15);
 }
 
+// Run sync validation after highlight count is shown
+app.post('/api/validate-sync', async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+    await validateSync(userId);
+    res.json({
+      valid: true
+    });
+  } catch (error) {
+    res.json({
+      valid: false,
+      error: error instanceof ValidationError ? error.message : 'Validation failed'
+    });
+  }
+});
+
 // Rate limit check endpoint
 app.get(`/api/rate-limit-check`, (req: Request, res: Response) => {
   const xForwardedFor = req.headers['x-forwarded-for'];
@@ -541,22 +557,15 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       }
     }
 
-    // Run sync validation with actual user ID
-    try {
-      await validateSync(userId);
-      console.log('Sync validation passed for user:', userId);
-    } catch (error) {
-      console.error('Sync validation failed:', error);
-      if (error instanceof ValidationError) {
-        return res.status(400).json({
-          errorType: error.errorType,
-          message: error.message
-        });
-      }
+    // Check validation result from frontend
+    const { syncValidation } = req.body;
+    if (!syncValidation || !syncValidation.valid) {
       return res.status(400).json({
-        error: error instanceof Error ? error.message : 'Validation failed'
+        error: 'ValidationError',
+        message: syncValidation?.error || 'Please validate sync first'
       });
     }
+    console.log('Using stored sync validation for user:', userId);
 
     // Increment rate limit counter after validation passes
     rateLimiter.increment(clientIp);
