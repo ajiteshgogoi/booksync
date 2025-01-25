@@ -52,7 +52,9 @@ function App() {
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');
+      setFile(null);
       setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
+      setHighlightCount(0);
     }
   };
   const handleSync = async () => {
