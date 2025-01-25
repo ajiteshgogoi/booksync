@@ -1,5 +1,5 @@
 import { getRedis, redisPool, setJobStatus, getJobStatus } from './redisService.js';
-import type { JobStatus } from './redisService.js';
+import type { JobStatus } from '../types/job.js';
 import {
   STREAM_NAME,
   CONSUMER_GROUP,

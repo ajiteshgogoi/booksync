@@ -12,7 +12,7 @@ function App() {
     const authTimestamp = localStorage.getItem('authTimestamp');
     if (!authTimestamp) return false;
     
-    const expirationTime = 60 * 60 * 1000; // 1 hour in milliseconds
+    const expirationTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     const elapsed = Date.now() - parseInt(authTimestamp);
     return elapsed < expirationTime;
   };
