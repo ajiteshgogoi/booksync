@@ -62,20 +62,6 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
     // Check rate limit first
     await checkRateLimit();
 
-    // Check active upload limit
-    const limitResponse = await fetch('/api/upload-limit-check', {
-      method: 'GET',
-      credentials: 'include'
-    });
-
-    if (!limitResponse.ok) {
-      if (limitResponse.status === 429) {
-        const data = await limitResponse.json();
-        throw new Error(data.message);
-      }
-      throw new Error('Failed to check upload limit');
-    }
-
     console.log('Starting file upload:', {
       fileName: file.name,
       fileKey,

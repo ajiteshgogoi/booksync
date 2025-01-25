@@ -9,8 +9,10 @@ import {
   JOB_TTL,
   setJobStatus,
   redisPool,
-  STREAM_NAME
+  STREAM_NAME,
+  getActiveUploadCount
 } from './redisService.js';
+import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
 import { JobStatus } from '../types/job.js';
 import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 
@@ -180,6 +182,17 @@ export async function queueSyncJob(
     if (errors.length > 0) {
       throw new Error(`Pipeline errors: ${errors.join(', ')}`);
     }
+    // Check active uploads before adding to queue
+    const activeUploads = await getActiveUploadCount();
+    console.log('[Sync] Checking active uploads before queueing:', activeUploads);
+    
+    if (activeUploads >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
+      console.log(`[Sync] Upload limit reached (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). GitHub trigger blocked.`);
+      throw new Error('Too many users are using the service right now. Please try again later.');
+    }
+
+    console.log(`[Sync] Upload limit check passed (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). Proceeding with GitHub trigger.`);
+    
     await setJobStatus(jobId, {
       state: 'pending',
       progress: 0,
