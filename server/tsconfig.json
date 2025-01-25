@@ -4,13 +4,15 @@
     "module": "es2022",
     "moduleResolution": "node",
     "typeRoots": [
-      "./node_modules/@types"
+      "./node_modules/@types",
+      "../node_modules/@types"
     ],
     "types": [
       "node",
       "express",
       "cors",
-      "multer"
+      "multer",
+      "next"
     ],
     "outDir": "./build",
     "rootDir": ".",

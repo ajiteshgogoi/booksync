@@ -7,6 +7,7 @@
     "bullmq": "^5.34.10"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0"
+    "@types/express": "^5.0.0",
+    "@types/next": "^8.0.7"
   }
 }

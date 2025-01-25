@@ -548,6 +548,30 @@ export async function getRedis(): Promise<RedisType> {
   return await redisPool.acquire();
 }
 
+// Get count of active uploads
+export async function getActiveUploadCount(): Promise<number> {
+  const redis = await getRedis();
+  try {
+    console.log('[Redis] Checking active uploads...');
+    const activeUsers = await redis.smembers(ACTIVE_USERS_SET);
+    console.log(`[Redis] Found ${activeUsers.length} users in active set`);
+    
+    let activeUploads = 0;
+    for (const userId of activeUsers) {
+      const hasPending = await hasUserPendingJob(userId);
+      if (hasPending) {
+        activeUploads++;
+        console.log(`[Redis] User ${userId} has pending upload`);
+      }
+    }
+    
+    console.log(`[Redis] Total active uploads: ${activeUploads}`);
+    return activeUploads;
+  } finally {
+    redisPool.release(redis);
+  }
+}
+
 // Check if user has pending job
 export async function hasUserPendingJob(userId: string): Promise<boolean> {
   const redis = await getRedis();
