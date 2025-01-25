@@ -535,17 +535,29 @@ export async function getJobUserId(jobId: string): Promise<string | null> {
 export async function initializeStream(): Promise<void> {
   const redis = await getRedis();
   try {
-    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '$', 'MKSTREAM');
-  } catch (error: any) {
-    // BUSYGROUP means group already exists, which is fine
-    if (!error.message?.includes('BUSYGROUP')) {
-      logger.error('Error initializing Redis stream', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        command: error.command
-      });
-      throw error;
+    // Delete existing group if it exists
+    try {
+      await redis.xgroup('DESTROY', STREAM_NAME, CONSUMER_GROUP);
+    } catch (error) {
+      // Ignore errors when group doesn't exist
     }
+
+    // Create stream if it doesn't exist
+    try {
+      await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '0', 'MKSTREAM');
+      logger.info('Created new consumer group with start position 0');
+    } catch (error: any) {
+      if (!error.message?.includes('BUSYGROUP')) {
+        logger.error('Error initializing Redis stream', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+          command: error.command
+        });
+        throw error;
+      }
+    }
+  } finally {
+    redisPool.release(redis);
   }
 }
 
