@@ -535,10 +535,16 @@ export async function getJobUserId(jobId: string): Promise<string | null> {
 export async function initializeStream(): Promise<void> {
   const redis = await getRedis();
   try {
-    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '>', 'MKSTREAM');
-  } catch (err: any) {
-    if (!err.message.includes('BUSYGROUP')) {
-      throw err;
+    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '$', 'MKSTREAM');
+  } catch (error: any) {
+    // BUSYGROUP means group already exists, which is fine
+    if (!error.message?.includes('BUSYGROUP')) {
+      logger.error('Error initializing Redis stream', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        command: error.command
+      });
+      throw error;
     }
   }
 }
@@ -651,18 +657,27 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
 export async function getNextJob(): Promise<{ jobId: string; messageId: string; uploadId?: string } | null> {
   const redis = await getRedis();
   try {
-    const results = await redis.xreadgroup(
+    // First try to claim any pending messages for this consumer
+    let results = await redis.xreadgroup(
       'GROUP', CONSUMER_GROUP, CONSUMER_NAME,
-      'STREAMS', STREAM_NAME, '>'
+      'COUNT', 1, 'STREAMS', STREAM_NAME, '0'
     ) as RedisStreamResponse;
 
-    // No results
+    // If no pending messages, read new ones
+    if (!results || results.length === 0 || !results[0][1].length) {
+      results = await redis.xreadgroup(
+        'GROUP', CONSUMER_GROUP, CONSUMER_NAME,
+        'COUNT', 1, 'STREAMS', STREAM_NAME, '>'
+      ) as RedisStreamResponse;
+    }
+
+    // No results from either attempt
     if (!results || results.length === 0) {
       return null;
     }
 
     const streamMessages = results[0][1];
-    // No messages
+    // No messages from either attempt
     if (!streamMessages || streamMessages.length === 0) {
       return null;
     }
