@@ -741,20 +741,10 @@ export async function stopCleanupScheduler(): Promise<void> {
   await redisPool.cleanup();
 }
 
+import { CleanupService } from './cleanupService.js';
+
 async function cleanupExpiredKeys(): Promise<void> {
-  const redis = await getRedis();
-  try {
-    // Clean up expired job statuses
-    const keys = await redis.keys('job:*:status');
-    for (const key of keys) {
-      const ttl = await redis.ttl(key);
-      if (ttl === -1 || ttl === -2) {
-        await redis.del(key);
-      }
-    }
-  } finally {
-    redisPool.release(redis);
-  }
+  await CleanupService.cleanup();
 }
 
 // OAuth token management

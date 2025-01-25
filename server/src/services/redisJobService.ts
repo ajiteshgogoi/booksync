@@ -66,39 +66,8 @@ export async function completeJob(jobId: string, messageId: string): Promise<voi
         await redis.del(`UPLOAD_STATUS:${status.userId}`);
       }
     } else {
-      // Single job upload
-      await redis.del(`UPLOAD_STATUS:${status.userId}`);
-    }
-  } finally {
-    redisPool.release(redis);
-  }
-}
-
-export async function cleanupStaleJobs(): Promise<void> {
-  const redis = await getRedis();
-  try {
-    // Get all active users
-    const activeUsers = await redis.smembers(ACTIVE_USERS_SET);
-    
-    // Check each user's job status
-    for (const userId of activeUsers) {
-      const jobs = await redis.xread('STREAMS', STREAM_NAME, '0-0');
-      if (!jobs || jobs.length === 0) continue;
-
-      const streamMessages = jobs[0][1];
-      if (!streamMessages || streamMessages.length === 0) continue;
-
-      // Find user's active jobs
-      const activeJobs = streamMessages.filter(([_, fields]) => {
-        const userIdIndex = fields.indexOf('userId');
-        return userIdIndex !== -1 &&
-               fields[userIdIndex + 1] === userId;
-      });
-
-      // If no active jobs, remove from set
-      if (activeJobs.length === 0) {
-        await redis.srem(ACTIVE_USERS_SET, userId);
-      }
+      // Single job upload - use completeUploadJob to handle cleanup
+      await completeUploadJob(jobId, jobId); // For single jobs, jobId is used as uploadId
     }
   } finally {
     redisPool.release(redis);
