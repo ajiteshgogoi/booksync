@@ -2,7 +2,7 @@ import { getActiveUploadCount, hasUserPendingJob } from './redisService.js';
 import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
 import { logger } from '../utils/logger.js';
 
-export async function validateUpload(userId: string): Promise<void> {
+export async function validateSync(userId: string): Promise<void> {
     // Check active uploads
     const activeUploads = await getActiveUploadCount();
     logger.info('[UploadValidation] Checking active uploads', { activeUploads, userId });

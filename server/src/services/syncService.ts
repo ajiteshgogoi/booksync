@@ -1,7 +1,7 @@
 import { parseClippings } from '../utils/parseClippings.js';
 import { updateNotionDatabase, Highlight, getClient } from './notionClient.js';
 import { logger } from '../utils/logger.js';
-import { validateUpload } from './uploadValidationService.js';
+import { validateSync } from './syncValidationService.js';
 import {
   getRedis,
   checkRateLimit,
@@ -58,6 +58,22 @@ export async function queueSyncJob(
   let redis;
   try {
     logger.debug('Starting sync job', { databaseId });
+    
+    // Validate sync conditions before proceeding
+    try {
+      await validateSync(userId);
+      logger.info('[Sync] Validation passed', {
+        userId,
+        status: 'Proceeding with sync'
+      });
+    } catch (error) {
+      logger.error('[Sync] Validation failed', {
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
+    
     const jobId = `sync:${databaseId}:${Date.now()}`;
     const highlights = await parseClippings(fileContent);
     logger.debug('Parsed highlights', { count: highlights.length });
@@ -183,14 +199,6 @@ export async function queueSyncJob(
     if (errors.length > 0) {
       throw new Error(`Pipeline errors: ${errors.join(', ')}`);
     }
-    // Validate upload conditions
-    await validateUpload(userId);
-
-    logger.info('[Sync] Upload validation passed', {
-      userId,
-      status: 'Proceeding with GitHub trigger'
-    });
-    
     await setJobStatus(jobId, {
       state: 'pending',
       progress: 0,
@@ -199,9 +207,8 @@ export async function queueSyncJob(
       lastProcessedIndex: 0,
       userId // Store userId with job status
     });
-    
+
     await addJobToQueue(jobId, userId);
-    return jobId;
     return jobId;
   } finally {
     // Return connection to pool
