@@ -288,17 +288,23 @@ export async function processSyncJob(
 
   try {
     logger.info(`Starting sync job processing`, { jobId });
+    // Get Redis connection once and reuse
     redis = await getRedisWithRetry();
     
-    // Get current progress with retry
-    let status;
-    try {
-      status = await getJobStatus(jobId);
-    } catch (error) {
-      logger.warn('Failed to get job status, retrying...', { jobId, error });
-      redis = await getRedisWithRetry();
-      status = await getJobStatus(jobId);
-    }
+    // Get current progress with timeout
+    const status = await Promise.race<JobStatus | null>([
+      getJobStatus(jobId),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Job status retrieval timeout')), 5000)
+      )
+    ]);
+    
+    // Log status retrieval
+    logger.info('Retrieved job status', {
+      jobId,
+      statusExists: !!status,
+      lastProcessedIndex: status?.lastProcessedIndex
+    });
     const lastProcessedIndex = status?.lastProcessedIndex || 0;
     
     // Get all highlights with retry

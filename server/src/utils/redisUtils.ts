@@ -21,35 +21,28 @@ interface RedisTestResult {
 export async function verifyRedisConnection(
   options?: RedisConnectionOptions
 ): Promise<RedisTestResult> {
-  const maxRetries = options?.maxRetries || 3;
-  const retryDelay = options?.retryDelay || 1000; // 1 second
-  const timeout = options?.timeout || 5000; // 5 seconds
+  const maxRetries = options?.maxRetries || (process.env.VERCEL ? 2 : 3);
+  const retryDelay = options?.retryDelay || (process.env.VERCEL ? 2000 : 1000);
+  const timeout = options?.timeout || (process.env.VERCEL ? 10000 : 5000);
 
-  let redis: Redis;
+  let redis: Redis | undefined;
   let retryCount = 0;
+  let result: RedisTestResult;
 
   while (retryCount < maxRetries) {
     try {
       redis = await getRedis();
+      console.log('[Redis] Verifying connection, attempt:', retryCount + 1);
       
-      // Test connection with timeout
+      // Quick ping test with short timeout
       const pingResponse = await Promise.race([
         redis.ping(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Redis connection timeout')), timeout)
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis ping timeout')), 3000)
         )
       ]);
 
-      // Test basic operations
-      const testKey = `test:${Date.now()}`;
-      await redis.set(testKey, 'test-value', 'EX', 10); // Set with 10s expiration
-      const testValue = await redis.get(testKey);
-      await redis.del(testKey);
-
-      if (testValue !== 'test-value') {
-        throw new Error('Redis test operations failed');
-      }
-
+      console.log('[Redis] Connection verified successfully');
       return {
         success: true,
         pingResponse: pingResponse as string,
@@ -58,12 +51,29 @@ export async function verifyRedisConnection(
         retryCount
       };
     } catch (error) {
+      console.error('[Redis] Verification attempt failed:', {
+        attempt: retryCount + 1,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
       retryCount++;
       if (retryCount >= maxRetries) {
         throw error;
       }
       
-      await new Promise(resolve => setTimeout(resolve, retryDelay * retryCount));
+      // Exponential backoff
+      const backoffTime = retryDelay * Math.pow(2, retryCount - 1);
+      console.log(`[Redis] Retrying in ${backoffTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
+    } finally {
+      if (redis) {
+        try {
+          const redisPool = (await import('../services/redisService.js')).redisPool;
+          redisPool.release(redis);
+        } catch (error) {
+          console.warn('[Redis] Error releasing connection:', error);
+        }
+      }
     }
   }
 
