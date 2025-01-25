@@ -106,7 +106,7 @@ const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
 // Import handlers and services
 import { uploadUrlHandler } from './api/upload-url.js';
-import { validateSync } from './services/syncValidationService.js';
+import { validateSync, ValidationError } from './services/syncValidationService.js';
 
 // Middlewares
 app.use(cors({
@@ -547,9 +547,14 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       console.log('Sync validation passed for user:', userId);
     } catch (error) {
       console.error('Sync validation failed:', error);
+      if (error instanceof ValidationError) {
+        return res.status(400).json({
+          errorType: error.errorType,
+          message: error.message
+        });
+      }
       return res.status(400).json({
-        errorType: 'ValidationError',
-        message: error instanceof Error ? error.message : 'Validation failed'
+        error: error instanceof Error ? error.message : 'Validation failed'
       });
     }
 

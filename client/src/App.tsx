@@ -55,13 +55,7 @@ function App() {
       setFile(null);
       setHighlightCount(0);
       
-      const message = error instanceof Error ? 
-        (error.message.includes('User already has an active file upload') ?
-          'You already have a sync in progress. Please wait until it completes before uploading again.' :
-          error.message) :
-        'Failed to parse highlights';
-      
-      setErrorMessage(`${message}`);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
     }
   };
   const handleSync = async () => {
@@ -92,9 +86,6 @@ function App() {
       if (!response.ok) {
         const errorData = await response.json();
         // Handle validation errors specifically
-        if (errorData.errorType === 'ValidationError') {
-          throw new Error(`Validation failed: ${errorData.message}`);
-        }
         throw new Error(errorData.message || await response.text());
       }
 
@@ -109,20 +100,14 @@ function App() {
     } catch (error) {
       setSyncStatus('error');
       
-      const message = error instanceof Error ? 
-        (error.message.includes('User already has an active file upload') ?
-          'You already have a sync in progress. Please wait until it completes before uploading again.' :
-          error.message) :
-        'Failed to sync highlights';
-      
-      setErrorMessage(`${message}`);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
       
       // Log the error to console for debugging
       console.error('Sync error:', error);
       
       // Reset file state if validation failed
-      if (error instanceof Error && 
-          (error.message.includes('Validation failed') || 
+      if (error instanceof Error &&
+          (error.message.includes('Validation failed') ||
            error.message.includes('User already has an active file upload'))) {
         setFile(null);
         setHighlightCount(0);

@@ -2,6 +2,15 @@ import { getActiveUploadCount, hasUserPendingJob } from './redisService.js';
 import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
 import { logger } from '../utils/logger.js';
 
+export class ValidationError extends Error {
+    public readonly errorType = 'ValidationError';
+
+    constructor(message: string) {
+        super(message);
+        this.name = 'ValidationError';
+    }
+}
+
 export async function validateSync(userId: string): Promise<void> {
     // Check active uploads
     const activeUploads = await getActiveUploadCount();
@@ -14,7 +23,7 @@ export async function validateSync(userId: string): Promise<void> {
             userId,
             status: 'Upload blocked'
         });
-        throw new Error('You already have an active upload processing. Try again later.');
+        throw new ValidationError('You already have an active upload processing. Try again later.');
     }
     
     // Check global upload limit
@@ -24,6 +33,6 @@ export async function validateSync(userId: string): Promise<void> {
             maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
             status: 'Upload blocked'
         });
-        throw new Error('Too many users are using the service right now. Please try again later.');
+        throw new ValidationError('Too many users are using the service right now. Please try again later.');
     }
 }
