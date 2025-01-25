@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
 import {
   getRedis,
   initializeStream,
@@ -126,6 +127,14 @@ class WorkerService {
             throw new Error(`User ${status.userId} already has an upload in progress`);
           }
 
+          // Check upload limit
+          if (this.uploadQueue.length >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
+            throw new Error(
+              `Maximum active uploads reached (${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). ` +
+              'Please try again later.'
+            );
+          }
+
           if (uploadId && !this.uploadQueue.includes(uploadId)) {
             this.uploadQueue.push(uploadId);
             this.activeUserUploads.set(status.userId, uploadId);
@@ -189,11 +198,22 @@ class WorkerService {
             });
             logger.error('Job processing failed', { jobId, error });
 
-            // If upload failed, clear it from processing
+            // If upload failed, clear it from processing and clean up jobs
             if (uploadId) {
               this.uploadProcessing = false;
               this.currentUploadId = null;
               this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+              
+              // Clean up all jobs for this upload
+              const redis = await getRedis();
+              try {
+                // Remove all jobs with this uploadId
+                await redis.xdel(STREAM_NAME, uploadId);
+              } catch (error) {
+                logger.error('Error cleaning up failed upload jobs', { uploadId, error });
+              } finally {
+                redisPool.release(redis);
+              }
             }
           }
 
@@ -204,7 +224,7 @@ class WorkerService {
         } catch (error) {
           logger.error('Error in worker loop', error);
           // Wait before retrying on error
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, UPLOAD_LIMITS.UPLOAD_LIMIT_RETRY_DELAY));
         }
       }
     } catch (error) {
