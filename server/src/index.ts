@@ -84,7 +84,7 @@ import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
-import { setJobStatus } from './services/redisService.js';
+import { setJobStatus, getRedis, redisPool } from './services/redisService.js';
 import type { JobStatus } from './types/job.js';
 import { verifyRedisConnection } from './utils/redisUtils.js';
 import { triggerProcessing } from './services/githubService.js';
@@ -103,8 +103,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Use API base path for Vercel deployment
 const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
-// Import upload URL handler
+// Import handlers and services
 import { uploadUrlHandler } from './api/upload-url.js';
+import { validateSync } from './services/syncValidationService.js';
 
 // Middlewares
 app.use(cors({
@@ -503,10 +504,56 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     const fileContent = req.file.buffer.toString('utf-8');
 
-    // Increment rate limit counter before proceeding with sync
-    rateLimiter.increment(clientIp);
+    // Get real user ID from Redis OAuth token
+    let userId;
+    let redis;
+    try {
+      // Get token data from Redis
+      redis = await getRedis();
+      const keys = await redis.keys('oauth:*');
+      
+      if (keys.length === 0) {
+        throw new Error('No OAuth tokens found in Redis');
+      }
+      
+      const tokenData = await redis.get(keys[0]);
+      if (!tokenData) {
+        throw new Error('Failed to retrieve token data from Redis');
+      }
 
-    const userId = req.user?.id || 'default-user-id';
+      const tokenDataObj = JSON.parse(tokenData);
+      if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
+        throw new Error('Invalid or missing user ID in token data');
+      }
+
+      userId = tokenDataObj.userId;
+      console.log('Processing for user:', userId);
+    } catch (error) {
+      console.error('Failed to get user ID from Redis:', error);
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please reconnect to Notion'
+      });
+    } finally {
+      if (redis) {
+        await redisPool.release(redis);
+      }
+    }
+
+    // Run sync validation with actual user ID
+    try {
+      await validateSync(userId);
+      console.log('Sync validation passed for user:', userId);
+    } catch (error) {
+      console.error('Sync validation failed:', error);
+      return res.status(400).json({
+        errorType: 'ValidationError',
+        message: error instanceof Error ? error.message : 'Validation failed'
+      });
+    }
+
+    // Increment rate limit counter after validation passes
+    rateLimiter.increment(clientIp);
     console.log('Processing for user:', userId);
     
     // Start by creating a job ID
