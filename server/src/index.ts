@@ -87,6 +87,7 @@ import { processSyncJob, getSyncStatus } from './services/syncService.js';
 import { setJobStatus, getRedis, redisPool } from './services/redisService.js';
 import type { JobStatus } from './types/job.js';
 import { verifyRedisConnection } from './utils/redisUtils.js';
+import { addJobToQueue } from './services/redisJobService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
@@ -616,8 +617,13 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         redisConnected: true
       });
       
-      console.log('Calling triggerProcessing...');
+      console.log('Starting job processing...');
       try {
+        // First add job to queue which will add user to active set
+        await addJobToQueue(jobId, userId);
+        console.log('Job added to queue');
+
+        // Then trigger GitHub processing
         const result = await triggerProcessing(fileContent, userId, clientIp);
         console.log('\n✅ Successfully triggered GitHub processing:', {
           jobId,
