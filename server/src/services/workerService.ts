@@ -5,7 +5,9 @@ import {
   getNextJob,
   setJobStatus,
   acknowledgeJob,
-  RedisService
+  RedisService,
+  STREAM_NAME,
+  redisPool
 } from './redisService.js';
 import { processFile } from './processService.js';
 import type { JobStatus } from '../types/job.js';
@@ -43,6 +45,10 @@ class WorkerService {
     process.exit(0);
   }
 
+  private currentUploadId: string | null = null;
+  private uploadQueue: string[] = [];
+  private uploadProcessing = false;
+
   async start(): Promise<void> {
     if (this.isRunning) {
       logger.warn('Worker is already running');
@@ -61,7 +67,7 @@ class WorkerService {
     );
 
     this.isRunning = true;
-    logger.info('Starting worker service');
+    logger.info('Starting worker service with sequential upload processing');
 
     // In local environment, run periodically every 30 seconds
     if (process.env.NODE_ENV === 'development') {
@@ -104,34 +110,71 @@ class WorkerService {
           
           // Reset empty poll count when job is found
           this.emptyPollCount = 0;
-          const { jobId, messageId } = result;
+          const { jobId, messageId, uploadId } = result;
+          
+          // If this is a new upload, add to queue
+          if (uploadId && !this.uploadQueue.includes(uploadId)) {
+            this.uploadQueue.push(uploadId);
+          }
+
+          // Wait if another upload is being processed
+          while (this.uploadProcessing && this.currentUploadId !== uploadId) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          // Start processing this upload
+          if (uploadId) {
+            this.currentUploadId = uploadId;
+            this.uploadProcessing = true;
+          }
+
           this.currentJobId = jobId;
 
           // Update job status to processing
-          await setJobStatus(jobId, { 
+          await setJobStatus(jobId, {
             state: 'processing',
-            message: 'Starting file processing'
+            message: 'Starting file processing',
+            uploadId
           });
 
           try {
-            // Process the job
+            // Process the job with highlight limit
             await processFile(jobId);
 
             // Update job status to completed
             await setJobStatus(jobId, {
               state: 'completed',
               message: 'File processing completed',
-              completedAt: Date.now()
+              completedAt: Date.now(),
+              uploadId
             });
+
+            // If this was the last job in the upload, mark upload complete
+            if (uploadId) {
+              const uploadComplete = await this.checkUploadCompletion(uploadId);
+              if (uploadComplete) {
+                this.uploadProcessing = false;
+                this.currentUploadId = null;
+                this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+              }
+            }
 
           } catch (error) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await setJobStatus(jobId, {
               state: 'failed',
-              message: `File processing failed: ${errorMessage}`
+              message: `File processing failed: ${errorMessage}`,
+              uploadId
             });
             logger.error('Job processing failed', { jobId, error });
+
+            // If upload failed, clear it from processing
+            if (uploadId) {
+              this.uploadProcessing = false;
+              this.currentUploadId = null;
+              this.uploadQueue = this.uploadQueue.filter(id => id !== uploadId);
+            }
           }
 
           // Acknowledge message after processing (whether successful or failed)
@@ -244,6 +287,29 @@ class WorkerService {
       } catch (error) {
         logger.error('Error cleaning up Redis connections after worker cycle', { error });
       }
+    }
+  }
+
+  private async checkUploadCompletion(uploadId: string): Promise<boolean> {
+    const redis = await getRedis();
+    try {
+      // Get all jobs for this upload
+      const jobs = await redis.xread('STREAMS', STREAM_NAME, '0-0');
+      if (!jobs || jobs.length === 0) return true;
+
+      const streamMessages = jobs[0][1];
+      if (!streamMessages || streamMessages.length === 0) return true;
+
+      // Check if any jobs remain for this upload
+      const remainingJobs = streamMessages.filter(([_, fields]) => {
+        const uploadIdIndex = fields.indexOf('uploadId');
+        return uploadIdIndex !== -1 &&
+               fields[uploadIdIndex + 1] === uploadId;
+      });
+
+      return remainingJobs.length === 0;
+    } finally {
+      redisPool.release(redis);
     }
   }
 

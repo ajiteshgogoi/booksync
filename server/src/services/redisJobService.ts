@@ -10,33 +10,43 @@ import {
 
 type RedisStreamMessage = [id: string, fields: string[]];
 
-export async function addJobToQueue(jobId: string, userId: string): Promise<void> {
+import { startUpload, addJobToUpload } from './uploadTrackingService.js';
+
+export async function addJobToQueue(jobId: string, userId: string, uploadId?: string): Promise<void> {
   const redis = await getRedis();
   try {
-    // Check if user is in active users set
-    const isActive = await redis.sismember(ACTIVE_USERS_SET, userId);
-    if (isActive) {
-      throw new Error('User already has an active file processing job');
+    if (!uploadId) {
+      // Single job upload
+      await startUpload(userId, jobId);
     }
 
-    // Add job to stream and mark user as active
-    await redis.multi()
-      .xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId)
-      .sadd(ACTIVE_USERS_SET, userId)
-      .exec();
-      
-    await setJobStatus(jobId, { 
+    // Add job to stream
+    await redis.xadd(
+      STREAM_NAME,
+      '*',
+      'jobId', jobId,
+      'userId', userId,
+      'uploadId', uploadId || jobId
+    );
+
+    if (uploadId) {
+      // Add job to upload tracking
+      await addJobToUpload(uploadId, jobId);
+    }
+
+    await setJobStatus(jobId, {
       state: 'pending',
-      userId 
+      userId,
+      uploadId: uploadId || jobId
     });
   } catch (error) {
-    // Clean up if something went wrong
-    await redis.srem(ACTIVE_USERS_SET, userId);
     throw error;
   } finally {
     redisPool.release(redis);
   }
 }
+
+import { completeJob as completeUploadJob } from './uploadTrackingService.js';
 
 export async function completeJob(jobId: string, messageId: string): Promise<void> {
   const redis = await getRedis();
@@ -46,10 +56,19 @@ export async function completeJob(jobId: string, messageId: string): Promise<voi
       throw new Error('Cannot complete job: userId not found');
     }
 
-    await redis.multi()
-      .xack(STREAM_NAME, CONSUMER_GROUP, messageId)
-      .srem(ACTIVE_USERS_SET, status.userId)
-      .exec();
+    // Acknowledge the job in the stream
+    await redis.xack(STREAM_NAME, CONSUMER_GROUP, messageId);
+
+    // Handle upload tracking if this is part of an upload
+    if (status.uploadId) {
+      const uploadComplete = await completeUploadJob(status.uploadId, jobId);
+      if (uploadComplete) {
+        await redis.del(`UPLOAD_STATUS:${status.userId}`);
+      }
+    } else {
+      // Single job upload
+      await redis.del(`UPLOAD_STATUS:${status.userId}`);
+    }
   } finally {
     redisPool.release(redis);
   }

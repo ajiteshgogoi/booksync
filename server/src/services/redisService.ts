@@ -624,7 +624,7 @@ export async function checkRateLimit(databaseId: string): Promise<boolean> {
 }
 
 // Get next job
-export async function getNextJob(): Promise<{ jobId: string; messageId: string } | null> {
+export async function getNextJob(): Promise<{ jobId: string; messageId: string; uploadId?: string } | null> {
   const redis = await getRedis();
   try {
     const results = await redis.xreadgroup(
@@ -653,7 +653,14 @@ export async function getNextJob(): Promise<{ jobId: string; messageId: string }
     }
 
     const jobId = fields[jobIdIndex + 1];
-    return { jobId, messageId };
+    
+    // Extract uploadId if present
+    const uploadIdIndex = fields.indexOf('uploadId');
+    const uploadId = uploadIdIndex !== -1 && uploadIdIndex + 1 < fields.length
+      ? fields[uploadIdIndex + 1]
+      : undefined;
+
+    return { jobId, messageId, uploadId };
   } finally {
     redisPool.release(redis);
   }
