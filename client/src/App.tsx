@@ -326,8 +326,12 @@ function App() {
                       });
                       window.location.href = '/';
                     }}
-                    className="mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-serif block"
-                    disabled={['parsing', 'queued', 'starting'].includes(syncStatus)}
+                    className={`mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md transition-colors font-serif block ${
+                      ['parsing', 'queued', 'starting', 'validating'].includes(syncStatus)
+                        ? 'opacity-50 cursor-not-allowed'
+                        : ''
+                    }`}
+                    disabled={['parsing', 'queued', 'starting', 'validating'].includes(syncStatus)}
                   >
                   Disconnect Notion
                 </button>
