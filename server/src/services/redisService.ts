@@ -637,7 +637,10 @@ export async function addJobToQueue(jobId: string, userId: string): Promise<void
     }
 
     await redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId);
-    await setJobStatus(jobId, { state: 'pending' });
+    await setJobStatus(jobId, {
+      state: 'pending',
+      userId  // Include userId when setting job status
+    });
   } finally {
     redisPool.release(redis);
   }
