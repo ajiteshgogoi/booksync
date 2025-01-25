@@ -116,8 +116,20 @@ export async function triggerProcessing(
         }
       });
 
-      if (!tokenInfo.headers['x-oauth-scopes']?.includes('workflow')) {
-        throw new Error('Token missing workflow scope. Required scopes: workflow');
+      // Check scopes - different headers for classic tokens vs fine-grained PATs
+      const scopes = tokenInfo.headers['x-oauth-scopes'];
+      const permissions = tokenInfo.headers['x-oauth-client-permissions'];
+      
+      console.log('Token permissions details:', {
+        scopes,
+        permissions,
+        allHeaders: tokenInfo.headers
+      });
+
+      // Check for fine-grained PAT permissionless access or classic token workflow scope
+      const allowsPermissionless = tokenInfo.headers['x-accepted-github-permissions']?.includes('allows_permissionless_access=true');
+      if (!allowsPermissionless && !scopes?.includes('workflow') && !permissions?.includes('actions')) {
+        throw new Error('Token missing required permissions. Needs workflow scope or actions permission');
       }
 
       // Verify token has repository access
@@ -154,8 +166,11 @@ export async function triggerProcessing(
         documentation: tokenError.response?.data?.documentation_url,
         responseData: tokenError.response?.data,
         responseHeaders: tokenError.response?.headers,
+        allTokenInfoHeaders: tokenError.response?.headers,
+        scopes: tokenError.response?.headers?.['x-oauth-scopes'],
+        permissions: tokenError.response?.headers?.['x-oauth-client-permissions'],
         fullError: tokenError instanceof Error ? tokenError.message : 'Unknown error',
-        authMethod: authHeader.split(' ')[0] // 'token' or 'Bearer'
+        authMethod: authHeader.split(' ')[0]
       };
       console.error('Token verification failed:', errorDetails);
       throw new Error(`GitHub token validation failed: ${errorDetails.message || errorDetails.fullError}`);
