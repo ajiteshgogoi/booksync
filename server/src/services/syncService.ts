@@ -56,10 +56,10 @@ export async function queueSyncJob(
 ): Promise<string> {
   let redis;
   try {
-    console.debug('Starting sync job for database:', databaseId);
+    logger.debug('Starting sync job', { databaseId });
     const jobId = `sync:${databaseId}:${Date.now()}`;
     const highlights = await parseClippings(fileContent);
-    console.debug('Parsed highlights count:', highlights.length);
+    logger.debug('Parsed highlights', { count: highlights.length });
 
     // Get Notion client to check for existing highlights
     const notionClient = await getClient();
@@ -78,7 +78,7 @@ export async function queueSyncJob(
     for (const [bookTitle, bookHighlightList] of bookHighlights.entries()) {
       // Get existing hashes for this book from Notion
       const existingHashes = await getBookHighlightHashes(notionClient, databaseId, bookTitle);
-      console.debug('Existing hashes for book:', {
+      logger.debug('Existing hashes for book', {
         bookTitle,
         existingHashCount: existingHashes.size,
         sampleHashes: Array.from(existingHashes).slice(0, 3)
@@ -89,7 +89,7 @@ export async function queueSyncJob(
         const truncatedHash = truncateHash(h.hash);
         const isDuplicate = existingHashes.has(truncatedHash);
         if (isDuplicate) {
-          console.debug('Skipping duplicate highlight:', {
+          logger.debug('Skipping duplicate highlight', {
             hash: h.hash,
             truncatedHash,
             location: h.location,
@@ -99,7 +99,7 @@ export async function queueSyncJob(
         return !isDuplicate;
       });
 
-      console.debug('Deduplication results:', {
+      logger.debug('Deduplication results', {
         bookTitle,
         originalCount: bookHighlightList.length,
         newCount: newHighlights.length,
@@ -109,11 +109,11 @@ export async function queueSyncJob(
       uniqueHighlights.push(...newHighlights);
     }
 
-    console.debug('Total unique highlights to queue:', uniqueHighlights.length);
+    logger.debug('Total unique highlights to queue', { count: uniqueHighlights.length });
 
     // Only proceed if we have unique highlights to process
     if (uniqueHighlights.length === 0) {
-      console.debug('No new unique highlights to process');
+      logger.debug('No new unique highlights to process');
       await setJobStatus(jobId, {
         state: 'completed',
         progress: 100,
@@ -184,14 +184,22 @@ export async function queueSyncJob(
     }
     // Check active uploads before adding to queue
     const activeUploads = await getActiveUploadCount();
-    console.log('[Sync] Checking active uploads before queueing:', activeUploads);
+    logger.info('[Sync] Checking active uploads before queueing', { activeUploads });
     
     if (activeUploads >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
-      console.log(`[Sync] Upload limit reached (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). GitHub trigger blocked.`);
+      logger.warn('[Sync] Upload limit reached', {
+        activeUploads,
+        maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
+        status: 'GitHub trigger blocked'
+      });
       throw new Error('Too many users are using the service right now. Please try again later.');
     }
 
-    console.log(`[Sync] Upload limit check passed (${activeUploads}/${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). Proceeding with GitHub trigger.`);
+    logger.info('[Sync] Upload limit check passed', {
+      activeUploads,
+      maxUploads: UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS,
+      status: 'Proceeding with GitHub trigger'
+    });
     
     await setJobStatus(jobId, {
       state: 'pending',
