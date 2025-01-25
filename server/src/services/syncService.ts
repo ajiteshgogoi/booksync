@@ -363,15 +363,6 @@ export async function processSyncJob(
       throw new Error('Cannot process job: userId not found in job status');
     }
     
-    // Update status to processing while preserving userId
-    await setJobStatus(jobId, {
-      state: 'processing',
-      progress: Math.round((currentProcessed / total) * 100),
-      message: 'Processing highlights...',
-      lastProcessedIndex: currentProcessed,
-      userId: initialJobStatus.userId
-    });
-
     // Log highlight state before batch processing
     const hashCounts = new Map<string, number>();
     highlightsToProcess.forEach(h => {

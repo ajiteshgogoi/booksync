@@ -639,8 +639,8 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         
         // Update job status with file name for tracking
         await setJobStatus(jobId, {
-          state: 'processing',
-          message: 'File uploaded and processing triggered',
+          state: 'pending',
+          message: 'File uploaded and queued for processing',
           progress: 0,
           result: { fileName: result }
         });

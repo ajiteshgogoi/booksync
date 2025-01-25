@@ -30,12 +30,6 @@ export async function processFileContent(
 
 export async function processFile(jobId: string): Promise<void> {
   try {
-    // Update status to processing
-    await setJobStatus(jobId, {
-      state: 'processing',
-      message: 'Processing highlights'
-    });
-
     // Process the highlights directly from Redis
     await processSyncJob(jobId);
 
