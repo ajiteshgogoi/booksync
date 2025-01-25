@@ -59,23 +59,6 @@ export async function queueSyncJob(
   try {
     logger.debug('Starting sync job', { databaseId });
     
-    // Validate sync conditions before proceeding
-    try {
-      await validateSync(userId);
-      logger.info('[Sync] Validation passed', {
-        userId,
-        status: 'Proceeding with sync'
-      });
-    } catch (error) {
-      logger.error('[Sync] Validation failed', {
-        userId,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      // Add error type for better client-side handling
-      const validationError = new Error(error instanceof Error ? error.message : 'Validation failed');
-      (validationError as any).errorType = 'ValidationError';
-      throw validationError;
-    }
     
     const jobId = `sync:${userId}:${Date.now()}`;
     const highlights = await parseClippings(fileContent);
