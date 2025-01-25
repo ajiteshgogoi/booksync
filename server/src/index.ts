@@ -228,7 +228,7 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
       {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `token ${token}`,
+          'Authorization': `token ${token}`, // PATs always use token prefix
           'User-Agent': 'BookSync-App'
         }
       }
@@ -250,7 +250,7 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
       {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `token ${token}`,
+          'Authorization': `token ${token}`, // PATs always use token prefix
           'User-Agent': 'BookSync-App'
         }
       }
@@ -267,7 +267,8 @@ app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
       tokenInfo: {
         present: true,
         length: token.length,
-        format: token.startsWith('ghp_') ? 'Fine-grained token' :
+        format: token.startsWith('github_pat_') ? 'Fine-grained PAT' :
+                token.startsWith('ghp_') ? 'Fine-grained token' :
                 token.length === 40 ? 'Classic token' :
                 'Unknown format'
       }

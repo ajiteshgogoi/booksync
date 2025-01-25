@@ -74,7 +74,8 @@ export async function triggerProcessing(
     console.log('Token validation:', {
       present: !!githubToken,
       length: githubToken?.length,
-      format: githubToken?.startsWith('ghp_') ? 'Fine-grained token' :
+      format: githubToken?.startsWith('github_pat_') ? 'Fine-grained PAT' :
+             githubToken?.startsWith('ghp_') ? 'Fine-grained token' :
              githubToken?.length === 40 ? 'Classic token' :
              'Unknown format',
       source: process.env.GITHUB_ACCESS_TOKEN ? 'local' : 'vercel'
@@ -84,8 +85,8 @@ export async function triggerProcessing(
       throw new Error('GitHub access token not configured');
     }
 
-    // Determine auth header format based on token length
-    const authHeader = githubToken.length > 50 ? `Bearer ${githubToken}` : `token ${githubToken}`;
+    // Always use 'token' prefix for GitHub PATs
+    const authHeader = `token ${githubToken}`;
 
     // Verify token permissions with timeout and rate limit checking
     try {
@@ -143,15 +144,21 @@ export async function triggerProcessing(
             message?: string;
             documentation_url?: string;
           };
+          headers?: Record<string, string>;
         };
       };
       
-      console.error('Token verification failed:', {
+      const errorDetails = {
         status: tokenError.response?.status,
         message: tokenError.response?.data?.message,
-        documentation: tokenError.response?.data?.documentation_url
-      });
-      throw new Error('Invalid GitHub token permissions');
+        documentation: tokenError.response?.data?.documentation_url,
+        responseData: tokenError.response?.data,
+        responseHeaders: tokenError.response?.headers,
+        fullError: tokenError instanceof Error ? tokenError.message : 'Unknown error',
+        authMethod: authHeader.split(' ')[0] // 'token' or 'Bearer'
+      };
+      console.error('Token verification failed:', errorDetails);
+      throw new Error(`GitHub token validation failed: ${errorDetails.message || errorDetails.fullError}`);
     }
 
     // Prepare the payload with only file reference - no large content
@@ -228,3 +235,4 @@ export async function triggerProcessing(
     console.log('\n=== GitHub Processing Trigger End ===\n');
   }
 }
+
