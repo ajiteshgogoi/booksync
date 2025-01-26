@@ -1,155 +1,152 @@
-# BookSync
+# BookSync - Kindle Highlights to Notion Sync
 
-[![Live Website](https://img.shields.io/badge/demo-live-brightgreen)](https://booksync.vercel.app/)
+BookSync helps you sync your Kindle highlights to Notion automatically. Upload your My Clippings.txt file and BookSync will create a beautiful database of your book highlights in Notion.
 
-A modern web application to sync Kindle highlights to Notion, using Redis streams and GitHub Actions backend processing.
+## Migration to Cloudflare Workers
 
-## Key Features
+We're migrating from GitHub Actions to Cloudflare Workers for better scalability and reliability. This guide will help you transition to the new system.
 
-- **Stream-based Processing**
-  - Redis streams for reliable job queuing
-  - Consumer groups for parallel processing
-  - At-least-once delivery semantics
-  - Automatic job retries and dead-letter handling
+### Setting Up Cloudflare Worker
 
-- **Smart Deduplication**
-  - SHA-256 based content hashing
-  - Location-aware duplicate detection
-  - Automatic handling of edited highlights
-  - Redis-backed hash storage with TTL
+1. Create a Cloudflare account if you don't have one
+2. Set up the following resources:
+   - Workers KV namespace for OAuth tokens
+   - R2 bucket for highlight file storage
+   - Durable Objects for job tracking
 
-- **Client-side File Handling**
-  - Secure file upload with progress tracking
-  - Client-side parsing and validation
-  - Chunked uploads for large files
-  - Automatic retries on network failures
+3. Configure secrets in Cloudflare:
+   ```bash
+   wrangler secret put NOTION_CLIENT_ID
+   wrangler secret put NOTION_CLIENT_SECRET
+   ```
 
-- **GitHub Actions Backend**
-  - Scheduled processing every 30 minutes
-  - Fair usage limits per user
-  - Automatic scaling based on queue size
-  - Detailed processing metrics
-  - Dynamic batch processing with:
-    - Base batch size of 50 highlights
-    - Automatic adjustment based on API response times
-    - Exponential backoff for rate limits
-    - Real-time batch size optimization
+4. Deploy the worker:
+   ```bash
+   cd workers
+   npm install
+   npm run deploy
+   ```
 
-## Architecture
+### Update Notion App Settings
 
-### 1. Client Layer
-- React frontend with Vite
-- File upload and parsing
-- Progress tracking and status updates
-- OAuth integration with Notion
+1. Update your Notion OAuth redirect URI to point to your worker:
+   ```
+   https://booksync-worker.your-workers-dev.workers.dev/oauth/callback
+   ```
 
-### 2. Queue Layer
-- Redis streams for job management
-- Consumer groups for parallel processing
-- Automatic retry mechanism
-- Dead-letter queue for failed jobs
-
-### 3. Processing Layer
-- GitHub Actions backend
-- Scheduled processing every 30 minutes
-- Batch processing of highlights
-- Rate-limited Notion API calls
-- Automatic retries with exponential backoff
-
-### 4. Storage Layer
-- Redis for job queues and caching
-- R2 storage for temporary file storage
-- Notion as primary data store
-
-## Setup & Deployment
-
-### Prerequisites
-- Node.js v18+
-- Redis v6+ with streams support
-- GitHub repository with Actions enabled
-- Notion integration credentials
+2. Update your app's callback URL in the Notion developer dashboard
 
 ### Environment Variables
 
+The worker requires the following environment variables:
+
+```toml
+# In .dev.vars for local development
+NOTION_CLIENT_ID="your-client-id"
+NOTION_CLIENT_SECRET="your-client-secret"
+NOTION_REDIRECT_URI="https://booksync-worker.your-workers-dev.workers.dev/oauth/callback"
+```
+
+### API Endpoints
+
+The worker exposes the following endpoints:
+
+#### Upload Endpoint
+```http
+POST /upload
+Content-Type: multipart/form-data
+
+file: My Clippings.txt
+userId: string
+workspaceId: string
+```
+
+#### Sync Endpoint
+```http
+POST /sync
+Content-Type: application/json
+
+{
+  "jobId": "string",
+  "userId": "string"
+}
+```
+
+#### Health Check
+```http
+GET /health
+```
+
+### Monitoring & Debugging
+
+- Check worker health: `GET /health`
+- Test webhook: `POST /test-webhook`
+- Monitor job status via the job store
+- Logs available in Cloudflare dashboard
+
+### Cleanup
+
+After migrating:
+
+1. Remove GitHub Actions workflows:
+   - `.github/workflows/sync.yml`
+   - `.github/workflows/webhook.yml`
+
+2. Update frontend configuration to use worker endpoints
+
+3. Clean up old Redis setup:
+   ```bash
+   # Optional: Export data if needed
+   npm run export-redis
+   
+   # Remove Redis service
+   npm run cleanup-redis
+   ```
+
+### Development
+
+Run locally:
 ```bash
-# Redis Configuration
-REDIS_URL=redis://localhost:6379
-REDIS_STREAM_NAME=booksync-jobs
-REDIS_CONSUMER_GROUP=booksync-workers
-
-# GitHub Actions
-GITHUB_ACCESS_TOKEN=your_token
-GITHUB_WORKFLOW_FILE=.github/workflows/process.yml
-
-# Notion Integration
-NOTION_OAUTH_CLIENT_ID=your_client_id
-NOTION_OAUTH_CLIENT_SECRET=your_client_secret
-NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
+cd workers
+npm install
+npm run dev
 ```
 
-### Deployment Steps
-
-1. Set up Redis with streams support
-2. Configure GitHub Actions workflow
-3. Set up Notion integration
-4. Deploy frontend and backend
-5. Configure environment variables
-
-## Usage
-
-1. Connect your Notion account
-2. Upload My Clippings.txt
-3. Highlights are queued for processing
-4. View progress and status
-5. Access synced highlights in Notion
-
-## Development
-
-### Client Structure
-
-```
-client/
-├── src/
-│   ├── components/      # UI components
-│   ├── services/        # API clients
-│   ├── utils/           # Utility functions
-│   ├── App.tsx          # Main application
-│   └── main.tsx         # Entry point
+Run tests:
+```bash
+npm test
 ```
 
-### Server Structure
+### Architecture
 
-```
-server/
-├── src/
-│   ├── services/
-│   │   ├── redisJobService.ts    # Redis stream management
-│   │   ├── notionClient.ts       # Notion API integration
-│   │   └── githubService.ts      # GitHub Actions integration
-│   ├── worker.ts                 # Background processor
-│   └── index.ts                  # API server
-```
+The new architecture uses:
+- Cloudflare Workers for processing
+- R2 for file storage
+- Workers KV for OAuth tokens
+- Durable Objects for job state
+- Scheduled tasks for sync and cleanup
 
-## Troubleshooting
+Benefits:
+- Better scalability
+- Reduced latency
+- No Redis dependency
+- Automatic cleanup
+- Built-in monitoring
 
-### Common Issues
+### Troubleshooting
 
-- **Redis Connection Issues**
-  - Verify Redis streams support
-  - Check consumer group configuration
+1. Check worker health endpoint for service status
+2. Verify environment variables are set
+3. Monitor job progress in Cloudflare dashboard
+4. Check R2 and KV access
 
-- **GitHub Actions Failures**
-  - Verify workflow permissions
-  - Check rate limits
+### Support
 
-- **Notion API Errors**
-  - Verify integration permissions
-  - Check rate limits
-
-## Contributing
-
-Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+For issues or questions:
+1. Check the health endpoint
+2. Review worker logs in Cloudflare dashboard
+3. Open an issue on GitHub
 
 ## License
 
-[MIT](LICENSE)
+MIT License - see [LICENSE](LICENSE) for details

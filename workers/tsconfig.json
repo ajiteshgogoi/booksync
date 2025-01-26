@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "lib": ["esnext"],
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDirs": [".", "../shared"],
+    "types": ["@cloudflare/workers-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@booksync/shared": ["../shared/src"],
+      "@booksync/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "../shared/src/**/*.ts"],
+  "exclude": ["node_modules", "../shared/node_modules"]
+}
