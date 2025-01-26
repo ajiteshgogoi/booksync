@@ -19827,7 +19827,7 @@ var UploadWorker = class {
         pipeline.set(key, JSON.stringify({
           ...highlight,
           databaseId
-        }), "EX", 3600);
+        }), "EX", 86400);
       });
       await pipeline.exec();
       await this.redis.set(`job:${jobId}`, JSON.stringify({
