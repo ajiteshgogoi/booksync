@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
-import { uploadFileToR2 } from './services/uploadService';
+import { uploadFileToR2, pollJobStatus } from './services/uploadService';
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'validating';
 
@@ -25,6 +25,36 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [showClippingsModal, setShowClippingsModal] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState(0);
+
+  // Poll job status when jobId exists
+  useEffect(() => {
+    if (!jobId || syncStatus !== 'queued') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const job = await pollJobStatus(jobId);
+        
+        if (job.status === 'completed') {
+          setSyncStatus('idle');
+          setJobId(null);
+          clearInterval(pollInterval);
+        } else if (job.status === 'failed') {
+          setSyncStatus('error');
+          setErrorMessage(job.error || 'Sync failed');
+          setJobId(null);
+          clearInterval(pollInterval);
+        } else if (job.status === 'processing') {
+          setSyncProgress(job.progress || 0);
+        }
+      } catch (error) {
+        console.error('Job polling error:', error);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [jobId, syncStatus]);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -70,9 +100,10 @@ function App() {
       // Only proceed with upload after validation passes
       const timestamp = Date.now();
       const fileKey = `clippings-${userId}-${timestamp}.txt`;
-      const { count } = await uploadFileToR2(selectedFile, fileKey);
+      const { count, job } = await uploadFileToR2(selectedFile, fileKey);
       
       setHighlightCount(count);
+      setJobId(job.id);
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');
@@ -83,7 +114,7 @@ function App() {
     }
   };
   const handleSync = async () => {
-    if (!file || highlightCount === 0) return;
+    if (!file || !jobId || highlightCount === 0) return;
     
     // Check auth expiration before sync
     if (!checkAuthExpiration()) {
@@ -98,29 +129,25 @@ function App() {
     setErrorMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
+      const userId = localStorage.getItem('userId') || 'anonymous';
       const response = await fetch(`${apiBase}/sync`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+          'x-api-key': process.env.WORKER_API_KEY || ''
+        },
+        body: JSON.stringify({ jobId, userId }),
         credentials: 'include'
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        // Handle validation errors specifically
         throw new Error(errorData.message || await response.text());
       }
 
-      const syncResponse = await response.json();
-      if (syncResponse.success) {
-        setSyncStatus('queued');
-        setErrorMessage(null);
-      } else {
-        setSyncStatus('idle');
-        setErrorMessage(syncResponse.message || 'Failed to sync highlights');
-      }
+      setSyncStatus('queued');
+      setErrorMessage(null);
     } catch (error) {
       setSyncStatus('error');
       

@@ -1,3 +1,27 @@
+import { Job } from '../types/job';
+
+const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+
+export async function pollJobStatus(jobId: string): Promise<Job> {
+  try {
+    const response = await fetch(`${apiBase}/jobs/${jobId}`, {
+      headers: {
+        'x-user-id': localStorage.getItem('userId') || 'anonymous'
+      },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch job status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error polling job status:', error);
+    throw error;
+  }
+}
+
 export async function getUploadUrl(fileName: string, fileKey: string, fileType: string): Promise<string> {
   try {
     console.log('Requesting upload URL for:', { fileName, fileKey, fileType });
@@ -36,7 +60,7 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
   }
 }
 
-export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number }> {
+export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number; job: Job }> {
   try {
     console.log('Starting file upload:', {
       fileName: file.name,
@@ -46,27 +70,26 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
     });
 
     // Validate file type and size
-    const allowedTypes = ['text/plain', 'application/pdf'];
-    if (!allowedTypes.includes(file.type)) {
-      throw new Error('Only text and PDF files are allowed');
+    // Create form data for upload
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const userId = localStorage.getItem('userId') || 'anonymous';
+    const workspaceId = localStorage.getItem('workspaceId');
+
+    if (!workspaceId) {
+      throw new Error('No workspace ID found. Please reconnect to Notion.');
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      throw new Error('File size must be less than 10MB');
-    }
-
-    const uploadUrl = await getUploadUrl(file.name, fileKey, file.type);
-    console.log('Using upload URL:', uploadUrl);
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      mode: 'cors',
-      body: file,
+    // Upload file to worker
+    const uploadResponse = await fetch(`${apiBase}/upload`, {
+      method: 'POST',
+      body: formData,
       headers: {
-        'Content-Type': file.type,
-        'Content-Length': file.size.toString(),
-        'Origin': window.location.origin
+        'x-user-id': userId,
+        'x-workspace-id': workspaceId
       },
+      credentials: 'include'
     });
 
     console.log('Upload response:', {
@@ -75,44 +98,41 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
     });
 
     if (!uploadResponse.ok) {
-      const errorBody = await uploadResponse.text();
-      console.error('Upload failed:', {
-        status: uploadResponse.status,
-        error: errorBody
-      });
-      throw new Error(`Failed to upload file: ${uploadResponse.statusText}`);
+      const errorData = await uploadResponse.json();
+      throw new Error(errorData.error || 'Upload failed');
     }
 
-    console.log('Parsing uploaded file...');
-    const parseResponse = await fetch('/api/parse-r2', {
+    const job = await uploadResponse.json();
+    console.log('Upload successful, job created:', job);
+
+    // Count highlights in the file
+    const reader = new FileReader();
+    const count = await new Promise<number>((resolve, reject) => {
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        // Simple count of "==========", which separates highlights in Kindle clippings
+        const count = (text.match(/==========\n/g) || []).length;
+        resolve(count);
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+
+    // Parse file in worker
+    await fetch(`${apiBase}/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-user-id': userId,
+        'x-api-key': process.env.WORKER_API_KEY || ''
       },
-      body: JSON.stringify({ fileKey }),
+      body: JSON.stringify({ jobId: job.id, userId }),
+      credentials: 'include'
     });
 
-    console.log('Parse response:', {
-      status: parseResponse.status,
-      statusText: parseResponse.statusText
-    });
+    console.log('Sync initiated for job:', job.id);
 
-    if (!parseResponse.ok) {
-      const errorData = await parseResponse.json();
-      console.error('Parse failed:', {
-        status: parseResponse.status,
-        error: errorData
-      });
-
-      if (parseResponse.status === 429) {
-        throw new Error(errorData.message);
-      }
-      throw new Error(errorData.message || await parseResponse.text());
-    }
-
-    const data = await parseResponse.json();
-    console.log('Parse successful:', data);
-    return data;
+    return { count, job };
   } catch (error) {
     console.error('Error in uploadFileToR2:', {
       error: error instanceof Error ? error.stack : error,
