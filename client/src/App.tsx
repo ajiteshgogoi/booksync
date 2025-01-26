@@ -213,12 +213,12 @@ function App() {
       if (!jobId) return;
 
       try {
-        const response = await fetch(`${apiBase}/job/${jobId}`);
+        const response = await fetch(`${apiBase}/sync/status/${jobId}`);
         if (response.ok) {
           const data = await response.json();
-          if (data.status === 'pending') {
+          if (data.state === 'queued') {
             setSyncStatus('queued');
-          } else if (data.status === 'completed' || data.status === 'failed') {
+          } else if (data.state === 'completed' || data.state === 'failed') {
             clearInterval(intervalId);
           }
         } else {
