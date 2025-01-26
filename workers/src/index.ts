@@ -276,14 +276,34 @@ router.post('/sync', async (request, env: Environment) => {
 
 // OAuth callback endpoint
 router.get('/oauth/callback', async (request: IRequest, env: Environment) => {
-  const code = Array.isArray(request.query?.code) ? request.query.code[0] : request.query?.code;
-  const state = Array.isArray(request.query?.state) ? request.query.state[0] : request.query?.state;
-
-  if (!code || !state) {
-    return errorResponse('Missing code or state parameter', 400);
-  }
-
   try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    const error = url.searchParams.get('error');
+    const errorDescription = url.searchParams.get('error_description');
+
+    // Handle OAuth error response
+    if (error) {
+      console.error('OAuth error:', { error, errorDescription });
+      // Redirect to client with error
+      const clientUrl = new URL(env.CLIENT_URL || 'http://localhost:5173');
+      clientUrl.searchParams.set('error', error);
+      if (errorDescription) {
+        clientUrl.searchParams.set('errorDescription', errorDescription);
+      }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          'Location': clientUrl.toString()
+        }
+      });
+    }
+
+    if (!code || !state) {
+      return errorResponse('Missing code or state parameter', 400);
+    }
+
     const oauthService = new OAuthCallbackService(env);
     const { redirectUrl } = await oauthService.handleCallback(code);
     
@@ -295,7 +315,17 @@ router.get('/oauth/callback', async (request: IRequest, env: Environment) => {
     });
   } catch (error) {
     console.error('OAuth callback error:', error);
-    return errorResponse('OAuth callback failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    // On error, redirect to client with error message
+    const clientUrl = new URL(env.CLIENT_URL || 'http://localhost:5173');
+    clientUrl.searchParams.set('error', 'oauth_error');
+    clientUrl.searchParams.set('errorDescription', error instanceof Error ? error.message : 'Unknown error');
+    
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': clientUrl.toString()
+      }
+    });
   }
 });
 
@@ -345,7 +375,19 @@ export default {
     ctx: ExecutionContext
   ): Promise<Response> {
     try {
-      return await router.handle(request, env, ctx);
+      // Create URL object for request
+      const url = new URL(request.url);
+      
+      // Create a new request object with the required properties
+      const routerRequest: IRequest = {
+        method: request.method,
+        url: url.toString(),
+        headers: request.headers,
+        params: {},
+        query: Object.fromEntries(url.searchParams)
+      };
+      
+      return await router.handle(routerRequest, env, ctx);
     } catch (error) {
       return errorHandler(error as Error);
     }

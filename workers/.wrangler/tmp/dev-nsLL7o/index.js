@@ -2904,14 +2904,14 @@ var require_src = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-b47iRy/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-o7T7Ca/middleware-loader.entry.ts
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// .wrangler/tmp/bundle-b47iRy/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-o7T7Ca/middleware-insertion-facade.js
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
@@ -6540,9 +6540,10 @@ async function findKindleHighlightsDatabase() {
   try {
     const response = await _client.search({
       filter: {
-        property: "object",
-        value: "database"
-      }
+        value: "database",
+        property: "object"
+      },
+      page_size: 100
     });
     for (const result of response.results) {
       if (result.object !== "database")
@@ -7844,12 +7845,29 @@ router.post("/sync", async (request, env3) => {
   }
 });
 router.get("/oauth/callback", async (request, env3) => {
-  const code = Array.isArray(request.query?.code) ? request.query.code[0] : request.query?.code;
-  const state = Array.isArray(request.query?.state) ? request.query.state[0] : request.query?.state;
-  if (!code || !state) {
-    return errorResponse("Missing code or state parameter", 400);
-  }
   try {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const error3 = url.searchParams.get("error");
+    const errorDescription = url.searchParams.get("error_description");
+    if (error3) {
+      console.error("OAuth error:", { error: error3, errorDescription });
+      const clientUrl = new URL(env3.CLIENT_URL || "http://localhost:5173");
+      clientUrl.searchParams.set("error", error3);
+      if (errorDescription) {
+        clientUrl.searchParams.set("errorDescription", errorDescription);
+      }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": clientUrl.toString()
+        }
+      });
+    }
+    if (!code || !state) {
+      return errorResponse("Missing code or state parameter", 400);
+    }
     const oauthService = new OAuthCallbackService(env3);
     const { redirectUrl } = await oauthService.handleCallback(code);
     return new Response(null, {
@@ -7860,7 +7878,15 @@ router.get("/oauth/callback", async (request, env3) => {
     });
   } catch (error3) {
     console.error("OAuth callback error:", error3);
-    return errorResponse("OAuth callback failed: " + (error3 instanceof Error ? error3.message : "Unknown error"));
+    const clientUrl = new URL(env3.CLIENT_URL || "http://localhost:5173");
+    clientUrl.searchParams.set("error", "oauth_error");
+    clientUrl.searchParams.set("errorDescription", error3 instanceof Error ? error3.message : "Unknown error");
+    return new Response(null, {
+      status: 302,
+      headers: {
+        "Location": clientUrl.toString()
+      }
+    });
   }
 });
 var errorHandler = /* @__PURE__ */ __name(async (error3) => {
@@ -7897,7 +7923,15 @@ __name(handleScheduled, "handleScheduled");
 var src_default = {
   async fetch(request, env3, ctx) {
     try {
-      return await router.handle(request, env3, ctx);
+      const url = new URL(request.url);
+      const routerRequest = {
+        method: request.method,
+        url: url.toString(),
+        headers: request.headers,
+        params: {},
+        query: Object.fromEntries(url.searchParams)
+      };
+      return await router.handle(routerRequest, env3, ctx);
     } catch (error3) {
       return errorHandler(error3);
     }
@@ -7961,7 +7995,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env3, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-b47iRy/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-o7T7Ca/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -7998,7 +8032,7 @@ function __facade_invoke__(request, env3, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-b47iRy/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-o7T7Ca/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
