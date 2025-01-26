@@ -1,43 +1,45 @@
-import { createClient, RedisClientType } from '@redis/client';
+import Redis from 'ioredis';
+import { RedisOptions } from 'ioredis';
 
-export class RedisClient {
-  private client: RedisClientType;
+// Replace built-in module imports with node: prefix
+const module = {
+  require: (name: string) => {
+    switch (name) {
+      case 'util': return require('node:util');
+      case 'events': return require('node:events');
+      case 'stream': return require('node:stream');
+      case 'crypto': return require('node:crypto');
+      case 'dns': return require('node:dns');
+      case 'net': return require('node:net');
+      case 'tls': return require('node:tls');
+      case 'url': return require('node:url');
+      case 'assert': return require('node:assert');
+      case 'buffer': return require('node:buffer');
+      case 'string_decoder': return require('node:string_decoder');
+      default: return require(name);
+    }
+  }
+};
 
-  constructor(options: { url: string }) {
-    this.client = createClient({
-      url: options.url,
-      socket: {
-        tls: true,
-        reconnectStrategy: (retries: number) => Math.min(retries * 100, 500)
-      }
-    }) as RedisClientType;
+// Create a Redis client that uses our modified require
+export class RedisClient extends Redis {
+  constructor(options: RedisOptions) {
+    super(options);
+    // Override require for any internal Redis calls
+    (global as any).require = module.require;
   }
 
-  async connect() {
-    await this.client.connect();
-  }
-
-  async set(key: string, value: string, options?: any): Promise<void> {
-    await this.client.set(key, value, options);
-  }
-
-  async xgroup(command: 'CREATE' | 'DESTROY', stream: string, group: string, id: string, mkstream?: 'MKSTREAM') {
-    return this.client.sendCommand(['XGROUP', command, stream, group, id, ...(mkstream ? [mkstream] : [])]);
-  }
-
-  async xreadgroup(args: string[]): Promise<any> {
-    return this.client.sendCommand(['XREADGROUP', ...args]);
-  }
-
-  async xadd(key: string, id: string, ...args: string[]): Promise<string> {
-    return this.client.sendCommand(['XADD', key, id, ...args]);
-  }
-
-  pipeline(): any {
-    return this.client.multi();
-  }
-
-  async quit(): Promise<void> {
-    await this.client.quit();
+  // Add custom methods if needed
+  async xreadGroup(
+    group: string,
+    consumer: string,
+    streams: [string, string][],
+    opts?: { count?: number; block?: number }
+  ) {
+    const args = ['XREADGROUP', 'GROUP', group, consumer];
+    if (opts?.count) args.push('COUNT', opts.count.toString());
+    if (opts?.block) args.push('BLOCK', opts.block.toString());
+    args.push('STREAMS', ...streams.map(([key]) => key), ...streams.map(([, id]) => id));
+    return this.call('xreadgroup', args);
   }
 }
