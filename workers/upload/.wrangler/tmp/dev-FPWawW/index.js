@@ -19794,27 +19794,7 @@ var RedisClient = class {
 __name(RedisClient, "RedisClient");
 
 // index.ts
-var STREAM_NAME = "sync_jobs_stream";
-var CONSUMER_GROUP = "sync_processors";
-async function initializeRedisStream(redis2) {
-  try {
-    try {
-      await redis2.xgroup("DESTROY", STREAM_NAME, CONSUMER_GROUP, "$");
-    } catch (error3) {
-    }
-    await redis2.xgroup("CREATE", STREAM_NAME, CONSUMER_GROUP, "0", "MKSTREAM");
-    console.log("Initialized Redis stream and consumer group");
-  } catch (error3) {
-    console.error("Failed to initialize Redis stream:", error3);
-    process.exit(1);
-  }
-}
-__name(initializeRedisStream, "initializeRedisStream");
-if (!process.env.REDIS_URL) {
-  throw new Error("REDIS_URL environment variable is not set");
-}
-var redis = new RedisClient({ url: process.env.REDIS_URL });
-await initializeRedisStream(redis);
+var STREAM_NAME = "kindle:jobs";
 var UploadWorker = class {
   constructor(env3, ctx) {
     this.env = env3;
@@ -19846,10 +19826,11 @@ var UploadWorker = class {
         }), "EX", 3600);
       });
       await pipeline.exec();
-      await this.redis.xadd("kindle:jobs", "*", "jobId", jobId, "userId", userId, "type", "sync");
+      await this.redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
       return jobId;
-    } finally {
-      await this.redis.quit();
+    } catch (error3) {
+      console.error("Error queueing job:", error3);
+      throw error3;
     }
   }
   async fetch(request) {

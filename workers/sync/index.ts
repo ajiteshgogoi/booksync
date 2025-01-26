@@ -48,17 +48,26 @@ class SyncWorker {
   }
 
   private async setJobStatus(jobId: string, status: Partial<JobStatus>): Promise<void> {
-    const currentStatus = await this.getJobStatus(jobId) || {
-      state: 'pending',
-      progress: 0,
-      message: '',
-      total: 0,
-      lastProcessedIndex: 0
-    };
+    const currentStatus = await this.getJobStatus(jobId);
+    if (!currentStatus) {
+      // Only set initial status if none exists
+      await this.redis.set(`job:${jobId}`, JSON.stringify({
+        state: 'pending',
+        progress: 0,
+        message: '',
+        total: 0,
+        lastProcessedIndex: 0,
+        ...status
+      }));
+      return;
+    }
 
+    // For updates, ensure we keep existing fields and only update provided ones
     await this.redis.set(`job:${jobId}`, JSON.stringify({
       ...currentStatus,
-      ...status
+      ...status,
+      // Ensure state transitions are valid
+      state: status.state || currentStatus.state
     }));
   }
 
