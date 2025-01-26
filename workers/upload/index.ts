@@ -32,6 +32,21 @@ class UploadWorker {
       throw new Error("REDIS_URL environment variable is not set");
     }
     this.redis = new RedisClient({ url: env.REDIS_URL });
+    // Initialize connection immediately
+    this.initRedis().catch((error: Error) => {
+      console.error('Failed to initialize Redis:', error);
+      throw error;
+    });
+  }
+
+  private async initRedis(): Promise<void> {
+    try {
+      await this.redis.connect();
+      console.log('Redis connection established');
+    } catch (error) {
+      console.error('Redis connection failed:', error);
+      throw error;
+    }
   }
 
   private async processFile(
@@ -122,6 +137,8 @@ class UploadWorker {
     }
 
     try {
+      // Ensure Redis is connected before processing
+      await this.initRedis();
       const formData = await request.formData();
       console.log('Processing upload with params:', {
         fileKey: formData.get('fileKey'),
@@ -173,6 +190,13 @@ class UploadWorker {
           }
         }
       );
+    } finally {
+      try {
+        await this.redis.quit();
+        console.log('Redis connection closed');
+      } catch (error) {
+        console.error('Error closing Redis connection:', error);
+      }
     }
   }
 }
