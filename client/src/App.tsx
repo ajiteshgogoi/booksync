@@ -25,6 +25,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [fileKey, setFileKey] = useState<string | null>(null);
   const [showClippingsModal, setShowClippingsModal] = useState(false);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,15 +71,17 @@ function App() {
 
       // Only proceed with upload after validation passes
       const timestamp = Date.now();
-      const fileKey = `clippings-${userId}-${timestamp}.txt`;
-      const { count } = await uploadFileToR2(selectedFile, fileKey);
+      const newFileKey = `clippings-${userId}-${timestamp}.txt`;
+      const { count } = await uploadFileToR2(selectedFile, newFileKey);
       
       setHighlightCount(count);
       setSyncStatus('idle');
+      setFileKey(newFileKey);
     } catch (error) {
       setSyncStatus('error');
       setFile(null);
       setHighlightCount(0);
+      setFileKey(null);
       
       setErrorMessage(error instanceof Error ? error.message : 'Failed to parse highlights');
     }
@@ -99,8 +102,12 @@ function App() {
     setErrorMessage(null);
 
     try {
+      if (!fileKey) {
+        throw new Error('File key is missing, please re-upload file.');
+      }
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('fileKey', fileKey);
 
       const response = await fetch(`${apiBase}/sync`, {
         method: 'POST',

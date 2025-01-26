@@ -19805,7 +19805,7 @@ var UploadWorker = class {
     this.redis = new RedisClient({ url: env3.REDIS_URL });
   }
   redis;
-  async processFile(fileName, databaseId, userId) {
+  async processFile(fileKey, databaseId, userId) {
     const jobId = `sync:${userId}:${Date.now()}`;
     try {
       await this.redis.set(`job:${jobId}`, JSON.stringify({
@@ -19815,7 +19815,7 @@ var UploadWorker = class {
         lastProcessedIndex: 0,
         userId
       }));
-      const file = await this.env.R2_BUCKET.get(fileName);
+      const file = await this.env.R2_BUCKET.get(fileKey);
       if (!file) {
         throw new Error("File not found in R2");
       }
@@ -19851,18 +19851,25 @@ var UploadWorker = class {
     }
   }
   async fetch(request) {
+    console.log("Upload worker received request");
     if (request.method !== "POST") {
+      console.error("Invalid method:", request.method);
       return new Response("Method not allowed", { status: 405 });
     }
     try {
       const formData = await request.formData();
-      const fileName = formData.get("fileName");
+      console.log("Processing upload with params:", {
+        fileKey: formData.get("fileKey"),
+        userId: formData.get("userId"),
+        hasDatabase: !!formData.get("databaseId")
+      });
+      const fileKey = formData.get("fileKey");
       const userId = formData.get("userId");
       const databaseId = formData.get("databaseId");
-      if (!fileName || !userId || !databaseId) {
+      if (!fileKey || !userId || !databaseId) {
         return new Response("Missing required fields", { status: 400 });
       }
-      const jobId = await this.processFile(fileName, databaseId, userId);
+      const jobId = await this.processFile(fileKey, databaseId, userId);
       return new Response(
         JSON.stringify({
           jobId,
@@ -19877,11 +19884,16 @@ var UploadWorker = class {
         }
       );
     } catch (error3) {
-      console.error("Processing error:", error3);
+      console.error("Processing error:", {
+        error: error3 instanceof Error ? error3.stack : error3,
+        message: error3 instanceof Error ? error3.message : "Unknown error",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
       return new Response(
         JSON.stringify({
           error: "Processing failed",
-          message: error3 instanceof Error ? error3.message : "Unknown error"
+          message: error3 instanceof Error ? error3.message : "Unknown error",
+          details: error3 instanceof Error ? error3.stack : void 0
         }),
         {
           status: 500,
