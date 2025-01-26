@@ -1,7 +1,8 @@
 import { Highlight } from '../types/highlight';
 import { NotionClient } from './notionClient';
-import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils';
+import { truncateHash } from '../utils/notionUtils';
 import { parseClippings } from '../utils/parseClippings';
+import { withRetry } from '../utils/retry';
 
 // Sync service configuration
 export interface SyncConfig {
@@ -10,6 +11,12 @@ export interface SyncConfig {
   maxRetries?: number;
   maxHighlightsPerRun?: number;
   onProgress?: (progress: number, message: string) => Promise<void>;
+}
+
+export interface SyncProgress {
+  processed: number;
+  total: number;
+  message: string;
 }
 
 const DEFAULT_CONFIG: Required<SyncConfig> = {
@@ -30,69 +37,62 @@ export class SyncService {
   }
 
   async deduplicateHighlights(
-      highlights: Highlight[],
-      workspaceId: string,
-    ): Promise<Highlight[]> {
-      // Group highlights by book title for batch processing
-      const bookHighlights = new Map<string, Highlight[]>();
-      for (const highlight of highlights) {
-        if (!bookHighlights.has(highlight.bookTitle)) {
-          bookHighlights.set(highlight.bookTitle, []);
-        }
-        bookHighlights.get(highlight.bookTitle)!.push(highlight);
+    highlights: Highlight[],
+    workspaceId: string,
+  ): Promise<Highlight[]> {
+    // Group highlights by book title for batch processing
+    const bookHighlights = new Map<string, Highlight[]>();
+    for (const highlight of highlights) {
+      if (!bookHighlights.has(highlight.bookTitle)) {
+        bookHighlights.set(highlight.bookTitle, []);
       }
-  
-      // Check for duplicates and filter them out
-      const uniqueHighlights: Highlight[] = [];
-      for (const [bookTitle, bookHighlightList] of bookHighlights.entries()) {
-        // Convert each highlight's hash to truncated form
-        const newHighlightHashes = new Set(
-          bookHighlightList.map(h => truncateHash(h.hash))
-        );
-  
-        // Add all highlights for new books
-        uniqueHighlights.push(...bookHighlightList);
-      }
-  
-      return uniqueHighlights;
+      bookHighlights.get(highlight.bookTitle)!.push(highlight);
     }
+
+    // Check for duplicates and filter them out
+    const uniqueHighlights: Highlight[] = [];
+    for (const [bookTitle, bookHighlightList] of bookHighlights.entries()) {
+      // Convert each highlight's hash to truncated form
+      const newHighlightHashes = new Set(
+        bookHighlightList.map(h => truncateHash(h.hash))
+      );
+
+      // Add all highlights for new books
+      uniqueHighlights.push(...bookHighlightList);
+    }
+
+    return uniqueHighlights;
+  }
 
   async processHighlights(
     highlights: Highlight[],
-    databaseId: string
+    workspaceId: string,
+    signal?: AbortSignal
   ): Promise<void> {
     const total = highlights.length;
     if (total === 0) return;
 
     // Process highlights in batches
     for (let i = 0; i < highlights.length; i += this.config.batchSize) {
-      const batch = highlights.slice(i, Math.min(i + this.config.batchSize, highlights.length));
-      let retryCount = 0;
-
-      while (retryCount < this.config.maxRetries) {
-        try {
-          await this.notionClient.updateNotionDatabase(batch, databaseId);
-          
-          // Calculate and report progress
-          const processed = i + batch.length;
-          const progress = Math.round((processed / total) * 100);
-          await this.config.onProgress(
-            progress,
-            `Processing ${processed}/${total} highlights`
-          );
-          
-          break; // Success, move to next batch
-        } catch (error) {
-          retryCount++;
-          if (retryCount === this.config.maxRetries) {
-            throw error;
-          }
-          // Exponential backoff
-          await new Promise(resolve => 
-            setTimeout(resolve, Math.min(1000 * Math.pow(2, retryCount), 5000))
-          );
-        }
+      // Check for abort signal
+      if (signal?.aborted) {
+        throw new Error('Processing aborted');
       }
+
+      const batch = highlights.slice(i, Math.min(i + this.config.batchSize, highlights.length));
+      
+      // Process batch with retry
+      await withRetry(async () => {
+        await this.notionClient.updateNotionDatabase(batch, workspaceId);
+        
+        // Calculate and report progress
+        const processed = i + batch.length;
+        const progress = Math.round((processed / total) * 100);
+        await this.config.onProgress(
+          progress,
+          `Processing ${processed}/${total} highlights`
+        );
+      }, this.config.maxRetries);
 
       // Add delay between batches
       await new Promise(resolve => setTimeout(resolve, this.config.batchDelay));
@@ -106,4 +106,27 @@ export class SyncService {
     }
     return highlights;
   }
+
+  async syncHighlights(
+    fileContent: string, 
+    workspaceId: string,
+    signal?: AbortSignal
+  ): Promise<SyncProgress> {
+    // Parse highlights from file
+    const highlights = await this.parseAndValidateContent(fileContent);
+
+    // Deduplicate highlights
+    const uniqueHighlights = await this.deduplicateHighlights(highlights, workspaceId);
+
+    // Process highlights
+    await this.processHighlights(uniqueHighlights, workspaceId, signal);
+
+    return {
+      processed: uniqueHighlights.length,
+      total: highlights.length,
+      message: `Processed ${uniqueHighlights.length} unique highlights out of ${highlights.length} total`
+    };
+  }
 }
+
+export { truncateHash };
