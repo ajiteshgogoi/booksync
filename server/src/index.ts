@@ -539,9 +539,16 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           throw new Error('Notion client not initialized');
         }
 
+        if (!req.file || !req.file.originalname) {
+          throw new Error('File missing from request');
+        }
+
+        // Use the original filename from the uploaded file
+        const fileName = req.file.originalname;
+
         // Create form data with required fields
         const formData = new FormData();
-        formData.append('fileName', `kindle-clippings-${userId}-${Date.now()}.txt`);
+        formData.append('fileName', fileName);
         formData.append('userId', userId);
         if (!tokenDataObj || !tokenDataObj.databaseId) {
           throw new Error('No database ID found in token data');
