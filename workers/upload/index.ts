@@ -70,7 +70,7 @@ class UploadWorker {
         pipeline.set(key, JSON.stringify({
           ...highlight,
           databaseId
-        }), 'EX', 86400); // 24 hour TTL
+        }), 'EX', 3600); // 1 hour TTL
       });
 
       await pipeline.exec();
