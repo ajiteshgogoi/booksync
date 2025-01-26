@@ -533,7 +533,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         console.log('Job added to queue');
 
         // Call Cloudflare Worker for processing
-        const workerResponse = await fetch('https://booksync-worker.ajiteshgogoi.workers.dev/process', {
+        const workerResponse = await fetch('https://kindle-upload.ajiteshgogoi.workers.dev/process', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
