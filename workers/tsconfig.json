@@ -15,7 +15,8 @@
     "paths": {
       "@booksync/shared": ["../shared/src"],
       "@booksync/shared/*": ["../shared/src/*"]
-    }
+    },
+    "composite": true
   },
   "include": ["src/**/*.ts", "../shared/src/**/*.ts"],
   "exclude": ["node_modules", "../shared/node_modules"]
