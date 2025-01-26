@@ -35,7 +35,7 @@ class UploadWorker {
   }
 
   private async processFile(
-    fileKey: string,
+    fileName: string,
     databaseId: string,
     userId: string
   ): Promise<string> {
@@ -52,7 +52,7 @@ class UploadWorker {
       } as JobStatus));
 
       // Stream file from R2
-      const file = await this.env.R2_BUCKET.get(fileKey);
+      const file = await this.env.R2_BUCKET.get(fileName);
       if (!file) {
         throw new Error('File not found in R2');
       }
@@ -102,30 +102,22 @@ class UploadWorker {
   }
 
   async fetch(request: Request): Promise<Response> {
-    console.log('Upload worker received request');
-    
     if (request.method !== 'POST') {
-      console.error('Invalid method:', request.method);
       return new Response('Method not allowed', { status: 405 });
     }
 
     try {
       const formData = await request.formData();
-      console.log('Processing upload with params:', {
-        fileKey: formData.get('fileKey'),
-        userId: formData.get('userId'),
-        hasDatabase: !!formData.get('databaseId')
-      });
-      const fileKey = formData.get('fileKey') as string;
+      const fileName = formData.get('fileName') as string;
       const userId = formData.get('userId') as string;
       const databaseId = formData.get('databaseId') as string;
 
-      if (!fileKey || !userId || !databaseId) {
+      if (!fileName || !userId || !databaseId) {
         return new Response('Missing required fields', { status: 400 });
       }
 
       // Process the file and create job
-      const jobId = await this.processFile(fileKey, databaseId, userId);
+      const jobId = await this.processFile(fileName, databaseId, userId);
 
       return new Response(
         JSON.stringify({
@@ -142,16 +134,11 @@ class UploadWorker {
       );
 
     } catch (error) {
-      console.error('Processing error:', {
-        error: error instanceof Error ? error.stack : error,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      });
+      console.error('Processing error:', error);
       return new Response(
         JSON.stringify({
           error: 'Processing failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
-          details: error instanceof Error ? error.stack : undefined
+          message: error instanceof Error ? error.message : 'Unknown error'
         }),
         {
           status: 500,

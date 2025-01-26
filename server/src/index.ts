@@ -543,25 +543,20 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           throw new Error('File missing from request');
         }
 
-        // Get fileKey from request body (this was used to upload to R2)
-        const fileKey = req.body.fileKey as string;
-        if (!fileKey) {
-          throw new Error('FileKey missing from request body');
-        }
+        // Use the original filename from the uploaded file
+        const fileName = req.file.originalname;
 
-        console.log('Preparing worker request:', {
-          fileKey,
-          userId,
-          databaseId: tokenDataObj.databaseId
-        });
-
-        // Create FormData with the original R2 fileKey
+        // Create form data with required fields
         const formData = new FormData();
-        formData.append('fileKey', fileKey);
+        formData.append('fileName', fileName);
         formData.append('userId', userId);
+        if (!tokenDataObj || !tokenDataObj.databaseId) {
+          throw new Error('No database ID found in token data');
+        }
         formData.append('databaseId', tokenDataObj.databaseId);
+        formData.append('file', new Blob([fileContent], { type: 'text/plain' }));
 
-        // Call worker with FormData
+        // Call Cloudflare Worker for processing
         const workerResponse = await fetch('https://kindle-upload.az-ajitesh.workers.dev/', {
           method: 'POST',
           headers: {
