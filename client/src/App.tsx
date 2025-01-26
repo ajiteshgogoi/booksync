@@ -125,6 +125,14 @@ function App() {
       return;
     }
 
+    // Check workspace ID exists
+    const workspaceId = localStorage.getItem('workspaceId');
+    if (!workspaceId) {
+      setErrorMessage('Notion workspace not found. Please reconnect to Notion.');
+      setIsAuthenticated(false);
+      return;
+    }
+
     setSyncStatus('starting');
     setErrorMessage(null);
 
@@ -134,34 +142,57 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': userId,
-          'x-api-key': process.env.WORKER_API_KEY || ''
+          'x-user-id': userId
         },
-        body: JSON.stringify({ jobId, userId }),
+        body: JSON.stringify({
+          jobId,
+          userId,
+          workspaceId
+        }),
         credentials: 'include'
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || await response.text());
+        if (response.status === 401) {
+          setIsAuthenticated(false);
+          localStorage.removeItem('isAuthenticated');
+          localStorage.removeItem('authTimestamp');
+          throw new Error('Authentication failed. Please reconnect to Notion.');
+        } else {
+          throw new Error(errorData.error || 'Failed to sync highlights');
+        }
       }
 
       setSyncStatus('queued');
       setErrorMessage(null);
+
+      // Start polling immediately after queuing
+      const job = await pollJobStatus(jobId);
+      if (job.status === 'failed') {
+        throw new Error(job.error || 'Sync failed to start');
+      }
     } catch (error) {
       setSyncStatus('error');
       
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to sync highlights');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to sync highlights';
+      setErrorMessage(errorMessage);
       
-      // Log the error to console for debugging
-      console.error('Sync error:', error);
+      // Log detailed error for debugging
+      console.error('Sync error:', {
+        error,
+        jobId,
+        timestamp: new Date().toISOString()
+      });
       
-      // Reset file state if validation failed
+      // Reset file state for specific errors
       if (error instanceof Error &&
-          (error.message.includes('Validation failed') ||
-           error.message.includes('User already has an active file upload'))) {
+          (errorMessage.includes('Validation failed') ||
+           errorMessage.includes('active file upload') ||
+           errorMessage.includes('Authentication failed'))) {
         setFile(null);
         setHighlightCount(0);
+        setJobId(null);
       }
     }
   };

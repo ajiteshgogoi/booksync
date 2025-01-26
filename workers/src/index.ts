@@ -189,6 +189,10 @@ router.post('/sync', async (request, env: Environment) => {
       progress: job.progress
     });
 
+    // Validate API key for sync endpoint
+    const authError = validateApiKey(request, env);
+    if (authError) return authError;
+
     // Check if job has expired
     if (job.expiresAt && job.expiresAt < Date.now()) {
       console.log('Job expired:', job.id);

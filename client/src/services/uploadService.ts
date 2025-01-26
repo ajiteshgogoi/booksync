@@ -123,8 +123,7 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-id': userId,
-        'x-api-key': process.env.WORKER_API_KEY || ''
+        'x-user-id': userId
       },
       body: JSON.stringify({ jobId: job.id, userId }),
       credentials: 'include'
