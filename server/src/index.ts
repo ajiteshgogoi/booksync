@@ -98,7 +98,7 @@ const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
 // Import handlers and services
 import { uploadUrlHandler } from './api/upload-url.js';
-import { validateSync, ValidationError } from './services/syncValidationService.js';
+import { syncValidationService, ValidationError } from './services/syncValidationService.js';
 
 // Middlewares
 app.use(cors({
@@ -168,7 +168,7 @@ function generateState() {
 app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => {
   try {
     const userId = req.headers['x-user-id'] as string;
-    await validateSync(userId);
+    await syncValidationService.validateSync(userId);
     res.json({
       valid: true
     });
