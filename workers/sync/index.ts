@@ -35,15 +35,7 @@ class SyncWorker {
   private notionClient: NotionClient;
 
   constructor(private env: Env) {
-    this.redis = new RedisClient({
-      host: new URL(env.REDIS_URL).hostname,
-      port: parseInt(new URL(env.REDIS_URL).port),
-      password: new URL(env.REDIS_URL).password,
-      tls: {
-        rejectUnauthorized: false,
-        servername: new URL(env.REDIS_URL).hostname
-      }
-    });
+    this.redis = new RedisClient({ url: env.REDIS_URL });
 
     this.notionClient = new NotionClient({
       auth: env.NOTION_TOKEN
@@ -189,7 +181,7 @@ class SyncWorker {
   async processPendingJobs(): Promise<void> {
     try {
       // Get pending jobs from Redis stream
-      const results = await this.redis.xread('STREAMS', 'kindle:jobs', '0-0');
+      const results = await this.redis.xread(['STREAMS', 'kindle:jobs', '0-0']);
 
       if (!results || results.length === 0) {
         console.log('No pending jobs found');

@@ -2,6 +2,35 @@ import { parseClippings } from '../../server/src/utils/parseClippings.js';
 import type { Highlight } from '../../server/src/types/highlight.js';
 import { RedisClient } from './lib/redis-client';
 
+// Stream configuration matching server
+const STREAM_NAME = 'sync_jobs_stream';
+const CONSUMER_GROUP = 'sync_processors';
+
+async function initializeRedisStream(redis: RedisClient) {
+  try {
+    // Delete existing group if it exists
+    try {
+      await redis.xgroup('DESTROY', STREAM_NAME, CONSUMER_GROUP, '$');
+    } catch (error) {
+      // Ignore errors when group doesn't exist
+    }
+
+    // Create stream and consumer group
+    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '0', 'MKSTREAM');
+    console.log('Initialized Redis stream and consumer group');
+  } catch (error) {
+    console.error('Failed to initialize Redis stream:', error);
+    process.exit(1);
+  }
+}
+
+// Initialize Redis stream before processing jobs
+if (!process.env.REDIS_URL) {
+  throw new Error("REDIS_URL environment variable is not set");
+}
+const redis = new RedisClient({ url: process.env.REDIS_URL });
+await initializeRedisStream(redis);
+
 interface Env {
   R2_BUCKET: R2Bucket;
   REDIS_URL: string;
@@ -24,15 +53,10 @@ class UploadWorker {
     private env: Env,
     private ctx: ExecutionContext
   ) {
-    this.redis = new RedisClient({
-      host: new URL(env.REDIS_URL).hostname,
-      port: parseInt(new URL(env.REDIS_URL).port),
-      password: new URL(env.REDIS_URL).password,
-      tls: {
-        rejectUnauthorized: false,
-        servername: new URL(env.REDIS_URL).hostname
-      }
-    });
+    if (!env.REDIS_URL) {
+      throw new Error("REDIS_URL environment variable is not set");
+    }
+    this.redis = new RedisClient({ url: env.REDIS_URL });
   }
 
   private async queueJob(
