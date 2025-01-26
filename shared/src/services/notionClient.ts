@@ -3,7 +3,9 @@ import { createHash } from 'crypto';
 import axios from 'axios';
 import { NotionStore } from './notionStore';
 import type { Highlight } from '../types/highlight';
+import type { NotionToken } from '../types/notion';
 import { withRetry } from '../utils/retry';
+import { KVStore } from './kvStore';
 
 // Make Highlight type available for external use
 export type { Highlight };
@@ -122,11 +124,12 @@ function storeHashes(hashes: string[]): string {
   return hashString;
 }
 
-// Client management with better initialization
+// Client management with better initialization and storage
 let _client: Client | null = null;
 let _databaseId: string | null = null;
+let _store: NotionStore | null = null;
 
-export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
+export async function setOAuthToken(store: NotionStore, tokenData: NotionToken): Promise<void> {
   try {
     if (!tokenData?.workspace_id || !tokenData?.access_token) {
       throw new Error('Invalid token data - missing required fields');
@@ -142,13 +145,9 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
       hasDatabaseId: !!_databaseId
     });
 
-    // Store the token data first
-    await storeOAuthToken(
-      JSON.stringify(tokenData),
-      workspaceId,
-      '', // Database ID will be set after we find it
-      userId
-    );
+    // Store the token data
+    await store.setToken(tokenData);
+    _store = store;
 
     console.log('[OAuth] Initial token storage complete');
 
@@ -161,19 +160,14 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
     console.log('[OAuth] Searching for Kindle Highlights database...');
     await findKindleHighlightsDatabase();
 
-    // If we found the database ID, update the token storage with it
+    // If we found the database ID, update it in store
     if (_databaseId) {
       console.log('[OAuth] Found database ID:', _databaseId);
-      console.log('[OAuth] Updating token storage with database ID');
+      console.log('[OAuth] Storing database ID');
 
-      await storeOAuthToken(
-        JSON.stringify(tokenData),
-        workspaceId,
-        _databaseId,
-        userId
-      );
+      await store.setDatabaseId(workspaceId, _databaseId);
 
-      console.log('[OAuth] Token storage updated with database ID');
+      console.log('[OAuth] Database ID storage updated');
     } else {
       console.log('[OAuth] No database ID found - using initial token storage');
     }
@@ -190,25 +184,27 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
 
 export async function getClient(): Promise<Client> {
   try {
-    if (!_client) {
-      const tokenData = await getRedisOAuthToken();
-      if (!tokenData) {
+    if (!_client && _store) {
+      // Get workspace ID from environment or configuration
+      const workspaceId = process.env.NOTION_WORKSPACE_ID;
+      if (!workspaceId) {
+        throw new Error('No workspace ID configured');
+      }
+
+      const token = await _store.getToken(workspaceId);
+      if (!token) {
         throw new Error('No OAuth token available');
       }
-      
-      try {
-        const data = JSON.parse(tokenData);
-        if (!data?.access_token) {
-          throw new Error('Invalid token structure');
-        }
-        
-        _client = new Client({
-          auth: data.access_token,
-        });
-      } catch (parseError) {
-        console.error('Invalid token structure:', tokenData);
-        throw new Error('Failed to parse stored token');
-      }
+
+      _client = new Client({
+        auth: token.access_token,
+      });
+
+      // Also retrieve database ID if available
+      _databaseId = await _store.getDatabaseId(workspaceId);
+    }
+    if (!_client) {
+      throw new Error('Notion client not initialized and no store available');
     }
     return _client;
   } catch (error) {
@@ -219,26 +215,28 @@ export async function getClient(): Promise<Client> {
 
 export async function refreshToken(): Promise<void> {
   try {
-    const currentToken = await getRedisOAuthToken();
-    if (!currentToken) {
+    if (!_store) {
+      throw new Error('No store available');
+    }
+
+    const workspaceId = process.env.NOTION_WORKSPACE_ID;
+    if (!workspaceId) {
+      throw new Error('No workspace ID configured');
+    }
+
+    const token = await _store.getToken(workspaceId);
+    if (!token) {
       throw new Error('No token to refresh');
     }
 
-    let tokenData: NotionToken;
-    try {
-      tokenData = JSON.parse(currentToken);
-      if (!tokenData?.refresh_token) {
-        console.log('No refresh token available - token may be from internal integration');
-        return;
-      }
-    } catch (parseError) {
-      console.error('Invalid token structure:', currentToken);
-      throw new Error('Failed to parse stored token');
+    if (!token?.refresh_token) {
+      console.log('No refresh token available - token may be from internal integration');
+      return;
     }
 
     const response = await axios.post('https://api.notion.com/v1/oauth/token', {
       grant_type: 'refresh_token',
-      refresh_token: tokenData.refresh_token,
+      refresh_token: token.refresh_token,
     }, {
       auth: {
         username: process.env.NOTION_OAUTH_CLIENT_ID!,
@@ -250,7 +248,7 @@ export async function refreshToken(): Promise<void> {
       throw new Error('Invalid refresh token response');
     }
 
-    await setOAuthToken(response.data);
+    await setOAuthToken(_store, response.data);
   } catch (error) {
     console.error('Failed to refresh token:', error);
     throw error;
@@ -259,11 +257,15 @@ export async function refreshToken(): Promise<void> {
 
 export async function clearAuth(): Promise<void> {
   try {
-    const token = await getRedisOAuthToken();
-    if (token) {
-      const tokenData = JSON.parse(token);
-      await deleteRedisOAuthToken(tokenData.workspace_id);
+    if (!_store) {
+      throw new Error('No store available');
     }
+
+    const workspaceId = process.env.NOTION_WORKSPACE_ID;
+    if (workspaceId) {
+      await _store.deleteToken(workspaceId);
+    }
+
     _client = null;
     _databaseId = null;
   } catch (error) {
@@ -395,18 +397,19 @@ function splitAtSentences(text: string, maxLength: number): string[] {
 }
 
 export class NotionClient {
-  private store: any;
+  private store: NotionStore;
   private clientId: string;
   private clientSecret: string;
 
-  constructor({ store, clientId, clientSecret }: { 
-    store: any;
+  constructor({ store, clientId, clientSecret }: {
+    store: NotionStore;
     clientId: string;
     clientSecret: string;
   }) {
     this.store = store;
     this.clientId = clientId;
     this.clientSecret = clientSecret;
+    _store = store; // Set the global store reference
   }
 
   async updateNotionDatabase(highlights: Highlight[], workspaceId: string, onProgress?: () => void): Promise<void> {
@@ -731,4 +734,5 @@ export class NotionClient {
     console.error('Error updating Notion database:', error);
     throw error;
   }
+ }
 }
