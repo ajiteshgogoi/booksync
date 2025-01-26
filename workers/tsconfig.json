@@ -9,15 +9,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
-    "rootDirs": [".", "../shared"],
     "types": ["@cloudflare/workers-types"],
-    "baseUrl": ".",
-    "paths": {
-      "@booksync/shared": ["../shared/src"],
-      "@booksync/shared/*": ["../shared/src/*"]
-    },
     "composite": true
   },
-  "include": ["src/**/*.ts", "../shared/src/**/*.ts"],
-  "exclude": ["node_modules", "../shared/node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"],
+  "references": [{ "path": "../shared" }]
 }
