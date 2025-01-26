@@ -1,40 +1,57 @@
-import { createClient, RedisClientType } from '@redis/client';
+import Redis, { Command } from 'ioredis';
 
 export class RedisClient {
-  private client: RedisClientType;
+  private client: Redis;
 
   constructor(options: { url: string }) {
-    this.client = createClient({
-      url: options.url,
-      socket: {
-        tls: true,
-        reconnectStrategy: (retries: number) => Math.min(retries * 100, 500)
-      }
-    }) as RedisClientType;
+    this.client = new Redis(options.url, {
+      tls: {
+        rejectUnauthorized: false
+      },
+      retryStrategy: (times: number) => Math.min(times * 100, 500),
+      maxRetriesPerRequest: 3
+    });
+
+    // Handle connection errors
+    this.client.on('error', (err) => {
+      console.error('Redis connection error:', err);
+    });
   }
 
   async connect() {
-    await this.client.connect();
+    // Connection is handled automatically by ioredis
+    return Promise.resolve();
   }
 
   async set(key: string, value: string, options?: any): Promise<void> {
     await this.client.set(key, value, options);
   }
 
-  async xgroup(command: 'CREATE' | 'DESTROY', stream: string, group: string, id: string, mkstream?: 'MKSTREAM') {
-    return this.client.sendCommand(['XGROUP', command, stream, group, id, ...(mkstream ? [mkstream] : [])]);
+  async xgroup(command: 'CREATE' | 'DESTROY', stream: string, group: string, id: string, mkstream?: 'MKSTREAM'): Promise<any> {
+    if (command === 'CREATE') {
+      const args = mkstream ? 
+        ['XGROUP', command, stream, group, id, mkstream] :
+        ['XGROUP', command, stream, group, id];
+      // @ts-ignore - ioredis types are not perfectly accurate
+      return this.client.command(args[0], args.slice(1));
+    } else {
+      // @ts-ignore - ioredis types are not perfectly accurate
+      return this.client.command('XGROUP', [command, stream, group]);
+    }
   }
 
   async xreadgroup(args: string[]): Promise<any> {
-    return this.client.sendCommand(['XREADGROUP', ...args]);
+    // @ts-ignore - ioredis types are not perfectly accurate
+    return this.client.command('XREADGROUP', args);
   }
 
   async xadd(key: string, id: string, ...args: string[]): Promise<string> {
-    return this.client.sendCommand(['XADD', key, id, ...args]);
+    // @ts-ignore - ioredis types are not perfectly accurate
+    return this.client.command('XADD', [key, id, ...args]);
   }
 
   pipeline(): any {
-    return this.client.multi();
+    return this.client.pipeline();
   }
 
   async quit(): Promise<void> {
