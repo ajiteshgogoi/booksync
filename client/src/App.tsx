@@ -24,7 +24,6 @@ function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [showClippingsModal, setShowClippingsModal] = useState(false);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -117,7 +116,6 @@ function App() {
       const syncResponse = await response.json();
       if (syncResponse.success) {
         setSyncStatus('queued');
-        setJobId(syncResponse.jobId);
         setErrorMessage(null);
       } else {
         setSyncStatus('idle');
@@ -205,38 +203,6 @@ function App() {
 
     return () => clearInterval(checkInterval);
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    const fetchJobStatus = async () => {
-      if (!jobId) return;
-
-      try {
-        const response = await fetch(`${apiBase}/job/${jobId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 'pending') {
-            setSyncStatus('queued');
-          } else if (data.status === 'completed' || data.status === 'failed') {
-            clearInterval(intervalId);
-          }
-        } else {
-          console.error('Failed to fetch job status');
-          clearInterval(intervalId);
-        }
-      } catch (error) {
-        console.error('Error fetching job status:', error);
-        clearInterval(intervalId);
-      }
-    };
-
-    if (jobId) {
-      intervalId = setInterval(fetchJobStatus, 3000);
-    }
-
-    return () => clearInterval(intervalId);
-  }, [jobId]);
 
   useEffect(() => {
     if (window.kofiWidgetOverlay) {

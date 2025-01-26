@@ -3,8 +3,33 @@ import type { Highlight } from '../../server/src/types/highlight.js';
 import { RedisClient } from './lib/redis-client';
 
 // Stream configuration matching server
-// Stream name matching sync worker
-const STREAM_NAME = 'kindle:jobs';
+const STREAM_NAME = 'sync_jobs_stream';
+const CONSUMER_GROUP = 'sync_processors';
+
+async function initializeRedisStream(redis: RedisClient) {
+  try {
+    // Delete existing group if it exists
+    try {
+      await redis.xgroup('DESTROY', STREAM_NAME, CONSUMER_GROUP, '$');
+    } catch (error) {
+      // Ignore errors when group doesn't exist
+    }
+
+    // Create stream and consumer group
+    await redis.xgroup('CREATE', STREAM_NAME, CONSUMER_GROUP, '0', 'MKSTREAM');
+    console.log('Initialized Redis stream and consumer group');
+  } catch (error) {
+    console.error('Failed to initialize Redis stream:', error);
+    process.exit(1);
+  }
+}
+
+// Initialize Redis stream before processing jobs
+if (!process.env.REDIS_URL) {
+  throw new Error("REDIS_URL environment variable is not set");
+}
+const redis = new RedisClient({ url: process.env.REDIS_URL });
+await initializeRedisStream(redis);
 
 interface Env {
   R2_BUCKET: R2Bucket;
@@ -67,13 +92,12 @@ class UploadWorker {
 
       await pipeline.exec();
 
-      // Add to processing queue using constant
-      await this.redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
+      // Add to processing queue
+      await this.redis.xadd('kindle:jobs', '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
 
       return jobId;
-    } catch (error) {
-      console.error('Error queueing job:', error);
-      throw error;
+    } finally {
+      await this.redis.quit();
     }
   }
 
