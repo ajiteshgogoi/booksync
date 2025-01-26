@@ -396,29 +396,33 @@ function splitAtSentences(text: string, maxLength: number): string[] {
   return chunks;
 }
 
+export interface NotionClientConfig {
+  store: NotionStore;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
 export class NotionClient {
   private store: NotionStore;
   private clientId: string;
   private clientSecret: string;
+  private redirectUri: string;
 
-  constructor({ store, clientId, clientSecret }: {
-    store: NotionStore;
-    clientId: string;
-    clientSecret: string;
-  }) {
-    this.store = store;
-    this.clientId = clientId;
-    this.clientSecret = clientSecret;
-    _store = store; // Set the global store reference
+  constructor(config: NotionClientConfig) {
+    this.store = config.store;
+    this.clientId = config.clientId;
+    this.clientSecret = config.clientSecret;
+    this.redirectUri = config.redirectUri;
+    _store = config.store; // Set the global store reference
   }
 
   async exchangeCodeForToken(code: string): Promise<NotionToken> {
-    const redirectUri = process.env.NOTION_REDIRECT_URI;
     try {
       const response = await axios.post('https://api.notion.com/v1/oauth/token', {
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri
+        redirect_uri: this.redirectUri
       }, {
         auth: {
           username: this.clientId,

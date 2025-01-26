@@ -1,5 +1,5 @@
 import { KVJobStore } from './kvJobStore';
-import { NotionClient, NotionStore } from '@booksync/shared';
+import { NotionClient, NotionStore, type NotionToken } from '@booksync/shared';
 import { createKVStore } from '@booksync/shared';
 import type { Environment } from '../types/env';
 import type { CreateJobParams } from '../types/job';
@@ -16,20 +16,27 @@ export class OAuthCallbackService {
     this.notionClient = new NotionClient({
       store: notionStore,
       clientId: env.NOTION_CLIENT_ID,
-      clientSecret: env.NOTION_CLIENT_SECRET
+      clientSecret: env.NOTION_CLIENT_SECRET,
+      redirectUri: env.NOTION_REDIRECT_URI
     });
   }
 
   async handleCallback(code: string): Promise<{ redirectUrl: string }> {
-    // Exchange code for access token
-    const tokenData = await this.notionClient.exchangeCodeForToken(code);
-    if (!tokenData) {
-      throw new Error('Failed to exchange code for token');
+    // Exchange code for access token and ensure proper typing
+    const tokenData: NotionToken = await this.notionClient.exchangeCodeForToken(code);
+    if (!tokenData?.access_token || !tokenData?.workspace_id) {
+      throw new Error('Failed to exchange code for token or invalid token data');
+    }
+
+    // Get user ID from token data with proper type checking
+    let userId = 'unknown';
+    if (tokenData.owner.type === 'user' && tokenData.owner.user?.id) {
+      userId = tokenData.owner.user.id;
     }
 
     // Create sync job with temporary file key since we don't have a file yet
     const jobParams: CreateJobParams = {
-      userId: tokenData.owner.user?.id || 'unknown',
+      userId,
       workspaceId: tokenData.workspace_id,
       fileKey: `pending-${tokenData.workspace_id}`,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
