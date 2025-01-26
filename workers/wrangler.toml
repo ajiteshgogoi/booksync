@@ -2,11 +2,8 @@ name = "booksync-worker"
 main = "src/index.ts"
 compatibility_date = "2025-01-26"
 
-# Run sync job every 30 minutes
+# Cron triggers for sync and cleanup jobs
 [triggers]
-crons = ["*/30 * * * *"]
-
-# Run cleanup job every day at midnight
 crons = [
   "*/30 * * * *",  # Sync job
   "0 0 * * *"      # Cleanup job
@@ -31,6 +28,7 @@ bucket_name = "highlights-bucket"
 
 [vars]
 NOTION_REDIRECT_URI = "https://booksync-worker.your-domain.workers.dev/oauth/callback"
+WORKER_HOST = "booksync-worker.your-domain.workers.dev"
 
 # Add your secret variables in .dev.vars or using wrangler secret commands
 # wrangler secret put NOTION_CLIENT_ID
