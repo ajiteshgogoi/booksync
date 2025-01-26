@@ -1866,6 +1866,565 @@ var init_modules_watch_stub = __esm({
   }
 });
 
+// node_modules/unenv/runtime/node/crypto/internal/web.mjs
+var web_exports = {};
+__export(web_exports, {
+  getRandomValues: () => getRandomValues,
+  randomUUID: () => randomUUID,
+  subtle: () => subtle
+});
+var subtle, randomUUID, getRandomValues;
+var init_web = __esm({
+  "node_modules/unenv/runtime/node/crypto/internal/web.mjs"() {
+    init_modules_watch_stub();
+    init_virtual_unenv_global_polyfill_process();
+    init_virtual_unenv_global_polyfill_performance();
+    init_virtual_unenv_global_polyfill_console();
+    init_virtual_unenv_global_polyfill_set_immediate();
+    init_virtual_unenv_global_polyfill_clear_immediate();
+    subtle = globalThis.crypto?.subtle;
+    randomUUID = /* @__PURE__ */ __name(() => {
+      return globalThis.crypto?.randomUUID();
+    }, "randomUUID");
+    getRandomValues = /* @__PURE__ */ __name((array) => {
+      return globalThis.crypto?.getRandomValues(array);
+    }, "getRandomValues");
+  }
+});
+
+// node_modules/unenv/runtime/node/crypto/internal/node.mjs
+var node_exports = {};
+__export(node_exports, {
+  Certificate: () => Certificate,
+  Cipher: () => Cipher,
+  Cipheriv: () => Cipheriv,
+  Decipher: () => Decipher,
+  Decipheriv: () => Decipheriv,
+  DiffieHellman: () => DiffieHellman,
+  DiffieHellmanGroup: () => DiffieHellmanGroup,
+  ECDH: () => ECDH,
+  Hash: () => Hash,
+  Hmac: () => Hmac,
+  KeyObject: () => KeyObject,
+  Sign: () => Sign,
+  Verify: () => Verify,
+  X509Certificate: () => X509Certificate,
+  checkPrime: () => checkPrime,
+  checkPrimeSync: () => checkPrimeSync,
+  constants: () => constants,
+  createCipher: () => createCipher,
+  createCipheriv: () => createCipheriv,
+  createDecipher: () => createDecipher,
+  createDecipheriv: () => createDecipheriv,
+  createDiffieHellman: () => createDiffieHellman,
+  createDiffieHellmanGroup: () => createDiffieHellmanGroup,
+  createECDH: () => createECDH,
+  createHash: () => createHash,
+  createHmac: () => createHmac,
+  createPrivateKey: () => createPrivateKey,
+  createPublicKey: () => createPublicKey,
+  createSecretKey: () => createSecretKey,
+  createSign: () => createSign,
+  createVerify: () => createVerify,
+  diffieHellman: () => diffieHellman,
+  fips: () => fips,
+  generateKey: () => generateKey,
+  generateKeyPair: () => generateKeyPair,
+  generateKeyPairSync: () => generateKeyPairSync,
+  generateKeySync: () => generateKeySync,
+  generatePrime: () => generatePrime,
+  generatePrimeSync: () => generatePrimeSync,
+  getCipherInfo: () => getCipherInfo,
+  getCiphers: () => getCiphers,
+  getCurves: () => getCurves,
+  getDiffieHellman: () => getDiffieHellman,
+  getFips: () => getFips,
+  getHashes: () => getHashes,
+  hash: () => hash,
+  hkdf: () => hkdf,
+  hkdfSync: () => hkdfSync,
+  pbkdf2: () => pbkdf2,
+  pbkdf2Sync: () => pbkdf2Sync,
+  privateDecrypt: () => privateDecrypt,
+  privateEncrypt: () => privateEncrypt,
+  pseudoRandomBytes: () => pseudoRandomBytes,
+  publicDecrypt: () => publicDecrypt,
+  publicEncrypt: () => publicEncrypt,
+  randomBytes: () => randomBytes,
+  randomFill: () => randomFill,
+  randomFillSync: () => randomFillSync,
+  randomInt: () => randomInt,
+  scrypt: () => scrypt,
+  scryptSync: () => scryptSync,
+  secureHeapUsed: () => secureHeapUsed,
+  setEngine: () => setEngine,
+  setFips: () => setFips,
+  sign: () => sign,
+  timingSafeEqual: () => timingSafeEqual,
+  verify: () => verify,
+  webcrypto: () => webcrypto
+});
+var MAX_RANDOM_VALUE_BYTES, webcrypto, randomBytes, fips, constants, checkPrime, checkPrimeSync, createCipher, createDecipher, pseudoRandomBytes, createCipheriv, createDecipheriv, createDiffieHellman, createDiffieHellmanGroup, createECDH, createHash, createHmac, createPrivateKey, createPublicKey, createSecretKey, createSign, createVerify, diffieHellman, generatePrime, generatePrimeSync, getCiphers, getCipherInfo, getCurves, getDiffieHellman, getHashes, hkdf, hkdfSync, pbkdf2, pbkdf2Sync, generateKeyPair, generateKeyPairSync, generateKey, generateKeySync, privateDecrypt, privateEncrypt, publicDecrypt, publicEncrypt, randomFill, randomFillSync, randomInt, scrypt, scryptSync, sign, setEngine, timingSafeEqual, getFips, setFips, verify, secureHeapUsed, hash, Certificate, Cipher, Cipheriv, Decipher, Decipheriv, DiffieHellman, DiffieHellmanGroup, ECDH, Hash, Hmac, KeyObject, Sign, Verify, X509Certificate;
+var init_node = __esm({
+  "node_modules/unenv/runtime/node/crypto/internal/node.mjs"() {
+    init_modules_watch_stub();
+    init_virtual_unenv_global_polyfill_process();
+    init_virtual_unenv_global_polyfill_performance();
+    init_virtual_unenv_global_polyfill_console();
+    init_virtual_unenv_global_polyfill_set_immediate();
+    init_virtual_unenv_global_polyfill_clear_immediate();
+    init_utils();
+    init_web();
+    MAX_RANDOM_VALUE_BYTES = 65536;
+    webcrypto = new Proxy(
+      globalThis.crypto,
+      {
+        get(_, key) {
+          if (key === "CryptoKey") {
+            return globalThis.CryptoKey;
+          }
+          if (typeof globalThis.crypto[key] === "function") {
+            return globalThis.crypto[key].bind(globalThis.crypto);
+          }
+          return globalThis.crypto[key];
+        }
+      }
+    );
+    randomBytes = /* @__PURE__ */ __name((size, cb) => {
+      const bytes = Buffer.alloc(size, 0, void 0);
+      for (let generated = 0; generated < size; generated += MAX_RANDOM_VALUE_BYTES) {
+        getRandomValues(
+          Uint8Array.prototype.slice.call(
+            bytes,
+            generated,
+            generated + MAX_RANDOM_VALUE_BYTES
+          )
+        );
+      }
+      if (typeof cb === "function") {
+        cb(null, bytes);
+        return void 0;
+      }
+      return bytes;
+    }, "randomBytes");
+    fips = false;
+    constants = {};
+    checkPrime = notImplemented("crypto.checkPrime");
+    checkPrimeSync = notImplemented(
+      "crypto.checkPrimeSync"
+    );
+    createCipher = notImplemented("crypto.createCipher");
+    createDecipher = notImplemented("crypto.createDecipher");
+    pseudoRandomBytes = notImplemented("crypto.pseudoRandomBytes");
+    createCipheriv = notImplemented(
+      "crypto.createCipheriv"
+    );
+    createDecipheriv = notImplemented("crypto.createDecipheriv");
+    createDiffieHellman = notImplemented("crypto.createDiffieHellman");
+    createDiffieHellmanGroup = notImplemented("crypto.createDiffieHellmanGroup");
+    createECDH = notImplemented("crypto.createECDH");
+    createHash = notImplemented("crypto.createHash");
+    createHmac = notImplemented("crypto.createHmac");
+    createPrivateKey = notImplemented("crypto.createPrivateKey");
+    createPublicKey = notImplemented("crypto.createPublicKey");
+    createSecretKey = notImplemented("crypto.createSecretKey");
+    createSign = notImplemented("crypto.createSign");
+    createVerify = notImplemented(
+      "crypto.createVerify"
+    );
+    diffieHellman = notImplemented(
+      "crypto.diffieHellman"
+    );
+    generatePrime = notImplemented(
+      "crypto.generatePrime"
+    );
+    generatePrimeSync = notImplemented("crypto.generatePrimeSync");
+    getCiphers = notImplemented("crypto.getCiphers");
+    getCipherInfo = notImplemented(
+      "crypto.getCipherInfo"
+    );
+    getCurves = notImplemented("crypto.getCurves");
+    getDiffieHellman = notImplemented("crypto.getDiffieHellman");
+    getHashes = notImplemented("crypto.getHashes");
+    hkdf = notImplemented("crypto.hkdf");
+    hkdfSync = notImplemented("crypto.hkdfSync");
+    pbkdf2 = notImplemented("crypto.pbkdf2");
+    pbkdf2Sync = notImplemented("crypto.pbkdf2Sync");
+    generateKeyPair = notImplemented("crypto.generateKeyPair");
+    generateKeyPairSync = notImplemented("crypto.generateKeyPairSync");
+    generateKey = notImplemented("crypto.generateKey");
+    generateKeySync = notImplemented("crypto.generateKeySync");
+    privateDecrypt = notImplemented(
+      "crypto.privateDecrypt"
+    );
+    privateEncrypt = notImplemented(
+      "crypto.privateEncrypt"
+    );
+    publicDecrypt = notImplemented(
+      "crypto.publicDecrypt"
+    );
+    publicEncrypt = notImplemented(
+      "crypto.publicEncrypt"
+    );
+    randomFill = notImplemented("crypto.randomFill");
+    randomFillSync = notImplemented(
+      "crypto.randomFillSync"
+    );
+    randomInt = notImplemented("crypto.randomInt");
+    scrypt = notImplemented("crypto.scrypt");
+    scryptSync = notImplemented("crypto.scryptSync");
+    sign = notImplemented("crypto.sign");
+    setEngine = notImplemented("crypto.setEngine");
+    timingSafeEqual = notImplemented("crypto.timingSafeEqual");
+    getFips = notImplemented("crypto.getFips");
+    setFips = notImplemented("crypto.setFips");
+    verify = notImplemented("crypto.verify");
+    secureHeapUsed = notImplemented(
+      "crypto.secureHeapUsed"
+    );
+    hash = notImplemented("crypto.hash");
+    Certificate = notImplementedClass(
+      "crypto.Certificate"
+    );
+    Cipher = notImplementedClass(
+      "crypto.Cipher"
+    );
+    Cipheriv = notImplementedClass(
+      "crypto.Cipheriv"
+      // @ts-expect-error not typed yet
+    );
+    Decipher = notImplementedClass(
+      "crypto.Decipher"
+    );
+    Decipheriv = notImplementedClass(
+      "crypto.Decipheriv"
+      // @ts-expect-error not typed yet
+    );
+    DiffieHellman = notImplementedClass(
+      "crypto.DiffieHellman"
+    );
+    DiffieHellmanGroup = notImplementedClass(
+      "crypto.DiffieHellmanGroup"
+    );
+    ECDH = notImplementedClass(
+      "crypto.ECDH"
+    );
+    Hash = notImplementedClass(
+      "crypto.Hash"
+    );
+    Hmac = notImplementedClass(
+      "crypto.Hmac"
+    );
+    KeyObject = notImplementedClass(
+      "crypto.KeyObject"
+    );
+    Sign = notImplementedClass(
+      "crypto.Sign"
+    );
+    Verify = notImplementedClass(
+      "crypto.Verify"
+    );
+    X509Certificate = notImplementedClass(
+      "crypto.X509Certificate"
+    );
+  }
+});
+
+// node_modules/unenv/runtime/node/crypto/internal/constants.mjs
+var constants2, constants_default;
+var init_constants = __esm({
+  "node_modules/unenv/runtime/node/crypto/internal/constants.mjs"() {
+    init_modules_watch_stub();
+    init_virtual_unenv_global_polyfill_process();
+    init_virtual_unenv_global_polyfill_performance();
+    init_virtual_unenv_global_polyfill_console();
+    init_virtual_unenv_global_polyfill_set_immediate();
+    init_virtual_unenv_global_polyfill_clear_immediate();
+    constants2 = {
+      ALPN_ENABLED: 1,
+      // Node.js v18 only
+      DH_CHECK_P_NOT_PRIME: 1,
+      DH_CHECK_P_NOT_SAFE_PRIME: 2,
+      DH_NOT_SUITABLE_GENERATOR: 8,
+      DH_UNABLE_TO_CHECK_GENERATOR: 4,
+      ENGINE_METHOD_ALL: 65535,
+      ENGINE_METHOD_CIPHERS: 64,
+      ENGINE_METHOD_DH: 4,
+      ENGINE_METHOD_DIGESTS: 128,
+      ENGINE_METHOD_DSA: 2,
+      ENGINE_METHOD_EC: 2048,
+      ENGINE_METHOD_NONE: 0,
+      ENGINE_METHOD_PKEY_ASN1_METHS: 1024,
+      ENGINE_METHOD_PKEY_METHS: 512,
+      ENGINE_METHOD_RAND: 8,
+      ENGINE_METHOD_RSA: 1,
+      OPENSSL_VERSION_NUMBER: 0,
+      // explicitly set to 0 to avoid version misdetection
+      POINT_CONVERSION_COMPRESSED: 2,
+      POINT_CONVERSION_HYBRID: 6,
+      POINT_CONVERSION_UNCOMPRESSED: 4,
+      RSA_NO_PADDING: 3,
+      RSA_PKCS1_OAEP_PADDING: 4,
+      RSA_PKCS1_PADDING: 1,
+      RSA_PKCS1_PSS_PADDING: 6,
+      RSA_PSS_SALTLEN_AUTO: -2,
+      RSA_PSS_SALTLEN_DIGEST: -1,
+      RSA_PSS_SALTLEN_MAX_SIGN: -2,
+      RSA_X931_PADDING: 5,
+      SSL_OP_ALL: 2147485776,
+      SSL_OP_ALLOW_NO_DHE_KEX: 1024,
+      SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION: 262144,
+      SSL_OP_CIPHER_SERVER_PREFERENCE: 4194304,
+      SSL_OP_CISCO_ANYCONNECT: 32768,
+      SSL_OP_COOKIE_EXCHANGE: 8192,
+      SSL_OP_CRYPTOPRO_TLSEXT_BUG: 2147483648,
+      SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS: 2048,
+      SSL_OP_EPHEMERAL_RSA: 0,
+      // Node.js v18 only
+      SSL_OP_LEGACY_SERVER_CONNECT: 4,
+      SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER: 0,
+      // Node.js v18 only
+      SSL_OP_MICROSOFT_SESS_ID_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_MSIE_SSLV2_RSA_PADDING: 0,
+      // Node.js v18 only
+      SSL_OP_NETSCAPE_CA_DN_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_NETSCAPE_CHALLENGE_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_NETSCAPE_DEMO_CIPHER_CHANGE_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_NO_COMPRESSION: 131072,
+      SSL_OP_NO_ENCRYPT_THEN_MAC: 524288,
+      SSL_OP_NO_QUERY_MTU: 4096,
+      SSL_OP_NO_RENEGOTIATION: 1073741824,
+      SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION: 65536,
+      SSL_OP_NO_SSLv2: 0,
+      SSL_OP_NO_SSLv3: 33554432,
+      SSL_OP_NO_TICKET: 16384,
+      SSL_OP_NO_TLSv1_1: 268435456,
+      SSL_OP_NO_TLSv1_2: 134217728,
+      SSL_OP_NO_TLSv1_3: 536870912,
+      SSL_OP_NO_TLSv1: 67108864,
+      SSL_OP_PKCS1_CHECK_1: 0,
+      // Node.js v18 only
+      SSL_OP_PKCS1_CHECK_2: 0,
+      // Node.js v18 only
+      SSL_OP_PRIORITIZE_CHACHA: 2097152,
+      SSL_OP_SINGLE_DH_USE: 0,
+      // Node.js v18 only
+      SSL_OP_SINGLE_ECDH_USE: 0,
+      // Node.js v18 only
+      SSL_OP_SSLEAY_080_CLIENT_DH_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_TLS_BLOCK_PADDING_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_TLS_D5_BUG: 0,
+      // Node.js v18 only
+      SSL_OP_TLS_ROLLBACK_BUG: 8388608,
+      TLS1_1_VERSION: 0,
+      // explicitly set to 0 to avoid version misdetection
+      TLS1_2_VERSION: 0,
+      // explicitly set to 0 to avoid version misdetection
+      TLS1_3_VERSION: 0,
+      // explicitly set to 0 to avoid version misdetection
+      TLS1_VERSION: 0,
+      // explicitly set to 0 to avoid version misdetection
+      defaultCoreCipherList: "",
+      // explicitly set to "" to avoid version misdetection
+      get defaultCipherList() {
+        return constants2.defaultCoreCipherList;
+      },
+      set defaultCipherList(_ignored) {
+      }
+    };
+    constants_default = constants2;
+  }
+});
+
+// node_modules/unenv/runtime/node/crypto/index.mjs
+var crypto_default;
+var init_crypto = __esm({
+  "node_modules/unenv/runtime/node/crypto/index.mjs"() {
+    init_modules_watch_stub();
+    init_virtual_unenv_global_polyfill_process();
+    init_virtual_unenv_global_polyfill_performance();
+    init_virtual_unenv_global_polyfill_console();
+    init_virtual_unenv_global_polyfill_set_immediate();
+    init_virtual_unenv_global_polyfill_clear_immediate();
+    init_web();
+    init_node();
+    init_constants();
+    init_web();
+    init_node();
+    init_constants();
+    crypto_default = {
+      ...web_exports,
+      ...node_exports,
+      // @ts-expect-error @types/node is out of date - this is a bug in typings
+      constants: constants_default
+    };
+  }
+});
+
+// node_modules/unenv/runtime/node/crypto/$cloudflare.mjs
+var workerdCrypto, Certificate2, DiffieHellman2, DiffieHellmanGroup2, Hash2, Hmac2, KeyObject2, X509Certificate2, checkPrime2, checkPrimeSync2, createDiffieHellman2, createDiffieHellmanGroup2, createHash2, createHmac2, createPrivateKey2, createPublicKey2, createSecretKey2, generateKey2, generateKeyPair2, generateKeyPairSync2, generateKeySync2, generatePrime2, generatePrimeSync2, getCiphers2, getCurves2, getDiffieHellman2, getFips2, getHashes2, hkdf2, hkdfSync2, pbkdf22, pbkdf2Sync2, randomBytes2, randomFill2, randomFillSync2, randomInt2, randomUUID2, scrypt2, scryptSync2, secureHeapUsed2, setEngine2, setFips2, subtle2, timingSafeEqual2, getRandomValues2, webcrypto2, fips2, cloudflare_default3;
+var init_cloudflare4 = __esm({
+  "node_modules/unenv/runtime/node/crypto/$cloudflare.mjs"() {
+    init_modules_watch_stub();
+    init_virtual_unenv_global_polyfill_process();
+    init_virtual_unenv_global_polyfill_performance();
+    init_virtual_unenv_global_polyfill_console();
+    init_virtual_unenv_global_polyfill_set_immediate();
+    init_virtual_unenv_global_polyfill_clear_immediate();
+    init_crypto();
+    init_crypto();
+    workerdCrypto = process.getBuiltinModule("node:crypto");
+    ({
+      Certificate: Certificate2,
+      DiffieHellman: DiffieHellman2,
+      DiffieHellmanGroup: DiffieHellmanGroup2,
+      Hash: Hash2,
+      Hmac: Hmac2,
+      KeyObject: KeyObject2,
+      X509Certificate: X509Certificate2,
+      checkPrime: checkPrime2,
+      checkPrimeSync: checkPrimeSync2,
+      createDiffieHellman: createDiffieHellman2,
+      createDiffieHellmanGroup: createDiffieHellmanGroup2,
+      createHash: createHash2,
+      createHmac: createHmac2,
+      createPrivateKey: createPrivateKey2,
+      createPublicKey: createPublicKey2,
+      createSecretKey: createSecretKey2,
+      generateKey: generateKey2,
+      generateKeyPair: generateKeyPair2,
+      generateKeyPairSync: generateKeyPairSync2,
+      generateKeySync: generateKeySync2,
+      generatePrime: generatePrime2,
+      generatePrimeSync: generatePrimeSync2,
+      getCiphers: getCiphers2,
+      getCurves: getCurves2,
+      getDiffieHellman: getDiffieHellman2,
+      getFips: getFips2,
+      getHashes: getHashes2,
+      hkdf: hkdf2,
+      hkdfSync: hkdfSync2,
+      pbkdf2: pbkdf22,
+      pbkdf2Sync: pbkdf2Sync2,
+      randomBytes: randomBytes2,
+      randomFill: randomFill2,
+      randomFillSync: randomFillSync2,
+      randomInt: randomInt2,
+      randomUUID: randomUUID2,
+      scrypt: scrypt2,
+      scryptSync: scryptSync2,
+      secureHeapUsed: secureHeapUsed2,
+      setEngine: setEngine2,
+      setFips: setFips2,
+      subtle: subtle2,
+      timingSafeEqual: timingSafeEqual2
+    } = workerdCrypto);
+    getRandomValues2 = workerdCrypto.getRandomValues.bind(
+      workerdCrypto.webcrypto
+    );
+    webcrypto2 = {
+      CryptoKey: webcrypto.CryptoKey,
+      getRandomValues: getRandomValues2,
+      randomUUID: randomUUID2,
+      subtle: subtle2
+    };
+    fips2 = workerdCrypto.fips;
+    cloudflare_default3 = {
+      /**
+       * manually unroll unenv-polyfilled-symbols to make it tree-shakeable
+       */
+      Certificate: Certificate2,
+      Cipher,
+      Cipheriv,
+      Decipher,
+      Decipheriv,
+      ECDH,
+      Sign,
+      Verify,
+      X509Certificate: X509Certificate2,
+      // @ts-expect-error @types/node is out of date - this is a bug in typings
+      constants: constants_default,
+      createCipheriv,
+      createDecipheriv,
+      createECDH,
+      createSign,
+      createVerify,
+      diffieHellman,
+      getCipherInfo,
+      hash,
+      privateDecrypt,
+      privateEncrypt,
+      publicDecrypt,
+      publicEncrypt,
+      scrypt: scrypt2,
+      scryptSync: scryptSync2,
+      sign,
+      verify,
+      // default-only export from unenv
+      createCipher,
+      createDecipher,
+      pseudoRandomBytes,
+      /**
+       * manually unroll workerd-polyfilled-symbols to make it tree-shakeable
+       */
+      DiffieHellman: DiffieHellman2,
+      DiffieHellmanGroup: DiffieHellmanGroup2,
+      Hash: Hash2,
+      Hmac: Hmac2,
+      KeyObject: KeyObject2,
+      checkPrime: checkPrime2,
+      checkPrimeSync: checkPrimeSync2,
+      createDiffieHellman: createDiffieHellman2,
+      createDiffieHellmanGroup: createDiffieHellmanGroup2,
+      createHash: createHash2,
+      createHmac: createHmac2,
+      createPrivateKey: createPrivateKey2,
+      createPublicKey: createPublicKey2,
+      createSecretKey: createSecretKey2,
+      generateKey: generateKey2,
+      generateKeyPair: generateKeyPair2,
+      generateKeyPairSync: generateKeyPairSync2,
+      generateKeySync: generateKeySync2,
+      generatePrime: generatePrime2,
+      generatePrimeSync: generatePrimeSync2,
+      getCiphers: getCiphers2,
+      getCurves: getCurves2,
+      getDiffieHellman: getDiffieHellman2,
+      getFips: getFips2,
+      getHashes: getHashes2,
+      getRandomValues: getRandomValues2,
+      hkdf: hkdf2,
+      hkdfSync: hkdfSync2,
+      pbkdf2: pbkdf22,
+      pbkdf2Sync: pbkdf2Sync2,
+      randomBytes: randomBytes2,
+      randomFill: randomFill2,
+      randomFillSync: randomFillSync2,
+      randomInt: randomInt2,
+      randomUUID: randomUUID2,
+      secureHeapUsed: secureHeapUsed2,
+      setEngine: setEngine2,
+      setFips: setFips2,
+      subtle: subtle2,
+      timingSafeEqual: timingSafeEqual2,
+      // default-only export from workerd
+      fips: fips2,
+      // special-cased deep merged symbols
+      webcrypto: webcrypto2
+    };
+  }
+});
+
 // node_modules/@redis/client/dist/lib/commands/APPEND.js
 var require_APPEND = __commonJS({
   "node_modules/@redis/client/dist/lib/commands/APPEND.js"(exports2) {
@@ -12837,7 +13396,7 @@ __export(constants_exports, {
   DEFAULT_MIN_VERSION: () => DEFAULT_MIN_VERSION
 });
 var CLIENT_RENEG_LIMIT, CLIENT_RENEG_WINDOW, DEFAULT_CIPHERS, DEFAULT_ECDH_CURVE, DEFAULT_MAX_VERSION, DEFAULT_MIN_VERSION;
-var init_constants = __esm({
+var init_constants2 = __esm({
   "node_modules/unenv/runtime/node/tls/internal/constants.mjs"() {
     init_modules_watch_stub();
     init_virtual_unenv_global_polyfill_process();
@@ -12855,7 +13414,7 @@ var init_constants = __esm({
 });
 
 // node_modules/unenv/runtime/node/tls/index.mjs
-var connect2, createServer2, checkServerIdentity, convertALPNProtocols, createSecureContext, createSecurePair, getCiphers, rootCertificates, tls_default;
+var connect2, createServer2, checkServerIdentity, convertALPNProtocols, createSecureContext, createSecurePair, getCiphers3, rootCertificates, tls_default;
 var init_tls = __esm({
   "node_modules/unenv/runtime/node/tls/index.mjs"() {
     init_modules_watch_stub();
@@ -12868,8 +13427,8 @@ var init_tls = __esm({
     init_tls_socket();
     init_server2();
     init_secure_context();
-    init_constants();
-    init_constants();
+    init_constants2();
+    init_constants2();
     connect2 = /* @__PURE__ */ __name(function connect22() {
       return new TLSSocket();
     }, "connect2");
@@ -12882,7 +13441,7 @@ var init_tls = __esm({
     createSecurePair = notImplemented(
       "tls.createSecurePair"
     );
-    getCiphers = notImplemented("tls.getCiphers");
+    getCiphers3 = notImplemented("tls.getCiphers");
     rootCertificates = [];
     tls_default = {
       ...constants_exports,
@@ -12895,7 +13454,7 @@ var init_tls = __esm({
       createSecureContext,
       createSecurePair,
       createServer: createServer2,
-      getCiphers,
+      getCiphers: getCiphers3,
       rootCertificates
     };
   }
@@ -17495,7 +18054,7 @@ var init_mime = __esm({
 });
 
 // node_modules/unenv/runtime/node/util/index.mjs
-var TextDecoder, TextEncoder2, deprecate, _errnoException, _exceptionWithHostPort, _extend, aborted, callbackify, getSystemErrorMap, getSystemErrorName, toUSVString, stripVTControlCharacters, transferableAbortController, transferableAbortSignal, parseArgs, parseEnv, styleText, getCallSite, util_default;
+var TextDecoder, TextEncoder, deprecate, _errnoException, _exceptionWithHostPort, _extend, aborted, callbackify, getSystemErrorMap, getSystemErrorName, toUSVString, stripVTControlCharacters, transferableAbortController, transferableAbortSignal, parseArgs, parseEnv, styleText, getCallSite, util_default;
 var init_util = __esm({
   "node_modules/unenv/runtime/node/util/index.mjs"() {
     init_modules_watch_stub();
@@ -17515,7 +18074,7 @@ var init_util = __esm({
     init_legacy_types();
     init_log();
     TextDecoder = globalThis.TextDecoder;
-    TextEncoder2 = globalThis.TextEncoder;
+    TextEncoder = globalThis.TextEncoder;
     deprecate = /* @__PURE__ */ __name((fn2) => fn2, "deprecate");
     _errnoException = notImplemented("util._errnoException");
     _exceptionWithHostPort = notImplemented(
@@ -17551,7 +18110,7 @@ var init_util = __esm({
       stripVTControlCharacters,
       toUSVString,
       TextDecoder,
-      TextEncoder: TextEncoder2,
+      TextEncoder,
       types: types_default,
       transferableAbortController,
       transferableAbortSignal,
@@ -17566,8 +18125,8 @@ var init_util = __esm({
 });
 
 // node_modules/unenv/runtime/node/util/$cloudflare.mjs
-var workerdUtil, MIMEParams2, MIMEType2, TextDecoder2, TextEncoder3, _extend2, aborted2, callbackify2, debug4, debuglog2, deprecate2, format2, formatWithOptions2, getCallSite2, inherits2, inspect2, log4, parseArgs2, promisify2, stripVTControlCharacters2, toUSVString2, transferableAbortController2, transferableAbortSignal2, types, cloudflare_default3;
-var init_cloudflare4 = __esm({
+var workerdUtil, MIMEParams2, MIMEType2, TextDecoder2, TextEncoder2, _extend2, aborted2, callbackify2, debug4, debuglog2, deprecate2, format2, formatWithOptions2, getCallSite2, inherits2, inspect2, log4, parseArgs2, promisify2, stripVTControlCharacters2, toUSVString2, transferableAbortController2, transferableAbortSignal2, types, cloudflare_default4;
+var init_cloudflare5 = __esm({
   "node_modules/unenv/runtime/node/util/$cloudflare.mjs"() {
     init_modules_watch_stub();
     init_virtual_unenv_global_polyfill_process();
@@ -17581,7 +18140,7 @@ var init_cloudflare4 = __esm({
       MIMEParams: MIMEParams2,
       MIMEType: MIMEType2,
       TextDecoder: TextDecoder2,
-      TextEncoder: TextEncoder3,
+      TextEncoder: TextEncoder2,
       _extend: (
         // @ts-expect-error missing types?
         _extend2
@@ -17605,7 +18164,7 @@ var init_cloudflare4 = __esm({
       transferableAbortSignal: transferableAbortSignal2
     } = workerdUtil);
     types = workerdUtil.types;
-    cloudflare_default3 = {
+    cloudflare_default4 = {
       /**
        * manually unroll unenv-polyfilled-symbols to make it tree-shakeable
        */
@@ -17638,7 +18197,7 @@ var init_cloudflare4 = __esm({
       MIMEParams: MIMEParams2,
       MIMEType: MIMEType2,
       TextDecoder: TextDecoder2,
-      TextEncoder: TextEncoder3,
+      TextEncoder: TextEncoder2,
       _extend: _extend2,
       aborted: aborted2,
       callbackify: callbackify2,
@@ -17672,8 +18231,8 @@ var require_util = __commonJS({
     init_virtual_unenv_global_polyfill_console();
     init_virtual_unenv_global_polyfill_set_immediate();
     init_virtual_unenv_global_polyfill_clear_immediate();
-    init_cloudflare4();
-    module.exports = cloudflare_default3;
+    init_cloudflare5();
+    module.exports = cloudflare_default4;
   }
 });
 
@@ -18828,565 +19387,6 @@ var require_cluster = __commonJS({
   }
 });
 
-// node_modules/unenv/runtime/node/crypto/internal/web.mjs
-var web_exports = {};
-__export(web_exports, {
-  getRandomValues: () => getRandomValues,
-  randomUUID: () => randomUUID,
-  subtle: () => subtle
-});
-var subtle, randomUUID, getRandomValues;
-var init_web = __esm({
-  "node_modules/unenv/runtime/node/crypto/internal/web.mjs"() {
-    init_modules_watch_stub();
-    init_virtual_unenv_global_polyfill_process();
-    init_virtual_unenv_global_polyfill_performance();
-    init_virtual_unenv_global_polyfill_console();
-    init_virtual_unenv_global_polyfill_set_immediate();
-    init_virtual_unenv_global_polyfill_clear_immediate();
-    subtle = globalThis.crypto?.subtle;
-    randomUUID = /* @__PURE__ */ __name(() => {
-      return globalThis.crypto?.randomUUID();
-    }, "randomUUID");
-    getRandomValues = /* @__PURE__ */ __name((array) => {
-      return globalThis.crypto?.getRandomValues(array);
-    }, "getRandomValues");
-  }
-});
-
-// node_modules/unenv/runtime/node/crypto/internal/node.mjs
-var node_exports = {};
-__export(node_exports, {
-  Certificate: () => Certificate,
-  Cipher: () => Cipher,
-  Cipheriv: () => Cipheriv,
-  Decipher: () => Decipher,
-  Decipheriv: () => Decipheriv,
-  DiffieHellman: () => DiffieHellman,
-  DiffieHellmanGroup: () => DiffieHellmanGroup,
-  ECDH: () => ECDH,
-  Hash: () => Hash,
-  Hmac: () => Hmac,
-  KeyObject: () => KeyObject,
-  Sign: () => Sign,
-  Verify: () => Verify,
-  X509Certificate: () => X509Certificate,
-  checkPrime: () => checkPrime,
-  checkPrimeSync: () => checkPrimeSync,
-  constants: () => constants,
-  createCipher: () => createCipher,
-  createCipheriv: () => createCipheriv,
-  createDecipher: () => createDecipher,
-  createDecipheriv: () => createDecipheriv,
-  createDiffieHellman: () => createDiffieHellman,
-  createDiffieHellmanGroup: () => createDiffieHellmanGroup,
-  createECDH: () => createECDH,
-  createHash: () => createHash,
-  createHmac: () => createHmac,
-  createPrivateKey: () => createPrivateKey,
-  createPublicKey: () => createPublicKey,
-  createSecretKey: () => createSecretKey,
-  createSign: () => createSign,
-  createVerify: () => createVerify,
-  diffieHellman: () => diffieHellman,
-  fips: () => fips,
-  generateKey: () => generateKey,
-  generateKeyPair: () => generateKeyPair,
-  generateKeyPairSync: () => generateKeyPairSync,
-  generateKeySync: () => generateKeySync,
-  generatePrime: () => generatePrime,
-  generatePrimeSync: () => generatePrimeSync,
-  getCipherInfo: () => getCipherInfo,
-  getCiphers: () => getCiphers2,
-  getCurves: () => getCurves,
-  getDiffieHellman: () => getDiffieHellman,
-  getFips: () => getFips,
-  getHashes: () => getHashes,
-  hash: () => hash,
-  hkdf: () => hkdf,
-  hkdfSync: () => hkdfSync,
-  pbkdf2: () => pbkdf2,
-  pbkdf2Sync: () => pbkdf2Sync,
-  privateDecrypt: () => privateDecrypt,
-  privateEncrypt: () => privateEncrypt,
-  pseudoRandomBytes: () => pseudoRandomBytes,
-  publicDecrypt: () => publicDecrypt,
-  publicEncrypt: () => publicEncrypt,
-  randomBytes: () => randomBytes,
-  randomFill: () => randomFill,
-  randomFillSync: () => randomFillSync,
-  randomInt: () => randomInt,
-  scrypt: () => scrypt,
-  scryptSync: () => scryptSync,
-  secureHeapUsed: () => secureHeapUsed,
-  setEngine: () => setEngine,
-  setFips: () => setFips,
-  sign: () => sign,
-  timingSafeEqual: () => timingSafeEqual,
-  verify: () => verify,
-  webcrypto: () => webcrypto
-});
-var MAX_RANDOM_VALUE_BYTES, webcrypto, randomBytes, fips, constants, checkPrime, checkPrimeSync, createCipher, createDecipher, pseudoRandomBytes, createCipheriv, createDecipheriv, createDiffieHellman, createDiffieHellmanGroup, createECDH, createHash, createHmac, createPrivateKey, createPublicKey, createSecretKey, createSign, createVerify, diffieHellman, generatePrime, generatePrimeSync, getCiphers2, getCipherInfo, getCurves, getDiffieHellman, getHashes, hkdf, hkdfSync, pbkdf2, pbkdf2Sync, generateKeyPair, generateKeyPairSync, generateKey, generateKeySync, privateDecrypt, privateEncrypt, publicDecrypt, publicEncrypt, randomFill, randomFillSync, randomInt, scrypt, scryptSync, sign, setEngine, timingSafeEqual, getFips, setFips, verify, secureHeapUsed, hash, Certificate, Cipher, Cipheriv, Decipher, Decipheriv, DiffieHellman, DiffieHellmanGroup, ECDH, Hash, Hmac, KeyObject, Sign, Verify, X509Certificate;
-var init_node = __esm({
-  "node_modules/unenv/runtime/node/crypto/internal/node.mjs"() {
-    init_modules_watch_stub();
-    init_virtual_unenv_global_polyfill_process();
-    init_virtual_unenv_global_polyfill_performance();
-    init_virtual_unenv_global_polyfill_console();
-    init_virtual_unenv_global_polyfill_set_immediate();
-    init_virtual_unenv_global_polyfill_clear_immediate();
-    init_utils();
-    init_web();
-    MAX_RANDOM_VALUE_BYTES = 65536;
-    webcrypto = new Proxy(
-      globalThis.crypto,
-      {
-        get(_, key) {
-          if (key === "CryptoKey") {
-            return globalThis.CryptoKey;
-          }
-          if (typeof globalThis.crypto[key] === "function") {
-            return globalThis.crypto[key].bind(globalThis.crypto);
-          }
-          return globalThis.crypto[key];
-        }
-      }
-    );
-    randomBytes = /* @__PURE__ */ __name((size, cb) => {
-      const bytes = Buffer.alloc(size, 0, void 0);
-      for (let generated = 0; generated < size; generated += MAX_RANDOM_VALUE_BYTES) {
-        getRandomValues(
-          Uint8Array.prototype.slice.call(
-            bytes,
-            generated,
-            generated + MAX_RANDOM_VALUE_BYTES
-          )
-        );
-      }
-      if (typeof cb === "function") {
-        cb(null, bytes);
-        return void 0;
-      }
-      return bytes;
-    }, "randomBytes");
-    fips = false;
-    constants = {};
-    checkPrime = notImplemented("crypto.checkPrime");
-    checkPrimeSync = notImplemented(
-      "crypto.checkPrimeSync"
-    );
-    createCipher = notImplemented("crypto.createCipher");
-    createDecipher = notImplemented("crypto.createDecipher");
-    pseudoRandomBytes = notImplemented("crypto.pseudoRandomBytes");
-    createCipheriv = notImplemented(
-      "crypto.createCipheriv"
-    );
-    createDecipheriv = notImplemented("crypto.createDecipheriv");
-    createDiffieHellman = notImplemented("crypto.createDiffieHellman");
-    createDiffieHellmanGroup = notImplemented("crypto.createDiffieHellmanGroup");
-    createECDH = notImplemented("crypto.createECDH");
-    createHash = notImplemented("crypto.createHash");
-    createHmac = notImplemented("crypto.createHmac");
-    createPrivateKey = notImplemented("crypto.createPrivateKey");
-    createPublicKey = notImplemented("crypto.createPublicKey");
-    createSecretKey = notImplemented("crypto.createSecretKey");
-    createSign = notImplemented("crypto.createSign");
-    createVerify = notImplemented(
-      "crypto.createVerify"
-    );
-    diffieHellman = notImplemented(
-      "crypto.diffieHellman"
-    );
-    generatePrime = notImplemented(
-      "crypto.generatePrime"
-    );
-    generatePrimeSync = notImplemented("crypto.generatePrimeSync");
-    getCiphers2 = notImplemented("crypto.getCiphers");
-    getCipherInfo = notImplemented(
-      "crypto.getCipherInfo"
-    );
-    getCurves = notImplemented("crypto.getCurves");
-    getDiffieHellman = notImplemented("crypto.getDiffieHellman");
-    getHashes = notImplemented("crypto.getHashes");
-    hkdf = notImplemented("crypto.hkdf");
-    hkdfSync = notImplemented("crypto.hkdfSync");
-    pbkdf2 = notImplemented("crypto.pbkdf2");
-    pbkdf2Sync = notImplemented("crypto.pbkdf2Sync");
-    generateKeyPair = notImplemented("crypto.generateKeyPair");
-    generateKeyPairSync = notImplemented("crypto.generateKeyPairSync");
-    generateKey = notImplemented("crypto.generateKey");
-    generateKeySync = notImplemented("crypto.generateKeySync");
-    privateDecrypt = notImplemented(
-      "crypto.privateDecrypt"
-    );
-    privateEncrypt = notImplemented(
-      "crypto.privateEncrypt"
-    );
-    publicDecrypt = notImplemented(
-      "crypto.publicDecrypt"
-    );
-    publicEncrypt = notImplemented(
-      "crypto.publicEncrypt"
-    );
-    randomFill = notImplemented("crypto.randomFill");
-    randomFillSync = notImplemented(
-      "crypto.randomFillSync"
-    );
-    randomInt = notImplemented("crypto.randomInt");
-    scrypt = notImplemented("crypto.scrypt");
-    scryptSync = notImplemented("crypto.scryptSync");
-    sign = notImplemented("crypto.sign");
-    setEngine = notImplemented("crypto.setEngine");
-    timingSafeEqual = notImplemented("crypto.timingSafeEqual");
-    getFips = notImplemented("crypto.getFips");
-    setFips = notImplemented("crypto.setFips");
-    verify = notImplemented("crypto.verify");
-    secureHeapUsed = notImplemented(
-      "crypto.secureHeapUsed"
-    );
-    hash = notImplemented("crypto.hash");
-    Certificate = notImplementedClass(
-      "crypto.Certificate"
-    );
-    Cipher = notImplementedClass(
-      "crypto.Cipher"
-    );
-    Cipheriv = notImplementedClass(
-      "crypto.Cipheriv"
-      // @ts-expect-error not typed yet
-    );
-    Decipher = notImplementedClass(
-      "crypto.Decipher"
-    );
-    Decipheriv = notImplementedClass(
-      "crypto.Decipheriv"
-      // @ts-expect-error not typed yet
-    );
-    DiffieHellman = notImplementedClass(
-      "crypto.DiffieHellman"
-    );
-    DiffieHellmanGroup = notImplementedClass(
-      "crypto.DiffieHellmanGroup"
-    );
-    ECDH = notImplementedClass(
-      "crypto.ECDH"
-    );
-    Hash = notImplementedClass(
-      "crypto.Hash"
-    );
-    Hmac = notImplementedClass(
-      "crypto.Hmac"
-    );
-    KeyObject = notImplementedClass(
-      "crypto.KeyObject"
-    );
-    Sign = notImplementedClass(
-      "crypto.Sign"
-    );
-    Verify = notImplementedClass(
-      "crypto.Verify"
-    );
-    X509Certificate = notImplementedClass(
-      "crypto.X509Certificate"
-    );
-  }
-});
-
-// node_modules/unenv/runtime/node/crypto/internal/constants.mjs
-var constants2, constants_default;
-var init_constants2 = __esm({
-  "node_modules/unenv/runtime/node/crypto/internal/constants.mjs"() {
-    init_modules_watch_stub();
-    init_virtual_unenv_global_polyfill_process();
-    init_virtual_unenv_global_polyfill_performance();
-    init_virtual_unenv_global_polyfill_console();
-    init_virtual_unenv_global_polyfill_set_immediate();
-    init_virtual_unenv_global_polyfill_clear_immediate();
-    constants2 = {
-      ALPN_ENABLED: 1,
-      // Node.js v18 only
-      DH_CHECK_P_NOT_PRIME: 1,
-      DH_CHECK_P_NOT_SAFE_PRIME: 2,
-      DH_NOT_SUITABLE_GENERATOR: 8,
-      DH_UNABLE_TO_CHECK_GENERATOR: 4,
-      ENGINE_METHOD_ALL: 65535,
-      ENGINE_METHOD_CIPHERS: 64,
-      ENGINE_METHOD_DH: 4,
-      ENGINE_METHOD_DIGESTS: 128,
-      ENGINE_METHOD_DSA: 2,
-      ENGINE_METHOD_EC: 2048,
-      ENGINE_METHOD_NONE: 0,
-      ENGINE_METHOD_PKEY_ASN1_METHS: 1024,
-      ENGINE_METHOD_PKEY_METHS: 512,
-      ENGINE_METHOD_RAND: 8,
-      ENGINE_METHOD_RSA: 1,
-      OPENSSL_VERSION_NUMBER: 0,
-      // explicitly set to 0 to avoid version misdetection
-      POINT_CONVERSION_COMPRESSED: 2,
-      POINT_CONVERSION_HYBRID: 6,
-      POINT_CONVERSION_UNCOMPRESSED: 4,
-      RSA_NO_PADDING: 3,
-      RSA_PKCS1_OAEP_PADDING: 4,
-      RSA_PKCS1_PADDING: 1,
-      RSA_PKCS1_PSS_PADDING: 6,
-      RSA_PSS_SALTLEN_AUTO: -2,
-      RSA_PSS_SALTLEN_DIGEST: -1,
-      RSA_PSS_SALTLEN_MAX_SIGN: -2,
-      RSA_X931_PADDING: 5,
-      SSL_OP_ALL: 2147485776,
-      SSL_OP_ALLOW_NO_DHE_KEX: 1024,
-      SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION: 262144,
-      SSL_OP_CIPHER_SERVER_PREFERENCE: 4194304,
-      SSL_OP_CISCO_ANYCONNECT: 32768,
-      SSL_OP_COOKIE_EXCHANGE: 8192,
-      SSL_OP_CRYPTOPRO_TLSEXT_BUG: 2147483648,
-      SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS: 2048,
-      SSL_OP_EPHEMERAL_RSA: 0,
-      // Node.js v18 only
-      SSL_OP_LEGACY_SERVER_CONNECT: 4,
-      SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER: 0,
-      // Node.js v18 only
-      SSL_OP_MICROSOFT_SESS_ID_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_MSIE_SSLV2_RSA_PADDING: 0,
-      // Node.js v18 only
-      SSL_OP_NETSCAPE_CA_DN_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_NETSCAPE_CHALLENGE_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_NETSCAPE_DEMO_CIPHER_CHANGE_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_NO_COMPRESSION: 131072,
-      SSL_OP_NO_ENCRYPT_THEN_MAC: 524288,
-      SSL_OP_NO_QUERY_MTU: 4096,
-      SSL_OP_NO_RENEGOTIATION: 1073741824,
-      SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION: 65536,
-      SSL_OP_NO_SSLv2: 0,
-      SSL_OP_NO_SSLv3: 33554432,
-      SSL_OP_NO_TICKET: 16384,
-      SSL_OP_NO_TLSv1_1: 268435456,
-      SSL_OP_NO_TLSv1_2: 134217728,
-      SSL_OP_NO_TLSv1_3: 536870912,
-      SSL_OP_NO_TLSv1: 67108864,
-      SSL_OP_PKCS1_CHECK_1: 0,
-      // Node.js v18 only
-      SSL_OP_PKCS1_CHECK_2: 0,
-      // Node.js v18 only
-      SSL_OP_PRIORITIZE_CHACHA: 2097152,
-      SSL_OP_SINGLE_DH_USE: 0,
-      // Node.js v18 only
-      SSL_OP_SINGLE_ECDH_USE: 0,
-      // Node.js v18 only
-      SSL_OP_SSLEAY_080_CLIENT_DH_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_TLS_BLOCK_PADDING_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_TLS_D5_BUG: 0,
-      // Node.js v18 only
-      SSL_OP_TLS_ROLLBACK_BUG: 8388608,
-      TLS1_1_VERSION: 0,
-      // explicitly set to 0 to avoid version misdetection
-      TLS1_2_VERSION: 0,
-      // explicitly set to 0 to avoid version misdetection
-      TLS1_3_VERSION: 0,
-      // explicitly set to 0 to avoid version misdetection
-      TLS1_VERSION: 0,
-      // explicitly set to 0 to avoid version misdetection
-      defaultCoreCipherList: "",
-      // explicitly set to "" to avoid version misdetection
-      get defaultCipherList() {
-        return constants2.defaultCoreCipherList;
-      },
-      set defaultCipherList(_ignored) {
-      }
-    };
-    constants_default = constants2;
-  }
-});
-
-// node_modules/unenv/runtime/node/crypto/index.mjs
-var crypto_default;
-var init_crypto = __esm({
-  "node_modules/unenv/runtime/node/crypto/index.mjs"() {
-    init_modules_watch_stub();
-    init_virtual_unenv_global_polyfill_process();
-    init_virtual_unenv_global_polyfill_performance();
-    init_virtual_unenv_global_polyfill_console();
-    init_virtual_unenv_global_polyfill_set_immediate();
-    init_virtual_unenv_global_polyfill_clear_immediate();
-    init_web();
-    init_node();
-    init_constants2();
-    init_web();
-    init_node();
-    init_constants2();
-    crypto_default = {
-      ...web_exports,
-      ...node_exports,
-      // @ts-expect-error @types/node is out of date - this is a bug in typings
-      constants: constants_default
-    };
-  }
-});
-
-// node_modules/unenv/runtime/node/crypto/$cloudflare.mjs
-var workerdCrypto, Certificate2, DiffieHellman2, DiffieHellmanGroup2, Hash2, Hmac2, KeyObject2, X509Certificate2, checkPrime2, checkPrimeSync2, createDiffieHellman2, createDiffieHellmanGroup2, createHash2, createHmac2, createPrivateKey2, createPublicKey2, createSecretKey2, generateKey2, generateKeyPair2, generateKeyPairSync2, generateKeySync2, generatePrime2, generatePrimeSync2, getCiphers3, getCurves2, getDiffieHellman2, getFips2, getHashes2, hkdf2, hkdfSync2, pbkdf22, pbkdf2Sync2, randomBytes2, randomFill2, randomFillSync2, randomInt2, randomUUID2, scrypt2, scryptSync2, secureHeapUsed2, setEngine2, setFips2, subtle2, timingSafeEqual2, getRandomValues2, webcrypto2, fips2, cloudflare_default4;
-var init_cloudflare5 = __esm({
-  "node_modules/unenv/runtime/node/crypto/$cloudflare.mjs"() {
-    init_modules_watch_stub();
-    init_virtual_unenv_global_polyfill_process();
-    init_virtual_unenv_global_polyfill_performance();
-    init_virtual_unenv_global_polyfill_console();
-    init_virtual_unenv_global_polyfill_set_immediate();
-    init_virtual_unenv_global_polyfill_clear_immediate();
-    init_crypto();
-    init_crypto();
-    workerdCrypto = process.getBuiltinModule("node:crypto");
-    ({
-      Certificate: Certificate2,
-      DiffieHellman: DiffieHellman2,
-      DiffieHellmanGroup: DiffieHellmanGroup2,
-      Hash: Hash2,
-      Hmac: Hmac2,
-      KeyObject: KeyObject2,
-      X509Certificate: X509Certificate2,
-      checkPrime: checkPrime2,
-      checkPrimeSync: checkPrimeSync2,
-      createDiffieHellman: createDiffieHellman2,
-      createDiffieHellmanGroup: createDiffieHellmanGroup2,
-      createHash: createHash2,
-      createHmac: createHmac2,
-      createPrivateKey: createPrivateKey2,
-      createPublicKey: createPublicKey2,
-      createSecretKey: createSecretKey2,
-      generateKey: generateKey2,
-      generateKeyPair: generateKeyPair2,
-      generateKeyPairSync: generateKeyPairSync2,
-      generateKeySync: generateKeySync2,
-      generatePrime: generatePrime2,
-      generatePrimeSync: generatePrimeSync2,
-      getCiphers: getCiphers3,
-      getCurves: getCurves2,
-      getDiffieHellman: getDiffieHellman2,
-      getFips: getFips2,
-      getHashes: getHashes2,
-      hkdf: hkdf2,
-      hkdfSync: hkdfSync2,
-      pbkdf2: pbkdf22,
-      pbkdf2Sync: pbkdf2Sync2,
-      randomBytes: randomBytes2,
-      randomFill: randomFill2,
-      randomFillSync: randomFillSync2,
-      randomInt: randomInt2,
-      randomUUID: randomUUID2,
-      scrypt: scrypt2,
-      scryptSync: scryptSync2,
-      secureHeapUsed: secureHeapUsed2,
-      setEngine: setEngine2,
-      setFips: setFips2,
-      subtle: subtle2,
-      timingSafeEqual: timingSafeEqual2
-    } = workerdCrypto);
-    getRandomValues2 = workerdCrypto.getRandomValues.bind(
-      workerdCrypto.webcrypto
-    );
-    webcrypto2 = {
-      CryptoKey: webcrypto.CryptoKey,
-      getRandomValues: getRandomValues2,
-      randomUUID: randomUUID2,
-      subtle: subtle2
-    };
-    fips2 = workerdCrypto.fips;
-    cloudflare_default4 = {
-      /**
-       * manually unroll unenv-polyfilled-symbols to make it tree-shakeable
-       */
-      Certificate: Certificate2,
-      Cipher,
-      Cipheriv,
-      Decipher,
-      Decipheriv,
-      ECDH,
-      Sign,
-      Verify,
-      X509Certificate: X509Certificate2,
-      // @ts-expect-error @types/node is out of date - this is a bug in typings
-      constants: constants_default,
-      createCipheriv,
-      createDecipheriv,
-      createECDH,
-      createSign,
-      createVerify,
-      diffieHellman,
-      getCipherInfo,
-      hash,
-      privateDecrypt,
-      privateEncrypt,
-      publicDecrypt,
-      publicEncrypt,
-      scrypt: scrypt2,
-      scryptSync: scryptSync2,
-      sign,
-      verify,
-      // default-only export from unenv
-      createCipher,
-      createDecipher,
-      pseudoRandomBytes,
-      /**
-       * manually unroll workerd-polyfilled-symbols to make it tree-shakeable
-       */
-      DiffieHellman: DiffieHellman2,
-      DiffieHellmanGroup: DiffieHellmanGroup2,
-      Hash: Hash2,
-      Hmac: Hmac2,
-      KeyObject: KeyObject2,
-      checkPrime: checkPrime2,
-      checkPrimeSync: checkPrimeSync2,
-      createDiffieHellman: createDiffieHellman2,
-      createDiffieHellmanGroup: createDiffieHellmanGroup2,
-      createHash: createHash2,
-      createHmac: createHmac2,
-      createPrivateKey: createPrivateKey2,
-      createPublicKey: createPublicKey2,
-      createSecretKey: createSecretKey2,
-      generateKey: generateKey2,
-      generateKeyPair: generateKeyPair2,
-      generateKeyPairSync: generateKeyPairSync2,
-      generateKeySync: generateKeySync2,
-      generatePrime: generatePrime2,
-      generatePrimeSync: generatePrimeSync2,
-      getCiphers: getCiphers3,
-      getCurves: getCurves2,
-      getDiffieHellman: getDiffieHellman2,
-      getFips: getFips2,
-      getHashes: getHashes2,
-      getRandomValues: getRandomValues2,
-      hkdf: hkdf2,
-      hkdfSync: hkdfSync2,
-      pbkdf2: pbkdf22,
-      pbkdf2Sync: pbkdf2Sync2,
-      randomBytes: randomBytes2,
-      randomFill: randomFill2,
-      randomFillSync: randomFillSync2,
-      randomInt: randomInt2,
-      randomUUID: randomUUID2,
-      secureHeapUsed: secureHeapUsed2,
-      setEngine: setEngine2,
-      setFips: setFips2,
-      subtle: subtle2,
-      timingSafeEqual: timingSafeEqual2,
-      // default-only export from workerd
-      fips: fips2,
-      // special-cased deep merged symbols
-      webcrypto: webcrypto2
-    };
-  }
-});
-
 // node-built-in-modules:crypto
 var require_crypto = __commonJS({
   "node-built-in-modules:crypto"(exports2, module) {
@@ -19396,8 +19396,8 @@ var require_crypto = __commonJS({
     init_virtual_unenv_global_polyfill_console();
     init_virtual_unenv_global_polyfill_set_immediate();
     init_virtual_unenv_global_polyfill_clear_immediate();
-    init_cloudflare5();
-    module.exports = cloudflare_default4;
+    init_cloudflare4();
+    module.exports = cloudflare_default3;
   }
 });
 
@@ -19507,21 +19507,19 @@ init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// utils/parseClippings.ts
+// ../../server/src/utils/parseClippings.ts
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
+init_cloudflare4();
 var BATCH_SIZE = 100;
-async function generateHighlightHash(highlight, location, bookTitle, author) {
+function generateHighlightHash(highlight, location, bookTitle, author) {
   const firstChunk = highlight[0] || "";
   const content = firstChunk + location + bookTitle + author;
-  const msgUint8 = new TextEncoder().encode(content);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return createHash2("sha256").update(content).digest("hex");
 }
 __name(generateHighlightHash, "generateHighlightHash");
 function splitText(text, maxLength = 2e3) {
@@ -19650,10 +19648,10 @@ async function processBatch(entries, highlightGroups) {
       const highlightChunks = splitText(highlightContent);
       highlightChunks.forEach((chunk, i) => {
         if (chunk.length > 2e3) {
-          console.error(`ERROR: Chunk exceeds limit: Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
+          console.error(`ERROR: Chunk exceeds Notion limit in "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
           highlightChunks[i] = chunk.substring(0, 2e3);
         } else if (chunk.length > 1900) {
-          console.warn(`Warning: Chunk approaching limit: Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
+          console.warn(`Warning: Chunk approaching Notion limit in "${bookTitle}": Chunk ${i + 1}/${highlightChunks.length} is ${chunk.length} characters`);
         }
       });
       if (highlightChunks.length > 10) {
@@ -19669,7 +19667,7 @@ async function processBatch(entries, highlightGroups) {
         highlight: highlightChunks,
         location,
         date,
-        hash: await generateHighlightHash(highlightChunks, location, bookTitle, author)
+        hash: generateHighlightHash(highlightChunks, location, bookTitle, author)
       };
       highlightGroups.get(groupKey).push(highlight);
     } catch (error3) {
@@ -19739,6 +19737,9 @@ async function parseClippings(fileContent) {
     });
   }
   console.log(`Successfully parsed ${highlights.length} highlights`);
+  if (highlights.length > 0) {
+    console.debug("Sample highlight:", JSON.stringify(highlights[0], null, 2));
+  }
   highlights.forEach((h, index) => {
     console.debug(`Verifying highlight ${index + 1}/${highlights.length}`);
     if (!h.bookTitle || !h.author || !h.highlight || !h.location || !h.date) {
@@ -19814,19 +19815,12 @@ var UploadWorker = class {
         lastProcessedIndex: 0,
         userId
       }));
-      console.log(`[processFile] Starting R2 file fetch for key: ${fileKey}`);
       const file = await this.env.R2_BUCKET.get(fileKey);
       if (!file) {
         throw new Error("File not found in R2");
       }
-      console.log(`[processFile] File fetched from R2 successfully for key: ${fileKey}`);
-      console.log("[processFile] Converting file to text");
       const fileContent = await file.text();
-      console.log(`[processFile] File converted to text, length: ${fileContent.length}`);
-      console.log("[processFile] Parsing highlights");
       const highlights = await parseClippings(fileContent);
-      console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
-      console.log("[processFile] Storing highlights in Redis pipeline");
       const pipeline = this.redis.pipeline();
       highlights.forEach((highlight, index) => {
         const key = `highlights:${jobId}:${index}`;
@@ -19835,10 +19829,7 @@ var UploadWorker = class {
           databaseId
         }), "EX", 86400);
       });
-      console.log("[processFile] Executing Redis pipeline");
       await pipeline.exec();
-      console.log("[processFile] Redis pipeline executed successfully");
-      console.log("[processFile] Updating job status to parsed");
       await this.redis.set(`job:${jobId}`, JSON.stringify({
         state: "parsed",
         progress: 0,
@@ -19847,10 +19838,7 @@ var UploadWorker = class {
         lastProcessedIndex: 0,
         userId
       }));
-      console.log("[processFile] Job status updated to parsed");
-      console.log("[processFile] Adding job to processing queue");
       await this.redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
-      console.log("[processFile] Job added to processing queue");
       return jobId;
     } catch (error3) {
       console.error("Error processing file:", error3);
