@@ -1,6 +1,7 @@
 name = "booksync-worker"
 main = "src/index.ts"
 compatibility_date = "2025-01-26"
+compatibility_flags = ["nodejs_compat"]
 
 # Cron triggers for sync and cleanup jobs
 [triggers]
