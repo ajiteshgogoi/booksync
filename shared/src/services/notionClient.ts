@@ -130,7 +130,19 @@ let _databaseId: string | null = null;
 let _store: NotionStore | null = null;
 
 export async function setOAuthToken(store: NotionStore, tokenData: NotionToken): Promise<void> {
+  if (!store) {
+    throw new Error('[OAuth] NotionStore is required');
+  }
+
   try {
+    console.log('[OAuth] Validating token data...', {
+      hasWorkspaceId: !!tokenData?.workspace_id,
+      hasAccessToken: !!tokenData?.access_token,
+      hasOwner: !!tokenData?.owner,
+      ownerType: tokenData?.owner?.type,
+      hasUserId: !!tokenData?.owner?.user?.id
+    });
+
     if (!tokenData?.workspace_id || !tokenData?.access_token) {
       throw new Error('Invalid token data - missing required fields');
     }
@@ -138,20 +150,23 @@ export async function setOAuthToken(store: NotionStore, tokenData: NotionToken):
     const workspaceId = tokenData.workspace_id;
     const userId = tokenData.owner?.user?.id || '';
 
-    // Log initial token storage
-    console.log('[OAuth] Storing initial token data', {
+    console.log('[OAuth] Preparing to store token...', {
       workspaceId,
       userId,
-      hasDatabaseId: !!_databaseId
+      hasDatabaseId: !!_databaseId,
+      hasStore: !!store,
+      storeType: store.constructor.name
     });
 
-    // Store the token data
+    // Store the token data first
+    console.log('[OAuth] Storing token data...');
     await store.setToken(tokenData);
+    
+    // Set global store reference
+    console.log('[OAuth] Updating global store reference...');
     _store = store;
 
-    console.log('[OAuth] Initial token storage complete');
-
-    // Initialize client
+    console.log('[OAuth] Initializing Notion client...');
     _client = new Client({
       auth: tokenData.access_token,
     });
@@ -163,21 +178,27 @@ export async function setOAuthToken(store: NotionStore, tokenData: NotionToken):
     // If we found the database ID, update it in store
     if (_databaseId) {
       console.log('[OAuth] Found database ID:', _databaseId);
-      console.log('[OAuth] Storing database ID');
-
-      await store.setDatabaseId(workspaceId, _databaseId);
-
-      console.log('[OAuth] Database ID storage updated');
+      
+      try {
+        console.log('[OAuth] Storing database ID...');
+        await store.setDatabaseId(workspaceId, _databaseId);
+        console.log('[OAuth] Database ID storage updated');
+      } catch (dbError) {
+        console.error('[OAuth] Failed to store database ID:', dbError);
+        // Don't throw here, as token is already stored
+      }
     } else {
-      console.log('[OAuth] No database ID found - using initial token storage');
+      console.log('[OAuth] No database ID found - continuing with token storage only');
     }
 
     console.log('[OAuth] OAuth flow completed successfully');
   } catch (error) {
-    console.error('[OAuth] Failed to set OAuth token:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    const errorDetails = {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      type: error?.constructor?.name
+    };
+    console.error('[OAuth] Failed to set OAuth token:', errorDetails);
     throw error;
   }
 }
@@ -418,6 +439,17 @@ export class NotionClient {
   }
 
   async exchangeCodeForToken(code: string): Promise<NotionToken> {
+    if (!code) {
+      throw new Error('No authorization code provided');
+    }
+
+    console.log('[NotionClient] Exchanging code for token...', {
+      hasCode: !!code,
+      redirectUri: this.redirectUri,
+      hasClientId: !!this.clientId,
+      hasClientSecret: !!this.clientSecret
+    });
+
     try {
       const response = await axios.post('https://api.notion.com/v1/oauth/token', {
         grant_type: 'authorization_code',
@@ -430,25 +462,34 @@ export class NotionClient {
         }
       });
 
-      // Log the response for debugging
-      console.log('OAuth token response:', JSON.stringify(response.data, null, 2));
+      console.log('[NotionClient] Received OAuth response:', {
+        status: response.status,
+        hasData: !!response.data,
+        dataKeys: response.data ? Object.keys(response.data) : []
+      });
+
+      // Full response logging for debugging
+      console.log('[NotionClient] Full OAuth response:', JSON.stringify(response.data, null, 2));
 
       // Validate required fields
       const tokenData = response.data;
-      if (!tokenData?.access_token) {
-        throw new Error('Missing access_token in response');
-      }
-      if (!tokenData?.workspace_id) {
-        throw new Error('Missing workspace_id in response');
-      }
-      if (!tokenData?.bot_id) {
-        throw new Error('Missing bot_id in response');
-      }
-      if (!tokenData?.workspace_name) {
-        throw new Error('Missing workspace_name in response');
-      }
-      if (!tokenData?.owner?.type) {
-        throw new Error('Missing owner.type in response');
+      const requiredFields = [
+        'access_token',
+        'workspace_id',
+        'bot_id',
+        'workspace_name',
+        ['owner', 'type']
+      ];
+
+      for (const field of requiredFields) {
+        if (Array.isArray(field)) {
+          const [parent, child] = field;
+          if (!tokenData?.[parent]?.[child]) {
+            throw new Error(`Missing ${parent}.${child} in response`);
+          }
+        } else if (!tokenData?.[field]) {
+          throw new Error(`Missing ${field} in response`);
+        }
       }
 
       const token: NotionToken = {
@@ -469,7 +510,17 @@ export class NotionClient {
         expires_in: tokenData.expires_in
       };
 
+      console.log('[NotionClient] Constructed token object:', {
+        hasAccessToken: !!token.access_token,
+        workspaceId: token.workspace_id,
+        workspaceName: token.workspace_name,
+        ownerType: token.owner.type
+      });
+
+      console.log('[NotionClient] Storing token...');
       await setOAuthToken(this.store, token);
+      console.log('[NotionClient] Token stored successfully');
+
       return token;
     } catch (error) {
       console.error('Failed to exchange code for token:', error);
