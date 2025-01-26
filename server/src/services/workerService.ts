@@ -133,8 +133,7 @@ class WorkerService {
           const jobStatus = await getJobStatus(result.jobId);
           if (jobStatus?.state !== 'parsed') {
             logger.info(`Skipping job ${result.jobId} - not marked as parsed`);
-            // Don't acknowledge job yet - wait for it to be parsed
-            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+            await acknowledgeJob(result.messageId); // Acknowledge to remove from queue
             continue;
           }
           
