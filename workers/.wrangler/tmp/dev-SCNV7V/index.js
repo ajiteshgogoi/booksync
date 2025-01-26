@@ -2904,14 +2904,14 @@ var require_src = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-sIAqaZ/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-O1DG46/middleware-loader.entry.ts
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// .wrangler/tmp/bundle-sIAqaZ/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-O1DG46/middleware-insertion-facade.js
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
@@ -3476,6 +3476,9 @@ var NotionStore = class {
   }
   async setDatabaseId(workspaceId, databaseId) {
     await this.kvStore.set(this.getDbKey(workspaceId), databaseId);
+  }
+  async set(key, value) {
+    await this.kvStore.set(key, value);
   }
 };
 __name(NotionStore, "NotionStore");
@@ -6450,6 +6453,70 @@ __name(storeHashes, "storeHashes");
 var _client = null;
 var _databaseId = null;
 var _store = null;
+async function setOAuthToken(store, tokenData) {
+  if (!store) {
+    throw new Error("[OAuth] NotionStore is required");
+  }
+  try {
+    console.log("[OAuth] Validating token data...", {
+      hasWorkspaceId: !!tokenData?.workspace_id,
+      hasAccessToken: !!tokenData?.access_token,
+      hasOwner: !!tokenData?.owner,
+      ownerType: tokenData?.owner?.type,
+      hasUserId: !!tokenData?.owner?.user?.id
+    });
+    if (!tokenData?.workspace_id || !tokenData?.access_token) {
+      throw new Error("Invalid token data - missing required fields");
+    }
+    const workspaceId = tokenData.workspace_id;
+    const userId = tokenData.owner?.user?.id || "";
+    console.log("[OAuth] Preparing to store token...", {
+      workspaceId,
+      userId,
+      hasDatabaseId: !!_databaseId,
+      hasStore: !!store,
+      storeType: store.constructor.name
+    });
+    console.log("[OAuth] Storing token data...");
+    await store.setToken(tokenData);
+    console.log("[OAuth] Updating global store reference...");
+    _store = store;
+    if (!_client) {
+      console.log("[OAuth] Initializing Notion client...");
+      _client = new import_client2.Client({
+        auth: tokenData.access_token
+      });
+    }
+    console.log("[OAuth] Searching for Kindle Highlights database...");
+    try {
+      await findKindleHighlightsDatabase(_client);
+    } catch (error3) {
+      console.error("[OAuth] Error finding database:", error3);
+    }
+    if (_databaseId) {
+      console.log("[OAuth] Found database ID:", _databaseId);
+      try {
+        console.log("[OAuth] Storing database ID...");
+        await store.setDatabaseId(workspaceId, _databaseId);
+        console.log("[OAuth] Database ID storage updated");
+      } catch (dbError) {
+        console.error("[OAuth] Failed to store database ID:", dbError);
+      }
+    } else {
+      console.log("[OAuth] No database ID found - continuing with token storage only");
+    }
+    console.log("[OAuth] OAuth flow completed successfully");
+  } catch (error3) {
+    const errorDetails = {
+      message: error3 instanceof Error ? error3.message : "Unknown error",
+      stack: error3 instanceof Error ? error3.stack : void 0,
+      type: error3?.constructor?.name
+    };
+    console.error("[OAuth] Failed to set OAuth token:", errorDetails);
+    throw error3;
+  }
+}
+__name(setOAuthToken, "setOAuthToken");
 async function getClient() {
   try {
     if (!_client && _store) {
@@ -7575,13 +7642,33 @@ var OAuthCallbackService = class {
       } else {
         console.log("No user ID found in token data, using default:", userId);
       }
+      const authToken = crypto.randomUUID();
+      console.log("Storing auth token mapping...", {
+        authToken,
+        userId,
+        workspaceId: tokenData.workspace_id
+      });
+      const extendedToken = {
+        ...tokenData,
+        authToken,
+        userId,
+        workspaceId: tokenData.workspace_id,
+        expiresAt: Date.now() + 1e3 * 60 * 60 * 24 * 7
+        // 1 week
+      };
+      await setOAuthToken(this.notionClient.store, extendedToken);
+      console.log("Auth token stored successfully");
       console.log("Building redirect URL...");
       const clientUrl = new URL(this.env.CLIENT_URL || "http://localhost:5173");
       clientUrl.searchParams.set("status", "success");
       clientUrl.searchParams.set("workspaceId", tokenData.workspace_id);
+      clientUrl.searchParams.set("authToken", authToken);
       const redirectUrl = clientUrl.toString();
       console.log("Redirecting to:", redirectUrl);
-      return { redirectUrl };
+      return {
+        redirectUrl,
+        authToken
+      };
     } catch (error3) {
       console.error("OAuth callback error:", {
         error: error3 instanceof Error ? error3.message : "Unknown error",
@@ -8057,7 +8144,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env3, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-sIAqaZ/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-O1DG46/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -8094,7 +8181,7 @@ function __facade_invoke__(request, env3, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-sIAqaZ/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-O1DG46/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
