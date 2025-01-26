@@ -12893,7 +12893,7 @@ var require_built3 = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-gKxR57/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-NJ3g0v/middleware-loader.entry.ts
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
@@ -12901,7 +12901,7 @@ init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// .wrangler/tmp/bundle-gKxR57/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-NJ3g0v/middleware-insertion-facade.js
 init_modules_watch_stub();
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
@@ -13170,147 +13170,69 @@ var import_ioredis = __toESM(require_built3());
 var RedisClient = class {
   client;
   connectionPromise;
-  isConnected = false;
   constructor(options) {
     this.client = new import_ioredis.default(options.url, {
       tls: {
         rejectUnauthorized: false
       },
-      retryStrategy: (times) => {
-        if (times > 3) {
-          return null;
-        }
-        return Math.min(times * 100, 500);
-      },
-      maxRetriesPerRequest: 2,
-      connectTimeout: 3e3,
-      // 3 second timeout
-      commandTimeout: 3e3,
-      // 3 second timeout for commands
-      keepAlive: 1e3,
-      // Keepalive every 1 second
-      disconnectTimeout: 2e3
-      // 2 second timeout when disconnecting
+      retryStrategy: (times) => Math.min(times * 100, 500),
+      maxRetriesPerRequest: 3,
+      connectTimeout: 5e3
+      // 5 second timeout
     });
     this.connectionPromise = new Promise((resolve, reject) => {
-      const connectionTimeout = setTimeout(() => {
-        reject(new Error("Redis connection timeout"));
-      }, 5e3);
       this.client.once("ready", () => {
-        clearTimeout(connectionTimeout);
         console.log("Redis connection ready");
-        this.isConnected = true;
         resolve();
       });
       this.client.once("error", (err) => {
-        clearTimeout(connectionTimeout);
         console.error("Redis initial connection error:", err);
-        this.isConnected = false;
         reject(err);
       });
     });
     this.client.on("error", (err) => {
       console.error("Redis connection error:", err);
-      this.isConnected = false;
-    });
-    this.client.on("end", () => {
-      console.log("Redis connection ended");
-      this.isConnected = false;
-    });
-    this.client.on("reconnecting", () => {
-      console.log("Redis reconnecting...");
-      this.isConnected = false;
     });
   }
   async connect() {
-    if (!this.isConnected) {
-      try {
-        await Promise.race([
-          this.connectionPromise,
-          new Promise(
-            (_, reject) => setTimeout(() => reject(new Error("Redis connection timeout")), 5e3)
-          )
-        ]);
-      } catch (error3) {
-        console.error("Redis connection failed:", error3);
-        throw error3;
-      }
-    }
+    await this.connectionPromise;
   }
   async set(key, value, ...args) {
     await this.connect();
-    try {
-      await this.client.set(key, value, ...args);
-    } catch (error3) {
-      console.error(`Redis SET error for key ${key}:`, error3);
-      throw error3;
-    }
+    await this.client.set(key, value, ...args);
   }
   async xgroup(command, stream, group3, id, mkstream) {
     await this.connect();
-    try {
-      if (command === "CREATE") {
-        if (mkstream) {
-          return await this.client.xgroup(command, stream, group3, id, mkstream);
-        }
-        return await this.client.xgroup(command, stream, group3, id);
-      } else {
-        return await this.client.xgroup(command, stream, group3);
+    if (command === "CREATE") {
+      if (mkstream) {
+        return this.client.xgroup(command, stream, group3, id, mkstream);
       }
-    } catch (error3) {
-      console.error(`Redis XGROUP error for stream ${stream}:`, error3);
-      throw error3;
+      return this.client.xgroup(command, stream, group3, id);
+    } else {
+      return this.client.xgroup(command, stream, group3);
     }
   }
   async xreadgroup(groupName, consumerName, streams) {
     await this.connect();
-    try {
-      return await this.client.xreadgroup("GROUP", groupName, consumerName, "STREAMS", ...streams.flat());
-    } catch (error3) {
-      console.error(`Redis XREADGROUP error for group ${groupName}:`, error3);
-      throw error3;
-    }
+    return this.client.xreadgroup("GROUP", groupName, consumerName, "STREAMS", ...streams.flat());
   }
   async xadd(key, id, ...args) {
     await this.connect();
-    try {
-      const result = await this.client.xadd(key, id, ...args);
-      if (result === null) {
-        throw new Error("Failed to add entry to stream");
-      }
-      return result;
-    } catch (error3) {
-      console.error(`Redis XADD error for key ${key}:`, error3);
-      throw error3;
+    const result = await this.client.xadd(key, id, ...args);
+    if (result === null) {
+      throw new Error("Failed to add entry to stream");
     }
+    return result;
   }
   pipeline() {
-    if (!this.isConnected) {
-      throw new Error("Cannot create pipeline: Redis not connected");
-    }
-    try {
-      return this.client.pipeline();
-    } catch (error3) {
-      console.error("Redis pipeline creation error:", error3);
-      throw error3;
-    }
+    return this.client.pipeline();
   }
   async quit() {
-    if (this.isConnected) {
-      try {
-        await Promise.race([
-          this.client.quit(),
-          new Promise(
-            (_, reject) => setTimeout(() => reject(new Error("Redis quit timeout")), 2e3)
-          )
-        ]);
-        this.isConnected = false;
-        console.log("Redis connection closed gracefully");
-      } catch (error3) {
-        console.error("Error while closing Redis connection:", error3);
-        this.client.disconnect();
-        throw error3;
-      }
+    try {
+      await this.client.quit();
+      console.log("Redis connection closed gracefully");
+    } catch (error3) {
+      console.error("Error while closing Redis connection:", error3);
     }
   }
 };
@@ -13389,7 +13311,6 @@ var upload_default = {
 async function processFile(redis, bucket, fileKey, databaseId, userId) {
   const jobId = `sync:${userId}:${Date.now()}`;
   try {
-    await redis.connect();
     await redis.set(`job:${jobId}`, JSON.stringify({
       state: "queued",
       progress: 0,
@@ -13409,39 +13330,36 @@ async function processFile(redis, bucket, fileKey, databaseId, userId) {
     console.log("[processFile] Parsing highlights");
     const highlights = await parseClippings(fileContent);
     console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
-    console.log("[processFile] Creating Redis pipeline");
+    console.log("[processFile] Storing highlights in Redis pipeline");
     const pipeline = redis.pipeline();
-    const parsedKey = `parsed:${fileKey}`;
-    await bucket.put(parsedKey, JSON.stringify({
-      highlights: highlights.map((highlight) => ({
+    highlights.forEach((highlight, index) => {
+      const key = `highlights:${jobId}:${index}`;
+      pipeline.set(key, JSON.stringify({
         ...highlight,
         databaseId
-      })),
-      total: highlights.length
-    }));
-    console.log("[processFile] Stored parsed highlights in R2:", { parsedKey, total: highlights.length });
+      }), "EX", 86400);
+    });
+    console.log("[processFile] Executing Redis pipeline");
+    await pipeline.exec();
+    console.log("[processFile] Redis pipeline executed successfully");
     await redis.set(`job:${jobId}`, JSON.stringify({
       state: "parsed",
       progress: 0,
       message: "File parsed and ready for processing",
       total: highlights.length,
       lastProcessedIndex: 0,
-      userId,
-      parsedKey
-      // Store R2 key in status for sync worker
+      userId
     }));
-    await redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync", "parsedKey", parsedKey);
+    await redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
     console.log("[processFile] Job added to processing queue");
     return jobId;
   } catch (error3) {
     console.error("Error processing file:", error3);
-    if (redis) {
-      await redis.set(`job:${jobId}`, JSON.stringify({
-        state: "failed",
-        message: error3 instanceof Error ? error3.message : "Unknown error",
-        userId
-      }));
-    }
+    await redis.set(`job:${jobId}`, JSON.stringify({
+      state: "failed",
+      message: error3 instanceof Error ? error3.message : "Unknown error",
+      userId
+    }));
     throw error3;
   }
 }
@@ -13500,7 +13418,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env3, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-gKxR57/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-NJ3g0v/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -13538,7 +13456,7 @@ function __facade_invoke__(request, env3, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-gKxR57/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-NJ3g0v/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

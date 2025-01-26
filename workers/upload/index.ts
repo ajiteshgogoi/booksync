@@ -116,9 +116,6 @@ async function processFile(
   const jobId = `sync:${userId}:${Date.now()}`;
 
   try {
-    // Ensure Redis is connected
-    await redis.connect();
-
     // Set initial queued status
     await redis.set(`job:${jobId}`, JSON.stringify({
       state: 'queued',
@@ -146,48 +143,43 @@ async function processFile(
     const highlights = await parseClippings(fileContent);
     console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
 
-    // Create pipeline after ensuring connection
-    console.log('[processFile] Creating Redis pipeline');
+    // Store highlights in Redis with pipeline
+    console.log('[processFile] Storing highlights in Redis pipeline');
     const pipeline = redis.pipeline();
-    
-    // Store parsed highlights in R2
-    const parsedKey = `parsed:${fileKey}`;
-    await bucket.put(parsedKey, JSON.stringify({
-      highlights: highlights.map(highlight => ({
+    highlights.forEach((highlight, index) => {
+      const key = `highlights:${jobId}:${index}`;
+      pipeline.set(key, JSON.stringify({
         ...highlight,
         databaseId
-      })),
-      total: highlights.length,
-    }));
+      }), 'EX', 86400); // 24 hour TTL
+    });
+    console.log('[processFile] Executing Redis pipeline');
+    await pipeline.exec();
+    console.log('[processFile] Redis pipeline executed successfully');
 
-    console.log('[processFile] Stored parsed highlights in R2:', { parsedKey, total: highlights.length });
-
-    // Update status to parsed in Redis after storing highlights
+    // Update status to parsed after storing highlights
     await redis.set(`job:${jobId}`, JSON.stringify({
       state: 'parsed',
       progress: 0,
       message: 'File parsed and ready for processing',
       total: highlights.length,
       lastProcessedIndex: 0,
-      userId,
-      parsedKey // Store R2 key in status for sync worker
+      userId
     } as JobStatus));
 
     // Add to processing queue
-    await redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync', 'parsedKey', parsedKey);
+    await redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
     console.log('[processFile] Job added to processing queue');
 
     return jobId;
   } catch (error) {
     console.error('Error processing file:', error);
     // Update status to failed
-    if (redis) {
-      await redis.set(`job:${jobId}`, JSON.stringify({
-        state: 'failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        userId
-      } as JobStatus));
-    }
+    await redis.set(`job:${jobId}`, JSON.stringify({
+      state: 'failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      userId
+    } as JobStatus));
     throw error;
   }
 }

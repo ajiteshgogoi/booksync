@@ -10,5 +10,4 @@ export interface JobStatus {
   userId?: string;  // Optional for backward compatibility
   uploadId?: string; // Added for upload tracking
   errorDetails?: string;
-  parsedKey?: string;  // Key for parsed highlights in R2
 }
