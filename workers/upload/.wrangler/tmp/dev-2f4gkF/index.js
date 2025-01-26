@@ -7010,7 +7010,7 @@ var require_Command = __commonJS({
     var calculateSlot = require_lib();
     var standard_as_callback_1 = require_built2();
     var utils_1 = require_utils2();
-    var Command2 = class {
+    var Command = class {
       /**
        * Creates an instance of Command.
        * @param name Command name
@@ -7062,9 +7062,9 @@ var require_Command = __commonJS({
       }
       static getFlagMap() {
         if (!this.flagMap) {
-          this.flagMap = Object.keys(Command2.FLAGS).reduce((map, flagName) => {
+          this.flagMap = Object.keys(Command.FLAGS).reduce((map, flagName) => {
             map[flagName] = {};
-            Command2.FLAGS[flagName].forEach((commandName) => {
+            Command.FLAGS[flagName].forEach((commandName) => {
               map[flagName][commandName] = true;
             });
             return map;
@@ -7134,7 +7134,7 @@ var require_Command = __commonJS({
         if (this.replyEncoding) {
           result = (0, utils_1.convertBufferToString)(result, this.replyEncoding);
         }
-        const transformer = Command2._transformer.reply[this.name];
+        const transformer = Command._transformer.reply[this.name];
         if (transformer) {
           result = transformer(result);
         }
@@ -7157,7 +7157,7 @@ var require_Command = __commonJS({
         const promise = new Promise((resolve, reject) => {
           if (!this.transformed) {
             this.transformed = true;
-            const transformer = Command2._transformer.argument[this.name];
+            const transformer = Command._transformer.argument[this.name];
             if (transformer) {
               this.args = transformer(this.args);
             }
@@ -7210,9 +7210,9 @@ var require_Command = __commonJS({
         };
       }
     };
-    __name(Command2, "Command");
-    exports2.default = Command2;
-    Command2.FLAGS = {
+    __name(Command, "Command");
+    exports2.default = Command;
+    Command.FLAGS = {
       VALID_IN_SUBSCRIBER_MODE: [
         "subscribe",
         "psubscribe",
@@ -7228,7 +7228,7 @@ var require_Command = __commonJS({
       EXIT_SUBSCRIBER_MODE: ["unsubscribe", "punsubscribe", "sunsubscribe"],
       WILL_DISCONNECT: ["quit"]
     };
-    Command2._transformer = {
+    Command._transformer = {
       argument: {},
       reply: {}
     };
@@ -7254,11 +7254,11 @@ var require_Command = __commonJS({
       }
       return args;
     }, "hsetArgumentTransformer");
-    Command2.setArgumentTransformer("mset", msetArgumentTransformer);
-    Command2.setArgumentTransformer("msetnx", msetArgumentTransformer);
-    Command2.setArgumentTransformer("hset", hsetArgumentTransformer);
-    Command2.setArgumentTransformer("hmset", hsetArgumentTransformer);
-    Command2.setReplyTransformer("hgetall", function(result) {
+    Command.setArgumentTransformer("mset", msetArgumentTransformer);
+    Command.setArgumentTransformer("msetnx", msetArgumentTransformer);
+    Command.setArgumentTransformer("hset", hsetArgumentTransformer);
+    Command.setArgumentTransformer("hmset", hsetArgumentTransformer);
+    Command.setReplyTransformer("hgetall", function(result) {
       if (Array.isArray(result)) {
         const obj = {};
         for (let i = 0; i < result.length; i += 2) {
@@ -13169,138 +13169,91 @@ init_virtual_unenv_global_polyfill_clear_immediate();
 var import_ioredis = __toESM(require_built3());
 var RedisClient = class {
   client;
+  connectionPromise;
   constructor(options) {
     this.client = new import_ioredis.default(options.url, {
       tls: {
         rejectUnauthorized: false
       },
       retryStrategy: (times) => Math.min(times * 100, 500),
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
+      connectTimeout: 5e3
+      // 5 second timeout
+    });
+    this.connectionPromise = new Promise((resolve, reject) => {
+      this.client.once("ready", () => {
+        console.log("Redis connection ready");
+        resolve();
+      });
+      this.client.once("error", (err) => {
+        console.error("Redis initial connection error:", err);
+        reject(err);
+      });
     });
     this.client.on("error", (err) => {
       console.error("Redis connection error:", err);
     });
   }
   async connect() {
-    return Promise.resolve();
+    await this.connectionPromise;
   }
-  async set(key, value, options) {
-    await this.client.set(key, value, options);
+  async set(key, value, ...args) {
+    await this.connect();
+    await this.client.set(key, value, ...args);
   }
   async xgroup(command, stream, group3, id, mkstream) {
+    await this.connect();
     if (command === "CREATE") {
-      const args = mkstream ? ["XGROUP", command, stream, group3, id, mkstream] : ["XGROUP", command, stream, group3, id];
-      return this.client.command(args[0], args.slice(1));
+      if (mkstream) {
+        return this.client.xgroup(command, stream, group3, id, mkstream);
+      }
+      return this.client.xgroup(command, stream, group3, id);
     } else {
-      return this.client.command("XGROUP", [command, stream, group3]);
+      return this.client.xgroup(command, stream, group3);
     }
   }
-  async xreadgroup(args) {
-    return this.client.command("XREADGROUP", args);
+  async xreadgroup(groupName, consumerName, streams) {
+    await this.connect();
+    return this.client.xreadgroup("GROUP", groupName, consumerName, "STREAMS", ...streams.flat());
   }
   async xadd(key, id, ...args) {
-    return this.client.command("XADD", [key, id, ...args]);
+    await this.connect();
+    const result = await this.client.xadd(key, id, ...args);
+    if (result === null) {
+      throw new Error("Failed to add entry to stream");
+    }
+    return result;
   }
   pipeline() {
     return this.client.pipeline();
   }
   async quit() {
-    await this.client.quit();
+    try {
+      await this.client.quit();
+      console.log("Redis connection closed gracefully");
+    } catch (error3) {
+      console.error("Error while closing Redis connection:", error3);
+    }
   }
 };
 __name(RedisClient, "RedisClient");
 
 // index.ts
 var STREAM_NAME = "kindle:jobs";
-var UploadWorker = class {
-  constructor(env3, ctx) {
-    this.env = env3;
-    this.ctx = ctx;
-    if (!env3.REDIS_URL) {
-      throw new Error("REDIS_URL environment variable is not set");
-    }
-    this.redis = new RedisClient({ url: env3.REDIS_URL });
-    this.initRedis().catch((error3) => {
-      console.error("Failed to initialize Redis:", error3);
-      throw error3;
-    });
-  }
-  redis;
-  async initRedis() {
-    try {
-      await this.redis.connect();
-      console.log("Redis connection established");
-    } catch (error3) {
-      console.error("Redis connection failed:", error3);
-      throw error3;
-    }
-  }
-  async processFile(fileKey, databaseId, userId) {
-    const jobId = `sync:${userId}:${Date.now()}`;
-    try {
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: "queued",
-        progress: 0,
-        message: "Starting file processing",
-        lastProcessedIndex: 0,
-        userId
-      }));
-      console.log(`[processFile] Starting R2 file fetch for key: ${fileKey}`);
-      const file = await this.env.R2_BUCKET.get(fileKey);
-      if (!file) {
-        throw new Error("File not found in R2");
-      }
-      console.log(`[processFile] File fetched from R2 successfully for key: ${fileKey}`);
-      console.log("[processFile] Converting file to text");
-      const fileContent = await file.text();
-      console.log(`[processFile] File converted to text, length: ${fileContent.length}`);
-      console.log("[processFile] Parsing highlights");
-      const highlights = await parseClippings(fileContent);
-      console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
-      console.log("[processFile] Storing highlights in Redis pipeline");
-      const pipeline = this.redis.pipeline();
-      highlights.forEach((highlight, index) => {
-        const key = `highlights:${jobId}:${index}`;
-        pipeline.set(key, JSON.stringify({
-          ...highlight,
-          databaseId
-        }), "EX", 86400);
-      });
-      console.log("[processFile] Executing Redis pipeline");
-      await pipeline.exec();
-      console.log("[processFile] Redis pipeline executed successfully");
-      console.log("[processFile] Updating job status to parsed");
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: "parsed",
-        progress: 0,
-        message: "File parsed and ready for processing",
-        total: highlights.length,
-        lastProcessedIndex: 0,
-        userId
-      }));
-      console.log("[processFile] Job status updated to parsed");
-      console.log("[processFile] Adding job to processing queue");
-      await this.redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
-      console.log("[processFile] Job added to processing queue");
-      return jobId;
-    } catch (error3) {
-      console.error("Error processing file:", error3);
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: "failed",
-        message: error3 instanceof Error ? error3.message : "Unknown error",
-        userId
-      }));
-      throw error3;
-    }
-  }
-  async fetch(request) {
+var upload_default = {
+  async fetch(request, env3, ctx) {
     console.log("Upload worker received request");
     if (request.method !== "POST") {
       console.error("Invalid method:", request.method);
       return new Response("Method not allowed", { status: 405 });
     }
+    let redis = null;
     try {
-      await this.initRedis();
+      if (!env3.REDIS_URL) {
+        throw new Error("REDIS_URL environment variable is not set");
+      }
+      redis = new RedisClient({ url: env3.REDIS_URL });
+      await redis.connect();
       const formData = await request.formData();
       console.log("Processing upload with params:", {
         fileKey: formData.get("fileKey"),
@@ -13313,7 +13266,7 @@ var UploadWorker = class {
       if (!fileKey || !userId || !databaseId) {
         return new Response("Missing required fields", { status: 400 });
       }
-      const jobId = await this.processFile(fileKey, databaseId, userId);
+      const jobId = await processFile(redis, env3.R2_BUCKET, fileKey, databaseId, userId);
       return new Response(
         JSON.stringify({
           jobId,
@@ -13348,22 +13301,69 @@ var UploadWorker = class {
         }
       );
     } finally {
-      try {
-        await this.redis.quit();
+      if (redis) {
+        await redis.quit();
         console.log("Redis connection closed");
-      } catch (error3) {
-        console.error("Error closing Redis connection:", error3);
       }
     }
   }
 };
-__name(UploadWorker, "UploadWorker");
-var upload_default = {
-  async fetch(request, env3, ctx) {
-    const worker = new UploadWorker(env3, ctx);
-    return worker.fetch(request);
+async function processFile(redis, bucket, fileKey, databaseId, userId) {
+  const jobId = `sync:${userId}:${Date.now()}`;
+  try {
+    await redis.set(`job:${jobId}`, JSON.stringify({
+      state: "queued",
+      progress: 0,
+      message: "Starting file processing",
+      lastProcessedIndex: 0,
+      userId
+    }));
+    console.log(`[processFile] Starting R2 file fetch for key: ${fileKey}`);
+    const file = await bucket.get(fileKey);
+    if (!file) {
+      throw new Error("File not found in R2");
+    }
+    console.log(`[processFile] File fetched from R2 successfully for key: ${fileKey}`);
+    console.log("[processFile] Converting file to text");
+    const fileContent = await file.text();
+    console.log(`[processFile] File converted to text, length: ${fileContent.length}`);
+    console.log("[processFile] Parsing highlights");
+    const highlights = await parseClippings(fileContent);
+    console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
+    console.log("[processFile] Storing highlights in Redis pipeline");
+    const pipeline = redis.pipeline();
+    highlights.forEach((highlight, index) => {
+      const key = `highlights:${jobId}:${index}`;
+      pipeline.set(key, JSON.stringify({
+        ...highlight,
+        databaseId
+      }), "EX", 86400);
+    });
+    console.log("[processFile] Executing Redis pipeline");
+    await pipeline.exec();
+    console.log("[processFile] Redis pipeline executed successfully");
+    await redis.set(`job:${jobId}`, JSON.stringify({
+      state: "parsed",
+      progress: 0,
+      message: "File parsed and ready for processing",
+      total: highlights.length,
+      lastProcessedIndex: 0,
+      userId
+    }));
+    await redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
+    console.log("[processFile] Job added to processing queue");
+    return jobId;
+  } catch (error3) {
+    console.error("Error processing file:", error3);
+    await redis.set(`job:${jobId}`, JSON.stringify({
+      state: "failed",
+      message: error3 instanceof Error ? error3.message : "Unknown error",
+      userId
+    }));
+    throw error3;
   }
-};
+}
+__name(processFile, "processFile");
 
 // node_modules/wrangler/templates/middleware/middleware-ensure-req-body-drained.ts
 init_modules_watch_stub();
