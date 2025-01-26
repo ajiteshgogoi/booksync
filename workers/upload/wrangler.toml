@@ -1,0 +1,14 @@
+name = "kindle-upload"
+main = "index.ts"
+compatibility_date = "2024-01-26"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "kindle-highlights"
+
+[vars]
+REDIS_URL = ""
+
+# Add your environment variables in .dev.vars file locally
+# For production, use wrangler secret:
+# wrangler secret put REDIS_URL
