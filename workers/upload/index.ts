@@ -34,9 +34,9 @@ class UploadWorker {
     this.redis = new RedisClient({ url: env.REDIS_URL });
   }
 
-  private async processFile(
-    fileName: string,
+  private async queueJob(
     databaseId: string,
+    fileContent: string,
     userId: string
   ): Promise<string> {
     const jobId = `sync:${userId}:${Date.now()}`;
@@ -46,24 +46,15 @@ class UploadWorker {
       await this.redis.set(`job:${jobId}`, JSON.stringify({
         state: 'queued',
         progress: 0,
-        message: 'Starting file processing',
+        message: 'File uploaded, starting to parse',
         lastProcessedIndex: 0,
         userId
       } as JobStatus));
 
-      // Stream file from R2
-      const file = await this.env.R2_BUCKET.get(fileName);
-      if (!file) {
-        throw new Error('File not found in R2');
-      }
-
-      // Convert to text
-      const fileContent = await file.text();
-
       // Parse highlights
       const highlights = await parseClippings(fileContent);
 
-      // Store highlights in Redis with pipeline
+      // Store highlights in Redis
       const pipeline = this.redis.pipeline();
       highlights.forEach((highlight, index) => {
         const key = `highlights:${jobId}:${index}`;
@@ -85,18 +76,12 @@ class UploadWorker {
         userId
       } as JobStatus));
 
-      // Add to processing queue
+      // Add to processing queue using constant
       await this.redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
 
       return jobId;
     } catch (error) {
-      console.error('Error processing file:', error);
-      // Update status to failed
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: 'failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        userId
-      } as JobStatus));
+      console.error('Error queueing job:', error);
       throw error;
     }
   }
@@ -108,21 +93,26 @@ class UploadWorker {
 
     try {
       const formData = await request.formData();
-      const fileName = formData.get('fileName') as string;
+      const file = formData.get('file') as File;
       const userId = formData.get('userId') as string;
       const databaseId = formData.get('databaseId') as string;
 
-      if (!fileName || !userId || !databaseId) {
+      if (!file || !userId || !databaseId) {
         return new Response('Missing required fields', { status: 400 });
       }
 
-      // Process the file and create job
-      const jobId = await this.processFile(fileName, databaseId, userId);
+      // Store file in R2
+      const fileName = `${userId}/${Date.now()}-${file.name}`;
+      await this.env.R2_BUCKET.put(fileName, file);
+
+      // Process file content and queue job
+      const fileContent = await file.text();
+      const jobId = await this.queueJob(databaseId, fileContent, userId);
 
       return new Response(
         JSON.stringify({
           jobId,
-          message: 'File processed and queued for sync'
+          message: 'File uploaded and queued for processing'
         }),
         {
           status: 200,
@@ -134,10 +124,10 @@ class UploadWorker {
       );
 
     } catch (error) {
-      console.error('Processing error:', error);
+      console.error('Upload error:', error);
       return new Response(
         JSON.stringify({
-          error: 'Processing failed',
+          error: 'Upload failed',
           message: error instanceof Error ? error.message : 'Unknown error'
         }),
         {

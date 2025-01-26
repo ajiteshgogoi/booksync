@@ -1,6 +1,5 @@
 import { Redis } from 'ioredis';
 import { workerService } from '../../server/src/services/workerService.js';
-import { RedisPool } from '../../server/src/services/redisService.js';
 
 interface Env {
   REDIS_URL: string;
@@ -14,18 +13,20 @@ function validateApiKey(apiKey: string, env: Env): boolean {
 
 class SyncWorker {
   private workerStarted = false;
+  private redis: Redis;
 
-  constructor(private env: Env) {}
+  constructor(private env: Env) {
+    // Initialize Redis connection
+    this.redis = new Redis(env.REDIS_URL);
+  }
 
-  async processPendingJobs(redis: Redis): Promise<void> {
+  async processPendingJobs(): Promise<void> {
     if (this.workerStarted) return;
     this.workerStarted = true;
 
     try {
       // Initialize Redis connection in worker service
-      await workerService.initRedis(redis);
-      // Initialize connection reaper within handler scope
-      RedisPool.getInstance().startConnectionReaper();
+      await workerService.initRedis(this.redis);
       
       // Start the worker service
       await workerService.start();
@@ -34,8 +35,7 @@ class SyncWorker {
       throw error;
     } finally {
       this.workerStarted = false;
-      RedisPool.getInstance().stopConnectionReaper();
-      redis.quit();
+      this.redis.quit();
     }
   }
 }
@@ -53,17 +53,15 @@ export default {
       throw new Error('Invalid or missing API key');
     }
 
-    const redis = new Redis(env.REDIS_URL);
     const worker = new SyncWorker(env);
-    await worker.processPendingJobs(redis);
+    await worker.processPendingJobs();
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Handle direct HTTP requests for debugging
-    const redis = new Redis(env.REDIS_URL);
     const worker = new SyncWorker(env);
     try {
-      await worker.processPendingJobs(redis);
+      await worker.processPendingJobs();
       return new Response('Worker started successfully', { status: 200 });
     } catch (error) {
       return new Response(`Error starting worker: ${error instanceof Error ? error.message : 'Unknown error'}`, {
