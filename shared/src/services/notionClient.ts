@@ -1,4 +1,4 @@
-import { Client, isFullPage } from '@notionhq/client';
+import { Client, isFullPage, LogLevel } from '@notionhq/client';
 import { createHash } from 'crypto';
 import axios from 'axios';
 import { NotionStore } from './notionStore';
@@ -6,6 +6,7 @@ import type { Highlight } from '../types/highlight';
 import type { NotionToken } from '../types/notion';
 import { withRetry } from '../utils/retry';
 import { KVStore } from './kvStore';
+import { truncateHash } from '../utils/notionUtils.js';
 
 // Make Highlight type available for external use
 export type { Highlight };
@@ -96,8 +97,6 @@ function generateHighlightHash(highlight: string[], location: string, bookTitle:
   return createHash('sha256').update(content).digest('hex').slice(0, 8);
 }
 
-import { truncateHash } from '../utils/notionUtils.js';
-
 function storeHashes(hashes: string[]): string {
   // Deduplicate and truncate hashes for Notion storage
   const uniqueHashes = Array.from(new Set(
@@ -171,7 +170,24 @@ export async function setOAuthToken(store: NotionStore, tokenData: NotionToken):
       console.log('[OAuth] Initializing Notion client...');
       _client = new Client({
         auth: tokenData.access_token,
+        timeoutMs: 10000, // 10 second timeout
+        logLevel: (process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.WARN) as LogLevel
       });
+      
+      // Ensure all methods are properly bound with type safety
+      if (_client) {
+        const methods: (keyof Client)[] = ['search', 'request'];
+        methods.forEach(method => {
+          if (typeof _client![method] === 'function') {
+            (_client as any)[method] = (_client![method] as Function).bind(_client);
+          }
+        });
+      }
+      
+      // Validate client initialization
+      if (!_client || typeof _client.search !== 'function' || typeof _client.request !== 'function') {
+        throw new Error('Failed to initialize Notion client');
+      }
     }
 
     // Find the database
