@@ -1,19 +1,25 @@
 name = "kindle-sync"
 main = "index.ts"
-compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2024-01-26"
 
 # Trigger the worker every 30 minutes
 [triggers]
 crons = ["*/30 * * * *"]
 
 [vars]
-NOTION_OAUTH_CLIENT_ID = "{{ secrets.NOTION_OAUTH_CLIENT_ID }}"
-NOTION_OAUTH_CLIENT_SECRET = "{{ secrets.NOTION_OAUTH_CLIENT_SECRET }}"
-NOTION_REDIRECT_URI = "http://localhost:3001/auth/notion/callback"
-REDIS_URL = "{{ secrets.REDIS_URL }}"
+NOTION_OAUTH_CLIENT_ID = ""
+NOTION_OAUTH_CLIENT_SECRET = ""
+NOTION_REDIRECT_URI = ""
 NODE_ENV = "production"
-R2_ENDPOINT = "https://47816ba64eced70ce40d5e757b234acf.r2.cloudflarestorage.com"
-R2_ACCESS_KEY_ID = "{{ secrets.R2_ACCESS_KEY_ID }}"
-R2_SECRET_ACCESS_KEY = "{{ secrets.R2_SECRET_ACCESS_KEY }}"
-R2_BUCKET_NAME = "booksync"
+UPSTASH_REDIS_REST_URL = ""
+UPSTASH_REDIS_REST_TOKEN = ""
+NOTION_TOKEN = ""
+
+# Add your environment variables in .dev.vars file locally
+# For production, use wrangler secret:
+# wrangler secret put NOTION_OAUTH_CLIENT_ID
+# wrangler secret put NOTION_OAUTH_CLIENT_SECRET
+# wrangler secret put NOTION_REDIRECT_URI
+# wrangler secret put UPSTASH_REDIS_REST_URL
+# wrangler secret put UPSTASH_REDIS_REST_TOKEN
+# wrangler secret put NOTION_TOKEN
