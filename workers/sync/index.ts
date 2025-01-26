@@ -1,11 +1,12 @@
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 import { Client as NotionClient } from '@notionhq/client';
 import { parseClippings } from '../../server/src/utils/parseClippings.js';
 import { getBookHighlightHashes, truncateHash } from '../../server/src/utils/notionUtils.js';
 import type { Highlight } from '../../server/src/types/highlight.js';
 
 interface Env {
-  REDIS_URL: string;
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
   NOTION_OAUTH_CLIENT_ID: string;
   NOTION_OAUTH_CLIENT_SECRET: string;
   NOTION_REDIRECT_URI: string;
@@ -25,20 +26,31 @@ interface ProcessedHighlight extends Highlight {
   databaseId: string;
 }
 
+type RedisStreamEntry = [string, string[]]; // [messageId, [key1, value1, key2, value2, ...]]
+
+interface JobMessage {
+  jobId: string;
+  userId: string;
+  type: string;
+}
+
 class SyncWorker {
   private redis: Redis;
   private notionClient: NotionClient;
 
   constructor(private env: Env) {
-    this.redis = new Redis(env.REDIS_URL);
+    this.redis = new Redis({
+      url: env.UPSTASH_REDIS_REST_URL,
+      token: env.UPSTASH_REDIS_REST_TOKEN,
+    });
     this.notionClient = new NotionClient({
       auth: env.NOTION_TOKEN
     });
   }
 
   private async getJobStatus(jobId: string): Promise<JobStatus | null> {
-    const status = await this.redis.get(`job:${jobId}`);
-    return status ? JSON.parse(status) : null;
+    const status = await this.redis.get<JobStatus>(`job:${jobId}`);
+    return status;
   }
 
   private async setJobStatus(jobId: string, status: Partial<JobStatus>): Promise<void> {
@@ -50,10 +62,26 @@ class SyncWorker {
       lastProcessedIndex: 0
     };
     
-    await this.redis.set(`job:${jobId}`, JSON.stringify({
+    await this.redis.set(`job:${jobId}`, {
       ...currentStatus,
       ...status
-    }));
+    });
+  }
+
+  private parseStreamEntry(entry: RedisStreamEntry): JobMessage {
+    const [_, fields] = entry;
+    const data: Record<string, string> = {};
+    
+    // Parse key-value pairs from Redis stream format
+    for (let i = 0; i < fields.length; i += 2) {
+      data[fields[i]] = fields[i + 1];
+    }
+    
+    return {
+      jobId: data.jobId || '',
+      userId: data.userId || '',
+      type: data.type || ''
+    };
   }
 
   private async processHighlights(jobId: string): Promise<void> {
@@ -67,11 +95,7 @@ class SyncWorker {
       const highlights: ProcessedHighlight[] = [];
       
       // Fetch highlights in parallel for better performance
-      const highlightPromises = keys.map(async key => {
-        const data = await this.redis.get(key);
-        return data ? JSON.parse(data) as ProcessedHighlight : null;
-      });
-      
+      const highlightPromises = keys.map(key => this.redis.get<ProcessedHighlight>(key));
       const highlightResults = await Promise.all(highlightPromises);
       highlights.push(...highlightResults.filter((h): h is ProcessedHighlight => h !== null));
 
@@ -175,47 +199,32 @@ class SyncWorker {
   async processPendingJobs(): Promise<void> {
     try {
       // Get pending jobs from Redis stream
-      const results = await this.redis.xread(
-        'COUNT',
-        10,
-        'BLOCK',
-        1000,
-        'STREAMS',
-        'kindle:jobs',
-        '0-0'
-      );
+      const result = await this.redis.xrange('kindle:jobs', '-', '+');
       
-      if (!results || results.length === 0) {
+      if (!Array.isArray(result) || result.length === 0) {
         console.log('No pending jobs found');
         return;
       }
 
-      // Process stream results
-      // [streamName, [[messageId, [key1, value1, key2, value2, ...]], ...]]
-      const [_, messages] = results[0];
+      // Process only up to 10 jobs at a time
+      const entries = result.slice(0, 10) as RedisStreamEntry[];
 
-      for (const [messageId, fields] of messages) {
-        // Convert array of fields to object
-        const data: Record<string, string> = {};
-        for (let i = 0; i < fields.length; i += 2) {
-          data[fields[i]] = fields[i + 1];
-        }
-
+      for (const entry of entries) {
+        const { jobId } = this.parseStreamEntry(entry);
+        
         try {
           // Process the job
-          await this.processHighlights(data.jobId);
+          await this.processHighlights(jobId);
           
           // Acknowledge the message
-          await this.redis.xdel('kindle:jobs', messageId);
+          await this.redis.xdel('kindle:jobs', entry[0]); // entry[0] is the message ID
 
         } catch (error) {
-          console.error('Error processing job:', { jobId: data.jobId, error });
+          console.error('Error processing job:', { jobId, error });
         }
       }
     } catch (error) {
       console.error('Error checking pending jobs:', error);
-    } finally {
-      await this.redis.quit();
     }
   }
 }

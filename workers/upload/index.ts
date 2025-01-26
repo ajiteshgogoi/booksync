@@ -1,10 +1,12 @@
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
 import { parseClippings } from '../../server/src/utils/parseClippings.js';
 import type { Highlight } from '../../server/src/types/highlight.js';
 
 interface Env {
   R2_BUCKET: R2Bucket;
   REDIS_URL: string;
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
 }
 
 interface JobStatus {
@@ -23,7 +25,10 @@ class UploadWorker {
     private env: Env,
     private ctx: ExecutionContext
   ) {
-    this.redis = new Redis(env.REDIS_URL);
+    this.redis = new Redis({
+      url: env.UPSTASH_REDIS_REST_URL,
+      token: env.UPSTASH_REDIS_REST_TOKEN,
+    });
   }
 
   private async queueJob(
@@ -49,22 +54,28 @@ class UploadWorker {
 
       // Store highlights in Redis
       const pipeline = this.redis.pipeline();
-      highlights.forEach((highlight, index) => {
+      for (const [index, highlight] of highlights.entries()) {
         const key = `highlights:${jobId}:${index}`;
         pipeline.set(key, JSON.stringify({
           ...highlight,
           databaseId
-        }), 'EX', 3600); // 1 hour TTL
-      });
+        }), { ex: 3600 }); // 1 hour TTL
+      }
 
       await pipeline.exec();
 
       // Add to processing queue
-      await this.redis.xadd('kindle:jobs', '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
+      await this.redis.xadd('kindle:jobs', '*', {
+        jobId,
+        userId,
+        type: 'sync'
+      });
 
       return jobId;
-    } finally {
-      await this.redis.quit();
+    } catch (error) {
+      // Cleanup on error
+      await this.redis.del(`job:${jobId}`);
+      throw error;
     }
   }
 
