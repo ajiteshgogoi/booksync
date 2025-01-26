@@ -19802,21 +19802,8 @@ var UploadWorker = class {
       throw new Error("REDIS_URL environment variable is not set");
     }
     this.redis = new RedisClient({ url: env3.REDIS_URL });
-    this.initRedis().catch((error3) => {
-      console.error("Failed to initialize Redis:", error3);
-      throw error3;
-    });
   }
   redis;
-  async initRedis() {
-    try {
-      await this.redis.connect();
-      console.log("Redis connection established");
-    } catch (error3) {
-      console.error("Redis connection failed:", error3);
-      throw error3;
-    }
-  }
   async processFile(fileKey, databaseId, userId) {
     const jobId = `sync:${userId}:${Date.now()}`;
     try {
@@ -19882,7 +19869,6 @@ var UploadWorker = class {
       return new Response("Method not allowed", { status: 405 });
     }
     try {
-      await this.initRedis();
       const formData = await request.formData();
       console.log("Processing upload with params:", {
         fileKey: formData.get("fileKey"),
@@ -19929,13 +19915,6 @@ var UploadWorker = class {
           }
         }
       );
-    } finally {
-      try {
-        await this.redis.quit();
-        console.log("Redis connection closed");
-      } catch (error3) {
-        console.error("Error closing Redis connection:", error3);
-      }
     }
   }
 };
