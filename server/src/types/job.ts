@@ -1,5 +1,5 @@
 export interface JobStatus {
-  state: 'pending' | 'processing' | 'completed' | 'failed' | 'queued' | 'parsed';
+  state: 'pending' | 'processing' | 'completed' | 'failed' | 'queued';
   progress?: number;
   message?: string;
   result?: any;

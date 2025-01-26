@@ -13,7 +13,7 @@ interface Env {
 }
 
 interface JobStatus {
-  state: 'queued' | 'pending' | 'processing' | 'completed' | 'failed' | 'parsed';
+  state: 'pending' | 'processing' | 'completed' | 'failed';
   progress?: number;
   message?: string;
   total?: number;
@@ -42,17 +42,18 @@ class UploadWorker {
     const jobId = `sync:${userId}:${Date.now()}`;
 
     try {
-      // Set initial queued status
+      // Parse highlights
+      const highlights = await parseClippings(fileContent);
+
+      // Store job metadata
       await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: 'queued',
+        state: 'pending',
         progress: 0,
-        message: 'File uploaded, starting to parse',
+        message: 'Job queued',
+        total: highlights.length,
         lastProcessedIndex: 0,
         userId
       } as JobStatus));
-
-      // Parse highlights
-      const highlights = await parseClippings(fileContent);
 
       // Store highlights in Redis
       const pipeline = this.redis.pipeline();
@@ -65,16 +66,6 @@ class UploadWorker {
       });
 
       await pipeline.exec();
-
-      // Update status to parsed after storing highlights
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: 'parsed',
-        progress: 0,
-        message: 'File parsed and ready for processing',
-        total: highlights.length,
-        lastProcessedIndex: 0,
-        userId
-      } as JobStatus));
 
       // Add to processing queue using constant
       await this.redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');

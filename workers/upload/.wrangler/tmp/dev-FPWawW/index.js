@@ -19808,14 +19808,15 @@ var UploadWorker = class {
   async queueJob(databaseId, fileContent, userId) {
     const jobId = `sync:${userId}:${Date.now()}`;
     try {
+      const highlights = await parseClippings(fileContent);
       await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: "queued",
+        state: "pending",
         progress: 0,
-        message: "File uploaded, starting to parse",
+        message: "Job queued",
+        total: highlights.length,
         lastProcessedIndex: 0,
         userId
       }));
-      const highlights = await parseClippings(fileContent);
       const pipeline = this.redis.pipeline();
       highlights.forEach((highlight, index) => {
         const key = `highlights:${jobId}:${index}`;
@@ -19825,14 +19826,6 @@ var UploadWorker = class {
         }), "EX", 3600);
       });
       await pipeline.exec();
-      await this.redis.set(`job:${jobId}`, JSON.stringify({
-        state: "parsed",
-        progress: 0,
-        message: "File parsed and ready for processing",
-        total: highlights.length,
-        lastProcessedIndex: 0,
-        userId
-      }));
       await this.redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
       return jobId;
     } catch (error3) {

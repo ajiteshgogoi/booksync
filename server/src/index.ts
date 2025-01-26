@@ -206,6 +206,77 @@ app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   res.status(200).json(config);
 });
 
+// Test GitHub connection
+app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
+  try {
+    const token = process.env.GITHUB_ACCESS_TOKEN;
+    if (!token) {
+      return res.status(500).json({ error: 'GitHub token not configured' });
+    }
+
+    console.log('\nTesting GitHub API connection...');
+
+    // Test repository access
+    const repoResponse = await axios.get(
+      'https://api.github.com/repos/ajiteshgogoi/booksync',
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `token ${token}`, // PATs always use token prefix
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    console.log('Repository access successful');
+
+    // Test workflow dispatch
+    console.log('\nTesting workflow dispatch...');
+    const dispatchResponse = await axios.post(
+      'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      {
+        event_type: 'process_highlights_test',
+        client_payload: {
+          test: true,
+          timestamp: new Date().toISOString()
+        }
+      },
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `token ${token}`, // PATs always use token prefix
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    console.log('Workflow dispatch response:', dispatchResponse.status);
+
+    res.json({
+      success: true,
+      repoAccess: true,
+      repoName: repoResponse.data.full_name,
+      dispatchPermission: true,
+      testWorkflowTriggered: dispatchResponse.status === 204,
+      tokenInfo: {
+        present: true,
+        length: token.length,
+        format: token.startsWith('github_pat_') ? 'Fine-grained PAT' :
+                token.startsWith('ghp_') ? 'Fine-grained token' :
+                token.length === 40 ? 'Classic token' :
+                'Unknown format'
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+  }
+});
+
 // Parse endpoint to get highlight count
 app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -472,7 +543,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     
     // Set initial status in Redis
     await setJobStatus(jobId, {
-      state: 'pending',
+      state: 'queued',
       progress: 0,
       message: 'Uploading highlights for processing',
       total: 0
@@ -521,9 +592,9 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         fileContentLength: fileContent.length,
         userId,
         jobId,
+        githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
         clientIp,
-        redisConnected: true,
-        workerApiKeyPresent: !!process.env.WORKER_API_KEY
+        redisConnected: true
       });
       
       console.log('Starting job processing...');
@@ -554,8 +625,8 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         
         // Update job status with worker response
         await setJobStatus(jobId, {
-          state: 'queued',
-          message: 'File validated and queued for parsing',
+          state: 'pending',
+          message: 'File uploaded and queued for processing',
           progress: 0,
           result: workerData
         });
@@ -568,10 +639,10 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           info: 'Your highlights are being processed. You can safely close this page - progress is automatically saved.'
         });
       } catch (error) {
-        console.error('Failed to trigger worker processing:', error);
+        console.error('Failed to trigger GitHub processing:', error);
         const errorMessage = error instanceof Error ?
           `${error.message} (Redis connected: true)` :
-          'Unknown error occurred while processing upload';
+          'Unknown error occurred while triggering processing';
 
         await setJobStatus(jobId, {
           state: 'failed',

@@ -119,14 +119,6 @@ class WorkerService {
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
-
-          // Check if job is marked as parsed
-          const jobStatus = await getJobStatus(result.jobId);
-          if (jobStatus?.state !== 'parsed') {
-            logger.info(`Skipping job ${result.jobId} - not marked as parsed`);
-            await acknowledgeJob(result.messageId); // Acknowledge to remove from queue
-            continue;
-          }
           
           // Reset empty poll count when job is found
           this.emptyPollCount = 0;
