@@ -428,7 +428,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     // Get real user ID from Redis OAuth token
     let userId;
     let redis;
-    let tokenDataObj;
     try {
       // Get token data from Redis
       redis = await getRedis();
@@ -443,7 +442,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         throw new Error('Failed to retrieve token data from Redis');
       }
 
-      tokenDataObj = JSON.parse(tokenData);
+      const tokenDataObj = JSON.parse(tokenData);
       if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
         throw new Error('Invalid or missing user ID in token data');
       }
@@ -533,29 +532,18 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         await addJobToQueue(jobId, userId);
         console.log('Job added to queue');
 
-        // Get client to get database ID
-        const notionClient = await getClient();
-        if (!notionClient) {
-          throw new Error('Notion client not initialized');
-        }
-
-        // Create form data with required fields
-        const formData = new FormData();
-        formData.append('fileName', `kindle-clippings-${userId}-${Date.now()}.txt`);
-        formData.append('userId', userId);
-        if (!tokenDataObj || !tokenDataObj.databaseId) {
-          throw new Error('No database ID found in token data');
-        }
-        formData.append('databaseId', tokenDataObj.databaseId);
-        formData.append('file', new Blob([fileContent], { type: 'text/plain' }));
-
         // Call Cloudflare Worker for processing
-        const workerResponse = await fetch('https://kindle-upload.az-ajitesh.workers.dev/', {
+        const workerResponse = await fetch('https://kindle-upload.ajiteshgogoi.workers.dev/process', {
           method: 'POST',
           headers: {
+            'Content-Type': 'application/json',
             'Authorization': `Bearer ${process.env.WORKER_API_KEY}`
           },
-          body: formData
+          body: JSON.stringify({
+            fileContent,
+            userId,
+            jobId
+          })
         });
 
         if (!workerResponse.ok) {
