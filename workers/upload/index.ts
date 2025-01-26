@@ -1,5 +1,5 @@
-import { parseClippings } from '../../server/src/utils/parseClippings.js';
-import type { Highlight } from '../../server/src/types/highlight.js';
+import { parseClippings } from './utils/parseClippings.js';
+import type { Highlight } from './types/highlight.js';
 import { RedisClient } from './lib/redis-client';
 
 // Stream configuration matching server
@@ -51,19 +51,26 @@ class UploadWorker {
         userId
       } as JobStatus));
 
+      console.log(`[processFile] Starting R2 file fetch for key: ${fileKey}`);
       // Stream file from R2
       const file = await this.env.R2_BUCKET.get(fileKey);
       if (!file) {
         throw new Error('File not found in R2');
       }
+      console.log(`[processFile] File fetched from R2 successfully for key: ${fileKey}`);
 
       // Convert to text
+      console.log('[processFile] Converting file to text');
       const fileContent = await file.text();
+      console.log(`[processFile] File converted to text, length: ${fileContent.length}`);
 
       // Parse highlights
+      console.log('[processFile] Parsing highlights');
       const highlights = await parseClippings(fileContent);
+      console.log(`[processFile] Highlights parsed, count: ${highlights.length}`);
 
       // Store highlights in Redis with pipeline
+      console.log('[processFile] Storing highlights in Redis pipeline');
       const pipeline = this.redis.pipeline();
       highlights.forEach((highlight, index) => {
         const key = `highlights:${jobId}:${index}`;
@@ -72,10 +79,12 @@ class UploadWorker {
           databaseId
         }), 'EX', 86400); // 24 hour TTL
       });
-
+      console.log('[processFile] Executing Redis pipeline');
       await pipeline.exec();
+      console.log('[processFile] Redis pipeline executed successfully');
 
       // Update status to parsed after storing highlights
+      console.log('[processFile] Updating job status to parsed');
       await this.redis.set(`job:${jobId}`, JSON.stringify({
         state: 'parsed',
         progress: 0,
@@ -84,9 +93,12 @@ class UploadWorker {
         lastProcessedIndex: 0,
         userId
       } as JobStatus));
+      console.log('[processFile] Job status updated to parsed');
 
       // Add to processing queue
+      console.log('[processFile] Adding job to processing queue');
       await this.redis.xadd(STREAM_NAME, '*', 'jobId', jobId, 'userId', userId, 'type', 'sync');
+      console.log('[processFile] Job added to processing queue');
 
       return jobId;
     } catch (error) {
