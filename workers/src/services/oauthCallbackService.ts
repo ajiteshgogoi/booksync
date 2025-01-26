@@ -101,23 +101,11 @@ export class OAuthCallbackService {
         console.log('No user ID found in token data, using default:', userId);
       }
 
-      // Create sync job with temporary file key
-      console.log('Creating sync job...');
-      const jobParams: CreateJobParams = {
-        userId,
-        workspaceId: tokenData.workspace_id,
-        fileKey: `pending-${tokenData.workspace_id}`,
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
-      };
-
-      const job = await this.jobStore.createJob(jobParams);
-      console.log('Job created:', job.id);
-
-      // Build redirect URL
+      // Build redirect URL - just return to frontend after successful auth
       console.log('Building redirect URL...');
       const clientUrl = new URL(this.env.CLIENT_URL || 'http://localhost:5173');
-      clientUrl.searchParams.set('syncStatus', 'queued');
-      clientUrl.searchParams.set('jobId', job.id);
+      clientUrl.searchParams.set('status', 'success');
+      clientUrl.searchParams.set('workspaceId', tokenData.workspace_id);
 
       const redirectUrl = clientUrl.toString();
       console.log('Redirecting to:', redirectUrl);
