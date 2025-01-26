@@ -5,6 +5,7 @@ import { RedisClient } from './lib/redis-client';
 interface Env {
   R2_BUCKET: R2Bucket;
   REDIS_URL: string;
+  WORKER_API_KEY: string;
 }
 
 interface JobStatus {
@@ -35,8 +36,8 @@ class UploadWorker {
   }
 
   private async queueJob(
-    databaseId: string, 
-    fileContent: string, 
+    databaseId: string,
+    fileContent: string,
     userId: string
   ): Promise<string> {
     const jobId = `sync:${userId}:${Date.now()}`;
@@ -100,13 +101,13 @@ class UploadWorker {
       const jobId = await this.queueJob(databaseId, fileContent, userId);
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           jobId,
           message: 'File uploaded and queued for processing'
-        }), 
+        }),
         {
           status: 200,
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
@@ -116,13 +117,13 @@ class UploadWorker {
     } catch (error) {
       console.error('Upload error:', error);
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'Upload failed',
           message: error instanceof Error ? error.message : 'Unknown error'
-        }), 
-        { 
+        }),
+        {
           status: 500,
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           }
