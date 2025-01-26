@@ -412,6 +412,32 @@ export class NotionClient {
     _store = store; // Set the global store reference
   }
 
+  async exchangeCodeForToken(code: string): Promise<NotionToken> {
+    const redirectUri = process.env.NOTION_REDIRECT_URI;
+    try {
+      const response = await axios.post('https://api.notion.com/v1/oauth/token', {
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri
+      }, {
+        auth: {
+          username: this.clientId,
+          password: this.clientSecret
+        }
+      });
+
+      if (!response.data?.access_token) {
+        throw new Error('Invalid token response');
+      }
+
+      await setOAuthToken(this.store, response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to exchange code for token:', error);
+      throw error;
+    }
+  }
+
   async updateNotionDatabase(highlights: Highlight[], workspaceId: string, onProgress?: () => void): Promise<void> {
   try {
     const client = await getClient();

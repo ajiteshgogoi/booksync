@@ -25,6 +25,7 @@ bucket_name = "highlights-bucket"
 [vars]
 NOTION_REDIRECT_URI = "https://booksync-worker.az-ajitesh.workers.dev/oauth/callback"
 WORKER_HOST = "booksync-worker.az-ajitesh.workers.dev"
+CLIENT_URL = "http://localhost:5173"
 
 # Add your secret variables in .dev.vars or using wrangler secret commands
 # wrangler secret put NOTION_CLIENT_ID
@@ -35,3 +36,7 @@ command = "npm run build"
 
 [dev]
 port = 8787
+
+# wrangler.toml (wrangler v3.88.0^)
+[observability.logs]
+enabled = true
