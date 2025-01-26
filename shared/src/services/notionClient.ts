@@ -430,12 +430,47 @@ export class NotionClient {
         }
       });
 
-      if (!response.data?.access_token) {
-        throw new Error('Invalid token response');
+      // Log the response for debugging
+      console.log('OAuth token response:', JSON.stringify(response.data, null, 2));
+
+      // Validate required fields
+      const tokenData = response.data;
+      if (!tokenData?.access_token) {
+        throw new Error('Missing access_token in response');
+      }
+      if (!tokenData?.workspace_id) {
+        throw new Error('Missing workspace_id in response');
+      }
+      if (!tokenData?.bot_id) {
+        throw new Error('Missing bot_id in response');
+      }
+      if (!tokenData?.workspace_name) {
+        throw new Error('Missing workspace_name in response');
+      }
+      if (!tokenData?.owner?.type) {
+        throw new Error('Missing owner.type in response');
       }
 
-      await setOAuthToken(this.store, response.data);
-      return response.data;
+      const token: NotionToken = {
+        access_token: tokenData.access_token,
+        token_type: 'bearer',
+        bot_id: tokenData.bot_id,
+        workspace_name: tokenData.workspace_name,
+        workspace_icon: tokenData.workspace_icon || null,
+        workspace_id: tokenData.workspace_id,
+        owner: {
+          type: tokenData.owner.type,
+          workspace: tokenData.owner.workspace,
+          user: tokenData.owner.user
+        },
+        duplicated_template_id: tokenData.duplicated_template_id || null,
+        request_id: tokenData.request_id,
+        refresh_token: tokenData.refresh_token,
+        expires_in: tokenData.expires_in
+      };
+
+      await setOAuthToken(this.store, token);
+      return token;
     } catch (error) {
       console.error('Failed to exchange code for token:', error);
       throw error;

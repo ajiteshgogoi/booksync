@@ -21,6 +21,15 @@ export class NotionStore {
   }
 
   async setToken(token: NotionToken): Promise<void> {
+    console.log('Setting Notion token...', {
+      hasAccessToken: !!token.access_token,
+      tokenType: token.token_type,
+      hasBotId: !!token.bot_id,
+      workspaceName: token.workspace_name,
+      workspaceId: token.workspace_id,
+      ownerType: token.owner?.type
+    });
+
     // Validate required fields
     if (!token.access_token) {
       throw new Error('Invalid token data - missing access_token');
@@ -41,10 +50,21 @@ export class NotionStore {
       throw new Error('Invalid token data - missing owner.type');
     }
 
-    await this.kvStore.set(
-      this.getTokenKey(token.workspace_id),
-      JSON.stringify(token)
-    );
+    const key = this.getTokenKey(token.workspace_id);
+    const tokenJson = JSON.stringify(token);
+    console.log('Storing token in KV store:', {
+      key,
+      tokenLength: tokenJson.length,
+      workspaceId: token.workspace_id
+    });
+
+    try {
+      await this.kvStore.set(key, tokenJson);
+      console.log('Token stored successfully');
+    } catch (error) {
+      console.error('Failed to store token:', error);
+      throw error;
+    }
   }
 
   async deleteToken(workspaceId: string): Promise<void> {
