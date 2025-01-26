@@ -10,26 +10,21 @@ crons = [
   "0 0 * * *"      # Cleanup job
 ]
 
-[durable_objects]
-bindings = [
-  { name = "JOB_STORE", class_name = "JobStore" }
-]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["JobStore"]
-
 [[kv_namespaces]]
 binding = "OAUTH_STORE"
-id = "oauth_store"
+id = "ff8f1efaccd64d958b29c685b3af8193"
+
+[[kv_namespaces]]
+binding = "JOB_STORE"
+id = "5a843cd4fb4f4f168b8aeebadef59315"
 
 [[r2_buckets]]
 binding = "HIGHLIGHTS_BUCKET"
 bucket_name = "highlights-bucket"
 
 [vars]
-NOTION_REDIRECT_URI = "https://booksync-worker.your-domain.workers.dev/oauth/callback"
-WORKER_HOST = "booksync-worker.your-domain.workers.dev"
+NOTION_REDIRECT_URI = "https://booksync-worker.az-ajitesh.workers.dev/oauth/callback"
+WORKER_HOST = "booksync-worker.az-ajitesh.workers.dev"
 
 # Add your secret variables in .dev.vars or using wrangler secret commands
 # wrangler secret put NOTION_CLIENT_ID

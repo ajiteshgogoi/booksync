@@ -1,7 +1,7 @@
 export interface Environment {
   // Namespaces
   OAUTH_STORE: KVNamespace;
-  JOB_STORE: DurableObjectNamespace;
+  JOB_STORE: KVNamespace;
   HIGHLIGHTS_BUCKET: R2Bucket;
 
   // Notion OAuth credentials
