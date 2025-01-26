@@ -139,7 +139,7 @@ class WorkerService {
             continue;
           }
           
-          // Only reset empty poll count when we find a parsed job
+          // Reset empty poll count when job is found
           this.emptyPollCount = 0;
           const { jobId, messageId, uploadId } = result;
           
@@ -290,6 +290,7 @@ class WorkerService {
             continue;
           }
           
+          emptyPolls = 0;
           const { jobId, messageId } = result;
           this.currentJobId = jobId;
           
@@ -302,9 +303,6 @@ class WorkerService {
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
-          
-          // Only reset empty poll count when we find a parsed job
-          emptyPolls = 0;
           
           await setJobStatus(jobId, {
             ...jobStatus,
