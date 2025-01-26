@@ -9,8 +9,7 @@ import {
   acknowledgeJob,
   RedisService,
   STREAM_NAME,
-  redisPool,
-  type RedisType
+  redisPool
 } from './redisService.js';
 import { processFile } from './processService.js';
 import type { JobStatus } from '../types/job.js';
@@ -26,14 +25,6 @@ class WorkerService {
   private currentJobId: string | null = null;
   private emptyPollCount: number = 0;
   private cleanupHandlers: (() => Promise<void>)[] = [];
-  private redis: RedisType | null = null;
-
-  async initRedis(redis: RedisType): Promise<void> {
-    this.redis = redis;
-    // Initialize Redis stream and consumer group
-    await initializeStream();
-    logger.info('Redis connection initialized in worker service');
-  }
 
   constructor() {
     // Setup signal handlers for graceful shutdown

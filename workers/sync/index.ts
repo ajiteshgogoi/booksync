@@ -1,4 +1,3 @@
-import { Redis } from 'ioredis';
 import { workerService } from '../../server/src/services/workerService.js';
 
 interface Env {
@@ -13,11 +12,14 @@ function validateApiKey(apiKey: string, env: Env): boolean {
 
 class SyncWorker {
   private workerStarted = false;
-  private redis: Redis;
 
   constructor(private env: Env) {
-    // Initialize Redis connection
-    this.redis = new Redis(env.REDIS_URL);
+    // Initialize worker service with environment variables
+    process.env = {
+      ...process.env,
+      NODE_ENV: env.NODE_ENV || 'production',
+      REDIS_URL: env.REDIS_URL
+    };
   }
 
   async processPendingJobs(): Promise<void> {
@@ -25,9 +27,6 @@ class SyncWorker {
     this.workerStarted = true;
 
     try {
-      // Initialize Redis connection in worker service
-      await workerService.initRedis(this.redis);
-      
       // Start the worker service
       await workerService.start();
     } catch (error) {
@@ -35,7 +34,6 @@ class SyncWorker {
       throw error;
     } finally {
       this.workerStarted = false;
-      this.redis.quit();
     }
   }
 }
