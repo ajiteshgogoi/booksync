@@ -6,6 +6,7 @@ interface Env {
   REDIS_URL: string;
   WORKER_API_KEY: string;
   NODE_ENV: string;
+  R2_BUCKET: R2Bucket;
 }
 
 function validateApiKey(apiKey: string, env: Env): boolean {

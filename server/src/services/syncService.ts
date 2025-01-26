@@ -1,6 +1,7 @@
 import { parseClippings } from '../utils/parseClippings.js';
 import { updateNotionDatabase, Highlight, getClient } from './notionClient.js';
 import { logger } from '../utils/logger.js';
+import { downloadObject } from './r2Service.js';
 import {
   getRedis,
   checkRateLimit,
@@ -563,64 +564,28 @@ export async function processSyncJob(
 }
 
 async function getHighlightsFromQueue(jobId: string): Promise<ProcessedHighlight[]> {
-  let redis;
-  const highlights: ProcessedHighlight[] = [];
-  const CHUNK_SIZE = 100;
-  
   try {
-    redis = await getRedis();
-    const pattern = `highlights:${jobId}:*`;
-    console.debug(`Retrieving highlights for job ${jobId} with pattern: ${pattern}`);
-    
-    // First, check if keys exist
-    const allKeys = await redis.keys(pattern);
-    console.debug(`Found ${allKeys.length} keys matching pattern:`, allKeys);
-    
-    // Process keys in chunks to reduce memory and connection usage
-    for (let i = 0; i < allKeys.length; i += CHUNK_SIZE) {
-      const chunkKeys = allKeys.slice(i, i + CHUNK_SIZE);
-      const pipeline = redis.pipeline();
-      
-      chunkKeys.forEach(key => pipeline.get(key));
-      const results = await pipeline.exec();
-      
-      if (results) {
-        results.forEach(([err, item], index) => {
-          if (err) {
-            console.error(`Error getting value at index ${index}:`, err);
-            return;
-          }
-          
-          if (item !== null) {
-            try {
-              // Handle both string and object responses from Redis
-              const highlight = typeof item === 'string' ? JSON.parse(item) : item;
-              if (typeof highlight === 'object' && highlight.bookTitle && highlight.databaseId) {
-                console.debug(`Valid highlight at index ${index}`);
-                highlights.push(highlight);
-              } else {
-                console.error(`Invalid highlight structure at index ${index}:`, highlight);
-              }
-            } catch (error) {
-              console.error(`Error processing highlight at index ${index}:`, error, item);
-            }
-          } else {
-            console.debug(`Null value at index ${index}`);
-          }
-        });
-      }
+    // Get job status to get the parsed file key
+    const status = await getJobStatus(jobId);
+    if (!status?.parsedKey) {
+      throw new Error('Cannot find parsed highlights: parsedKey not found in job status');
     }
 
-    console.debug(`Total valid highlights retrieved: ${highlights.length}`);
-    return highlights;
-  } catch (error) {
-    console.error('Error retrieving highlights from queue:', error);
-    throw error;
-  } finally {
-    // Return connection to pool
-    if (redis) {
-      redisPool.release(redis);
+    console.debug(`Retrieving highlights for job ${jobId} from R2 with key: ${status.parsedKey}`);
+
+    // Download and parse the highlights from R2
+    const parsedContent = await downloadObject(status.parsedKey);
+    const parsed = JSON.parse(parsedContent.toString());
+
+    if (!Array.isArray(parsed.highlights)) {
+      throw new Error('Invalid parsed highlights format: expected array');
     }
+
+    console.debug(`Retrieved ${parsed.highlights.length} highlights from R2`);
+    return parsed.highlights;
+  } catch (error) {
+    console.error('Error retrieving highlights from R2:', error);
+    throw error;
   }
 }
 
