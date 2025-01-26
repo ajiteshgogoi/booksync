@@ -215,6 +215,35 @@ app.get(`${apiBasePath}/auth/notion`, (req: Request, res: Response) => {
   }
 });
 
+// Authentication status check
+app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
+  try {
+    const authToken = req.cookies.auth_token;
+    
+    if (!authToken) {
+      return res.status(401).json({ authenticated: false });
+    }
+
+    // Verify token with worker service
+    const user = await forwardToWorker('/auth/verify', 'POST', { token: authToken });
+    
+    res.json({
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        workspaceId: user.workspaceId
+      }
+    });
+  } catch (error) {
+    console.error('Auth check error:', error);
+    res.status(401).json({ 
+      authenticated: false,
+      error: error instanceof Error ? error.message : 'Authentication check failed'
+    });
+  }
+});
+
 app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Response) => {
   const code = req.query.code as string;
   const state = req.query.state as string;
