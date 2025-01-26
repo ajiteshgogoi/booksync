@@ -19805,16 +19805,21 @@ var UploadWorker = class {
     this.redis = new RedisClient({ url: env3.REDIS_URL });
   }
   redis;
-  async queueJob(databaseId, fileContent, userId) {
+  async processFile(fileName, databaseId, userId) {
     const jobId = `sync:${userId}:${Date.now()}`;
     try {
       await this.redis.set(`job:${jobId}`, JSON.stringify({
         state: "queued",
         progress: 0,
-        message: "File uploaded, starting to parse",
+        message: "Starting file processing",
         lastProcessedIndex: 0,
         userId
       }));
+      const file = await this.env.R2_BUCKET.get(fileName);
+      if (!file) {
+        throw new Error("File not found in R2");
+      }
+      const fileContent = await file.text();
       const highlights = await parseClippings(fileContent);
       const pipeline = this.redis.pipeline();
       highlights.forEach((highlight, index) => {
@@ -19836,7 +19841,12 @@ var UploadWorker = class {
       await this.redis.xadd(STREAM_NAME, "*", "jobId", jobId, "userId", userId, "type", "sync");
       return jobId;
     } catch (error3) {
-      console.error("Error queueing job:", error3);
+      console.error("Error processing file:", error3);
+      await this.redis.set(`job:${jobId}`, JSON.stringify({
+        state: "failed",
+        message: error3 instanceof Error ? error3.message : "Unknown error",
+        userId
+      }));
       throw error3;
     }
   }
@@ -19846,20 +19856,17 @@ var UploadWorker = class {
     }
     try {
       const formData = await request.formData();
-      const file = formData.get("file");
+      const fileName = formData.get("fileName");
       const userId = formData.get("userId");
       const databaseId = formData.get("databaseId");
-      if (!file || !userId || !databaseId) {
+      if (!fileName || !userId || !databaseId) {
         return new Response("Missing required fields", { status: 400 });
       }
-      const fileName = `${userId}/${Date.now()}-${file.name}`;
-      await this.env.R2_BUCKET.put(fileName, file);
-      const fileContent = await file.text();
-      const jobId = await this.queueJob(databaseId, fileContent, userId);
+      const jobId = await this.processFile(fileName, databaseId, userId);
       return new Response(
         JSON.stringify({
           jobId,
-          message: "File uploaded and queued for processing"
+          message: "File processed and queued for sync"
         }),
         {
           status: 200,
@@ -19870,10 +19877,10 @@ var UploadWorker = class {
         }
       );
     } catch (error3) {
-      console.error("Upload error:", error3);
+      console.error("Processing error:", error3);
       return new Response(
         JSON.stringify({
-          error: "Upload failed",
+          error: "Processing failed",
           message: error3 instanceof Error ? error3.message : "Unknown error"
         }),
         {

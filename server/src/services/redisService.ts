@@ -70,7 +70,7 @@ class RedisPool {
   }
 
   constructor() {
-    this.startConnectionReaper();
+    // Connection reaper will be started explicitly when needed
   }
 
   private async createClient(): Promise<RedisType> {
@@ -174,7 +174,7 @@ class RedisPool {
     }
   }
 
-  private startConnectionReaper(): void {
+  public startConnectionReaper(): void {
     if (this.reaperInterval) {
       clearInterval(this.reaperInterval);
     }
@@ -193,7 +193,7 @@ class RedisPool {
     }, REAPER_INTERVAL);
   }
 
-  private stopConnectionReaper(): void {
+  public stopConnectionReaper(): void {
     if (this.reaperInterval) {
       clearInterval(this.reaperInterval);
       this.reaperInterval = null;
