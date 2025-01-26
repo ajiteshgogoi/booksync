@@ -508,7 +508,21 @@ export class NotionClient {
     });
 
     try {
-      const response = await axios.post('https://api.notion.com/v1/oauth/token', {
+      // Validate axios is properly initialized
+      if (!axios || typeof axios.post !== 'function') {
+        throw new Error('Axios is not properly initialized');
+      }
+
+      // Create a new axios instance with proper configuration
+      const axiosInstance = axios.create({
+        baseURL: 'https://api.notion.com',
+        headers: {
+          'Content-Type': 'application/json',
+          'Notion-Version': '2022-06-28'
+        }
+      });
+
+      const response = await axiosInstance.post('/v1/oauth/token', {
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.redirectUri
@@ -516,7 +530,8 @@ export class NotionClient {
         auth: {
           username: this.clientId,
           password: this.clientSecret
-        }
+        },
+        timeout: 10000 // 10 second timeout
       });
 
       console.log('[NotionClient] Received OAuth response:', {

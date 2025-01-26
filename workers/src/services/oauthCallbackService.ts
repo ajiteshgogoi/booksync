@@ -1,5 +1,7 @@
 import { KVJobStore } from './kvJobStore';
-import { NotionClient, NotionStore, type NotionToken } from '@booksync/shared';
+import { NotionClient } from '@booksync/shared/src/services/notionClient';
+import { NotionStore } from '@booksync/shared/src/services/notionStore';
+import type { NotionToken } from '@booksync/shared/src/types/notion';
 import { createKVStore } from '@booksync/shared';
 import type { Environment } from '../types/env';
 import type { CreateJobParams } from '../types/job';
