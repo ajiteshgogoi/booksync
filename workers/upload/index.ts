@@ -1,6 +1,6 @@
-import Redis from 'ioredis';
 import { parseClippings } from '../../server/src/utils/parseClippings.js';
 import type { Highlight } from '../../server/src/types/highlight.js';
+import { RedisClient } from './lib/redis-client';
 
 interface Env {
   R2_BUCKET: R2Bucket;
@@ -17,13 +17,21 @@ interface JobStatus {
 }
 
 class UploadWorker {
-  private redis: Redis;
+  private redis: RedisClient;
 
   constructor(
     private env: Env,
     private ctx: ExecutionContext
   ) {
-    this.redis = new Redis(env.REDIS_URL);
+    this.redis = new RedisClient({
+      host: new URL(env.REDIS_URL).hostname,
+      port: parseInt(new URL(env.REDIS_URL).port),
+      password: new URL(env.REDIS_URL).password,
+      tls: {
+        rejectUnauthorized: false,
+        servername: new URL(env.REDIS_URL).hostname
+      }
+    });
   }
 
   private async queueJob(

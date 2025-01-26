@@ -1,8 +1,8 @@
-import Redis from 'ioredis';
 import { Client as NotionClient } from '@notionhq/client';
 import { parseClippings } from '../../server/src/utils/parseClippings.js';
 import { getBookHighlightHashes, truncateHash } from '../../server/src/utils/notionUtils.js';
 import type { Highlight } from '../../server/src/types/highlight.js';
+import { RedisClient } from './lib/redis-client';
 
 interface Env {
   REDIS_URL: string;
@@ -26,11 +26,20 @@ interface ProcessedHighlight extends Highlight {
 }
 
 class SyncWorker {
-  private redis: Redis;
+  private redis: RedisClient;
   private notionClient: NotionClient;
 
   constructor(private env: Env) {
-    this.redis = new Redis(env.REDIS_URL);
+    this.redis = new RedisClient({
+      host: new URL(env.REDIS_URL).hostname,
+      port: parseInt(new URL(env.REDIS_URL).port),
+      password: new URL(env.REDIS_URL).password,
+      tls: {
+        rejectUnauthorized: false,
+        servername: new URL(env.REDIS_URL).hostname
+      }
+    });
+    
     this.notionClient = new NotionClient({
       auth: env.NOTION_TOKEN
     });
@@ -175,15 +184,7 @@ class SyncWorker {
   async processPendingJobs(): Promise<void> {
     try {
       // Get pending jobs from Redis stream
-      const results = await this.redis.xread(
-        'COUNT',
-        10,
-        'BLOCK',
-        1000,
-        'STREAMS',
-        'kindle:jobs',
-        '0-0'
-      );
+      const results = await this.redis.xread('STREAMS', 'kindle:jobs', '0-0');
       
       if (!results || results.length === 0) {
         console.log('No pending jobs found');
@@ -191,7 +192,6 @@ class SyncWorker {
       }
 
       // Process stream results
-      // [streamName, [[messageId, [key1, value1, key2, value2, ...]], ...]]
       const [_, messages] = results[0];
 
       for (const [messageId, fields] of messages) {

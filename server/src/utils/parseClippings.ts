@@ -1,5 +1,4 @@
-import { createHash } from 'crypto';
-
+import { createHash } from 'node:crypto';
 import { Highlight } from '../types/highlight.js';
 
 const BATCH_SIZE = 100; // Process 100 entries at a time
