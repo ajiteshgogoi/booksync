@@ -88,6 +88,7 @@ import { setJobStatus, getRedis, redisPool } from './services/redisService.js';
 import type { JobStatus } from './types/job.js';
 import { verifyRedisConnection } from './utils/redisUtils.js';
 import { addJobToQueue } from './services/redisJobService.js';
+import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
@@ -603,40 +604,29 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         await addJobToQueue(jobId, userId);
         console.log('Job added to queue');
 
-        // Call Cloudflare Worker for processing
-        const workerResponse = await fetch('https://booksync-worker.ajiteshgogoi.workers.dev/process', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.WORKER_API_KEY}`
-          },
-          body: JSON.stringify({
-            fileContent,
-            userId,
-            jobId
-          })
+        // Then trigger GitHub processing
+        const result = await triggerProcessing(fileContent, userId, clientIp);
+        console.log('\n✅ Successfully triggered GitHub processing:', {
+          jobId,
+          fileName: result,
+          userId,
+          fileSize: fileContent.length
         });
-
-        if (!workerResponse.ok) {
-          throw new Error(`Worker failed with status ${workerResponse.status}`);
-        }
-
-        const workerData = await workerResponse.json();
         
-        // Update job status with worker response
+        // Update job status with file name for tracking
         await setJobStatus(jobId, {
           state: 'pending',
           message: 'File uploaded and queued for processing',
           progress: 0,
-          result: workerData
+          result: { fileName: result }
         });
-
-        // Send response
+  
+        // Send response only after successful processing
         res.json({
           success: true,
           jobId,
           message: 'Upload received and processing started.',
-          info: 'Your highlights are being processed. You can safely close this page - progress is automatically saved.'
+          info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
         });
       } catch (error) {
         console.error('Failed to trigger GitHub processing:', error);

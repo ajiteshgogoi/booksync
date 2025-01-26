@@ -10,11 +10,6 @@ interface Env {
   NOTION_OAUTH_CLIENT_SECRET: string;
   NOTION_REDIRECT_URI: string;
   NOTION_TOKEN: string;
-  WORKER_API_KEY: string;
-}
-
-function validateApiKey(apiKey: string, env: Env): boolean {
-  return apiKey === env.WORKER_API_KEY;
 }
 
 interface JobStatus {
@@ -44,7 +39,7 @@ class SyncWorker {
         servername: new URL(env.REDIS_URL).hostname
       }
     });
-
+    
     this.notionClient = new NotionClient({
       auth: env.NOTION_TOKEN
     });
@@ -63,7 +58,7 @@ class SyncWorker {
       total: 0,
       lastProcessedIndex: 0
     };
-
+    
     await this.redis.set(`job:${jobId}`, JSON.stringify({
       ...currentStatus,
       ...status
@@ -79,13 +74,13 @@ class SyncWorker {
       const pattern = `highlights:${jobId}:*`;
       const keys = await this.redis.keys(pattern);
       const highlights: ProcessedHighlight[] = [];
-
+      
       // Fetch highlights in parallel for better performance
       const highlightPromises = keys.map(async key => {
         const data = await this.redis.get(key);
         return data ? JSON.parse(data) as ProcessedHighlight : null;
       });
-
+      
       const highlightResults = await Promise.all(highlightPromises);
       highlights.push(...highlightResults.filter((h): h is ProcessedHighlight => h !== null));
 
@@ -102,7 +97,7 @@ class SyncWorker {
       // Process highlights in batches
       for (let i = 0; i < highlights.length; i += MAX_HIGHLIGHTS) {
         const batch = highlights.slice(i, i + MAX_HIGHLIGHTS);
-
+        
         try {
           // Update Notion database
           const databaseId = batch[0].databaseId;
@@ -120,7 +115,7 @@ class SyncWorker {
           // Process each book's highlights
           for (const [bookTitle, bookHighlightList] of bookHighlights.entries()) {
             const existingHashes = await getBookHighlightHashes(this.notionClient, databaseId, bookTitle);
-
+            
             // Filter out duplicates
             const newHighlights = bookHighlightList.filter(h => {
               const truncatedHash = truncateHash(h.hash);
@@ -129,7 +124,7 @@ class SyncWorker {
 
             if (newHighlights.length > 0) {
               // Add highlights to Notion
-              await Promise.all(newHighlights.map(highlight =>
+              await Promise.all(newHighlights.map(highlight => 
                 this.notionClient.pages.create({
                   parent: { database_id: databaseId },
                   properties: {
@@ -155,7 +150,7 @@ class SyncWorker {
 
           // Clean up processed highlights
           await Promise.all(
-            batch.map((_, index) =>
+            batch.map((_, index) => 
               this.redis.del(`highlights:${jobId}:${i + index}`)
             )
           );
@@ -190,7 +185,7 @@ class SyncWorker {
     try {
       // Get pending jobs from Redis stream
       const results = await this.redis.xread('STREAMS', 'kindle:jobs', '0-0');
-
+      
       if (!results || results.length === 0) {
         console.log('No pending jobs found');
         return;
@@ -209,7 +204,7 @@ class SyncWorker {
         try {
           // Process the job
           await this.processHighlights(data.jobId);
-
+          
           // Acknowledge the message
           await this.redis.xdel('kindle:jobs', messageId);
 
@@ -231,13 +226,6 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<void> {
-    // Get API key from environment variables
-    const apiKey = env.WORKER_API_KEY;
-
-    if (!apiKey || !validateApiKey(apiKey, env)) {
-      throw new Error('Invalid or missing API key');
-    }
-
     const worker = new SyncWorker(env);
     await worker.processPendingJobs();
   }
