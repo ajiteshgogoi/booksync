@@ -1764,13 +1764,13 @@ var require_logging = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.logLevelSeverity = exports.makeConsoleLogger = exports.LogLevel = void 0;
     var utils_1 = require_utils();
-    var LogLevel;
-    (function(LogLevel2) {
-      LogLevel2["DEBUG"] = "debug";
-      LogLevel2["INFO"] = "info";
-      LogLevel2["WARN"] = "warn";
-      LogLevel2["ERROR"] = "error";
-    })(LogLevel = exports.LogLevel || (exports.LogLevel = {}));
+    var LogLevel2;
+    (function(LogLevel3) {
+      LogLevel3["DEBUG"] = "debug";
+      LogLevel3["INFO"] = "info";
+      LogLevel3["WARN"] = "warn";
+      LogLevel3["ERROR"] = "error";
+    })(LogLevel2 = exports.LogLevel || (exports.LogLevel = {}));
     function makeConsoleLogger(name) {
       return (level, message, extraInfo) => {
         console[level](`${name} ${level}:`, message, extraInfo);
@@ -1780,13 +1780,13 @@ var require_logging = __commonJS({
     exports.makeConsoleLogger = makeConsoleLogger;
     function logLevelSeverity(level) {
       switch (level) {
-        case LogLevel.DEBUG:
+        case LogLevel2.DEBUG:
           return 20;
-        case LogLevel.INFO:
+        case LogLevel2.INFO:
           return 40;
-        case LogLevel.WARN:
+        case LogLevel2.WARN:
           return 60;
-        case LogLevel.ERROR:
+        case LogLevel2.ERROR:
           return 80;
         default:
           return (0, utils_1.assertNever)(level);
@@ -2904,14 +2904,14 @@ var require_src = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-jLUf0B/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-Z6iJps/middleware-loader.entry.ts
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// .wrangler/tmp/bundle-jLUf0B/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-Z6iJps/middleware-insertion-facade.js
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
@@ -6484,10 +6484,22 @@ async function setOAuthToken(store, tokenData) {
     if (!_client) {
       console.log("[OAuth] Initializing Notion client...");
       _client = new import_client2.Client({
-        auth: tokenData.access_token
+        auth: tokenData.access_token,
+        timeoutMs: 1e4,
+        // 10 second timeout
+        logLevel: false ? import_client2.LogLevel.DEBUG : import_client2.LogLevel.WARN
       });
-      _client.search = _client.search.bind(_client);
-      _client.request = _client.request.bind(_client);
+      if (_client) {
+        const methods = ["search", "request"];
+        methods.forEach((method) => {
+          if (typeof _client[method] === "function") {
+            _client[method] = _client[method].bind(_client);
+          }
+        });
+      }
+      if (!_client || typeof _client.search !== "function" || typeof _client.request !== "function") {
+        throw new Error("Failed to initialize Notion client");
+      }
     }
     console.log("[OAuth] Searching for Kindle Highlights database...");
     try {
@@ -7850,6 +7862,42 @@ router.get("/health", (_, env3) => {
     envErrors
   });
 });
+router.post("/auth/verify", async (request, env3) => {
+  try {
+    const { token } = await request.json();
+    if (!token) {
+      return errorResponse("Missing token", 400);
+    }
+    const authError = validateApiKey(request, env3);
+    if (authError)
+      return authError;
+    const kvStore = createKVStore(env3.NOTION_STORE);
+    const storedTokenStr = await kvStore.get(`auth:${token}`);
+    if (!storedTokenStr) {
+      return errorResponse("Invalid or expired token", 401);
+    }
+    let storedToken;
+    try {
+      storedToken = JSON.parse(storedTokenStr);
+      if (!storedToken.userId || !storedToken.email || !storedToken.workspaceId) {
+        return errorResponse("Invalid token structure", 401);
+      }
+      if (storedToken.expiresAt && storedToken.expiresAt < Date.now()) {
+        return errorResponse("Token has expired", 401);
+      }
+    } catch (error3) {
+      return errorResponse("Invalid token format", 401);
+    }
+    return successResponse({
+      id: storedToken.userId,
+      email: storedToken.email,
+      workspaceId: storedToken.workspaceId
+    });
+  } catch (error3) {
+    console.error("Auth verification error:", error3);
+    return errorResponse("Failed to verify token");
+  }
+});
 router.post("/test-webhook", async (request) => {
   try {
     const data = await request.json();
@@ -8146,7 +8194,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env3, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-jLUf0B/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-Z6iJps/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -8183,7 +8231,7 @@ function __facade_invoke__(request, env3, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-jLUf0B/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-Z6iJps/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
