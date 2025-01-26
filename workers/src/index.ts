@@ -1,4 +1,4 @@
-import { Router } from 'itty-router';
+import { Router, IRequest } from 'itty-router';
 import type { Environment } from './types/env';
 import type { Job } from './types/job';
 import {
@@ -15,6 +15,17 @@ const JOB_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Initialize router
 const router = Router();
+
+// Middleware for API key validation
+const validateApiKey = (request: Request | IRequest, env: Environment) => {
+  const apiKey = request instanceof Request ?
+    request.headers.get('x-api-key') :
+    request.headers['x-api-key'];
+    
+  if (!apiKey || apiKey !== env.WORKER_API_KEY) {
+    return errorResponse('Invalid or missing API key', 401);
+  }
+};
 
 // Response helpers
 const errorResponse = (message: string, status = 500) => 
@@ -95,6 +106,11 @@ router.post('/test-webhook', async (request) => {
 // Upload endpoint with improved error handling and logging
 router.post('/upload', async (request, env: Environment) => {
   console.log('Processing upload request...');
+  
+  // Validate API key
+  const authError = validateApiKey(request, env);
+  if (authError) return authError;
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
