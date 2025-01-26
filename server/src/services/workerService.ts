@@ -129,7 +129,12 @@ class WorkerService {
           const jobStatus = await getJobStatus(result.jobId);
           if (jobStatus?.state !== 'parsed') {
             logger.info(`Skipping job ${result.jobId} - not marked as parsed`);
-            // Don't acknowledge job yet - wait for it to be parsed
+            this.emptyPollCount++; // Count unparsed jobs as empty polls
+            if (this.emptyPollCount >= MAX_EMPTY_POLLS) {
+              logger.info(`No parsed jobs found after ${MAX_EMPTY_POLLS} attempts, stopping worker`);
+              await this.stop();
+              break;
+            }
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
@@ -293,6 +298,7 @@ class WorkerService {
           const jobStatus = await getJobStatus(jobId);
           if (jobStatus?.state !== 'parsed') {
             logger.info(`Skipping job ${jobId} - not marked as parsed`);
+            emptyPolls++; // Count unparsed jobs as empty polls
             // Don't acknowledge yet - wait for it to be parsed
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
