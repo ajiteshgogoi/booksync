@@ -176,6 +176,9 @@ class WorkerService {
             // Process the job with highlight limit
             await processFile(jobId);
 
+            // Acknowledge message after successful processing
+            await acknowledgeJob(messageId);
+            
             // Update job status to completed
             await setJobStatus(jobId, {
               state: 'completed',
@@ -187,8 +190,7 @@ class WorkerService {
             // If this was the last job in the upload, mark upload complete
             if (uploadId) {
               const status = await getJobStatus(jobId);
-              const uploadComplete = await this.checkUploadCompletion(uploadId);
-              if (uploadComplete && status?.userId) {
+              if (status?.userId) {
                 // Call upload tracking service to handle complete cleanup
                 await completeUpload(uploadId, jobId);
                 // Clean up worker state
@@ -200,6 +202,9 @@ class WorkerService {
             }
 
           } catch (error) {
+            // Acknowledge message for failed job to prevent reprocessing
+            await acknowledgeJob(messageId);
+
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await setJobStatus(jobId, {
@@ -231,8 +236,6 @@ class WorkerService {
             }
           }
 
-          // Acknowledge message after processing (whether successful or failed)
-          await acknowledgeJob(messageId);
           this.currentJobId = null;
 
         } catch (error) {
@@ -303,6 +306,9 @@ class WorkerService {
           try {
             // Process the job
             await processFile(jobId);
+            
+            // Acknowledge message after successful processing
+            await acknowledgeJob(messageId);
 
             // Update job status to completed
             const status = await getJobStatus(jobId);
@@ -319,6 +325,9 @@ class WorkerService {
             }
 
           } catch (error) {
+            // Acknowledge message for failed job to prevent reprocessing
+            await acknowledgeJob(messageId);
+
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             const status = await getJobStatus(jobId);
@@ -335,8 +344,6 @@ class WorkerService {
             }
           }
 
-          // Acknowledge message after processing (whether successful or failed)
-          await acknowledgeJob(messageId);
           this.currentJobId = null;
 
         } catch (error) {
