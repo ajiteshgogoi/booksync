@@ -18,10 +18,6 @@ id = "ff8f1efaccd64d958b29c685b3af8193"
 binding = "JOB_STORE"
 id = "5a843cd4fb4f4f168b8aeebadef59315"
 
-[[kv_namespaces]]
-binding = "NOTION_STORE"
-id = "7c452b027f9e4ba6a0137abfa8aa1859"
-
 [[r2_buckets]]
 binding = "HIGHLIGHTS_BUCKET"
 bucket_name = "highlights-bucket"

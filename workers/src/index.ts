@@ -169,7 +169,7 @@ router.post('/sync', async (request, env: Environment) => {
 
     // Initialize stores and clients
     const jobStore = new KVJobStore(env.JOB_STORE);
-    const kvStore = createKVStore(env.NOTION_STORE);
+    const kvStore = createKVStore(env.OAUTH_STORE);
     const notionStore = new NotionStore(kvStore);
 
     // Get job status

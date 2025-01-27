@@ -3,7 +3,6 @@ export interface Environment {
   OAUTH_STORE: KVNamespace;
   JOB_STORE: KVNamespace;
   HIGHLIGHTS_BUCKET: R2Bucket;
-  NOTION_STORE: KVNamespace;
 
   // Notion OAuth credentials
   NOTION_CLIENT_ID: string;
