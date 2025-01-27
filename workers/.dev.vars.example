@@ -1,8 +1,0 @@
-# Notion OAuth Configuration
-NOTION_CLIENT_ID=your-notion-client-id
-NOTION_CLIENT_SECRET=your-notion-client-secret
-NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
-
-# Worker Configuration
-WORKER_API_KEY=your-worker-api-key
-WORKER_HOST=localhost:8787
