@@ -72,49 +72,6 @@ export class OAuthCallbackService {
     }
   }
 
-  async verifyToken(token: string): Promise<{ 
-    id: string;
-    email?: string;
-    workspaceId: string;
-  }> {
-    try {
-      console.log('Verifying token...');
-      
-      // Validate token format
-      if (!token || typeof token !== 'string') {
-        throw new Error('Invalid token format');
-      }
-
-      // Get token data from KV store
-      const tokenData = await this.notionClient.getToken(token);
-      if (!tokenData) {
-        throw new Error('Token not found');
-      }
-
-      // Check if token is expired
-      const now = Date.now();
-      if (tokenData.expires_at && now > tokenData.expires_at) {
-        throw new Error('Token expired');
-      }
-
-      // Extract user information
-      if (!tokenData.owner || tokenData.owner.type !== 'user' || !tokenData.owner.user?.id) {
-        throw new Error('Invalid token: missing user information');
-      }
-
-      return {
-        id: tokenData.owner.user.id,
-        email: tokenData.owner.user.email,
-        workspaceId: tokenData.workspace_id
-      };
-    } catch (error) {
-      console.error('Token verification failed:', {
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-      throw error;
-    }
-  }
-
   async handleCallback(code: string): Promise<{ redirectUrl: string }> {
     try {
       console.log('Starting OAuth callback handling...');

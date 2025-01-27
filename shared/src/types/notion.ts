@@ -3,7 +3,6 @@ export interface NotionUser {
   name?: string;
   avatar_url?: string;
   type?: 'person' | 'bot';
-  email?: string;
   person?: {
     email?: string;
   };
@@ -37,6 +36,4 @@ export interface NotionToken {
   request_id?: string;
   refresh_token?: string;
   expires_in?: number;
-  received_at?: number;
-  expires_at?: number;
 }

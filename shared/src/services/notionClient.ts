@@ -614,42 +614,6 @@ export class NotionClient {
     }
   }
 
-  async getToken(token: string): Promise<NotionToken> {
-    if (!token) {
-      throw new Error('Token is required');
-    }
-
-    try {
-      console.log('[NotionClient] Retrieving token data...', { token });
-      
-      // Get token data from store
-      const tokenData = await this.store.getToken(token);
-      if (!tokenData) {
-        throw new Error('Token not found');
-      }
-
-      // Validate token data
-      if (!tokenData.access_token || !tokenData.workspace_id) {
-        throw new Error('Invalid token data');
-      }
-
-      // Check if token is expired using expires_in (seconds until expiration)
-      if (tokenData.expires_in) {
-        // Calculate expiration time based on when we received the token
-        const receivedAt = tokenData.received_at || Date.now();
-        const expirationTime = receivedAt + tokenData.expires_in * 1000;
-        if (Date.now() > expirationTime) {
-          throw new Error('Token expired');
-        }
-      }
-
-      return tokenData;
-    } catch (error) {
-      console.error('[NotionClient] Failed to get token:', error);
-      throw error;
-    }
-  }
-
   async updateNotionDatabase(highlights: Highlight[], workspaceId: string, onProgress?: () => void): Promise<void> {
   try {
     const client = await getClient();
