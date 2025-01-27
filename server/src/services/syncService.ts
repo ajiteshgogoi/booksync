@@ -310,6 +310,19 @@ export async function processSyncJob(
     });
     const lastProcessedIndex = status?.lastProcessedIndex || 0;
     
+    // Get current job status
+    const currentStatus = await getJobStatus(jobId);
+    if (!currentStatus?.userId) {
+      throw new Error('Cannot process job: userId not found in job status');
+    }
+
+    // Set state to queued before parsing starts
+    await setJobStatus(jobId, {
+      ...currentStatus,
+      state: 'queued',
+      message: 'Starting to parse highlights'
+    });
+
     // Get all highlights with retry
     let highlights;
     try {
@@ -319,6 +332,13 @@ export async function processSyncJob(
       redis = await getRedisWithRetry();
       highlights = await getHighlightsFromQueue(jobId);
     }
+
+    // Set state to parsed after successful parsing
+    await setJobStatus(jobId, {
+      ...currentStatus,
+      state: 'parsed',
+      message: 'Highlights ready for processing'
+    });
     const total = highlights.length;
     
     logger.info('Retrieved highlights for processing', { jobId, total, lastProcessedIndex });

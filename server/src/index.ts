@@ -544,7 +544,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     
     // Set initial status in Redis
     await setJobStatus(jobId, {
-      state: 'queued',
+      state: 'pending',
       progress: 0,
       message: 'Uploading highlights for processing',
       total: 0
@@ -613,9 +613,9 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           fileSize: fileContent.length
         });
         
-        // Update job status with file name for tracking
+        // Update job status after successful trigger
         await setJobStatus(jobId, {
-          state: 'pending',
+          state: 'queued',
           message: 'File uploaded and queued for processing',
           progress: 0,
           result: { fileName: result }
