@@ -155,15 +155,14 @@ export class QueueService {
     }
 
     try {
-      const queueState = await this.getQueueState();
+      // First check active users since it's a quick operation
       const activeState = await this.getActiveUsersState();
-
-      // Check if we can process more users
       if (Object.keys(activeState.activeUsers).length >= MAX_ACTIVE_USERS) {
         return null;
       }
 
-      // Get next entry from queue
+      // Only get queue state if we have room for more active users
+      const queueState = await this.getQueueState();
       const nextEntry = queueState.queue.shift();
       if (!nextEntry) {
         return null;
@@ -178,14 +177,13 @@ export class QueueService {
         return null;
       }
 
-      // Add to active users if job is ready
+      // Update both states since we have a valid job to process
       activeState.activeUsers[nextEntry.userId] = {
         uploadId: nextEntry.uploadId,
         startedAt: Date.now()
       };
       activeState.queueLength = queueState.queue.length;
-
-      // Update both states
+      
       await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
 
