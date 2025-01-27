@@ -35,6 +35,7 @@ function loadEnv() {
   const required = [
     'NOTION_OAUTH_CLIENT_ID',
     'NOTION_OAUTH_CLIENT_SECRET',
+    'REDIS_URL',
     'R2_ENDPOINT',
     'R2_ACCESS_KEY_ID', 
     'R2_SECRET_ACCESS_KEY',
@@ -51,7 +52,8 @@ function loadEnv() {
     NOTION_CONFIG: {
       clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
       redirectUri: process.env.NOTION_REDIRECT_URI || 'http://localhost:3001/auth/notion/callback'
-    }
+    },
+    REDIS_URL: process.env.REDIS_URL ? 'configured' : 'missing'
   });
 }
 
@@ -81,11 +83,17 @@ declare global {
 import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
+import { processSyncJob, getSyncStatus } from './services/syncService.js';
+import { setJobStatus, getRedis, redisPool } from './services/redisService.js';
+import type { JobStatus } from './types/job.js';
+import { verifyRedisConnection } from './utils/redisUtils.js';
+import { addJobToQueue } from './services/redisJobService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { rateLimiter } from './services/rateLimiter.js';
+import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
@@ -189,11 +197,85 @@ app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
       clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
       redirectUri: process.env.NOTION_REDIRECT_URI || 'using default',
       clientSecret: process.env.NOTION_OAUTH_CLIENT_SECRET ? 'configured' : 'missing'
+    },
+    redisConfig: {
+      url: process.env.REDIS_URL ? 'configured' : 'missing'
     }
   };
   
   console.log('Health check response:', config);
   res.status(200).json(config);
+});
+
+// Test GitHub connection
+app.get(`${apiBasePath}/test-github`, async (req: Request, res: Response) => {
+  try {
+    const token = process.env.GITHUB_ACCESS_TOKEN;
+    if (!token) {
+      return res.status(500).json({ error: 'GitHub token not configured' });
+    }
+
+    console.log('\nTesting GitHub API connection...');
+
+    // Test repository access
+    const repoResponse = await axios.get(
+      'https://api.github.com/repos/ajiteshgogoi/booksync',
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `token ${token}`, // PATs always use token prefix
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    console.log('Repository access successful');
+
+    // Test workflow dispatch
+    console.log('\nTesting workflow dispatch...');
+    const dispatchResponse = await axios.post(
+      'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
+      {
+        event_type: 'process_highlights_test',
+        client_payload: {
+          test: true,
+          timestamp: new Date().toISOString()
+        }
+      },
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `token ${token}`, // PATs always use token prefix
+          'User-Agent': 'BookSync-App'
+        }
+      }
+    );
+
+    console.log('Workflow dispatch response:', dispatchResponse.status);
+
+    res.json({
+      success: true,
+      repoAccess: true,
+      repoName: repoResponse.data.full_name,
+      dispatchPermission: true,
+      testWorkflowTriggered: dispatchResponse.status === 204,
+      tokenInfo: {
+        present: true,
+        length: token.length,
+        format: token.startsWith('github_pat_') ? 'Fine-grained PAT' :
+                token.startsWith('ghp_') ? 'Fine-grained token' :
+                token.length === 40 ? 'Classic token' :
+                'Unknown format'
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+  }
 });
 
 // Parse endpoint to get highlight count
@@ -335,12 +417,11 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
         password: process.env.NOTION_OAUTH_CLIENT_SECRET!,
       }
     });
+const userId = response.data.owner?.user?.id;
+await setOAuthToken(response.data);
 
-    const userId = response.data.owner?.user?.id;
-    await setOAuthToken(response.data);
-
-    // Include userId in redirect URL
-    res.redirect(`${process.env.CLIENT_URL}?auth=success&userId=${userId}`);
+// Include userId in redirect URL
+res.redirect(`${process.env.CLIENT_URL}?auth=success&userId=${userId}`);
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.redirect(`${process.env.CLIENT_URL}?error=Failed to complete OAuth flow`);
@@ -357,6 +438,23 @@ app.post(`${apiBasePath}/auth/refresh`, async (req: Request, res: Response) => {
   }
 });
 
+// Job status endpoint
+app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response) => {
+  try {
+    const jobId = req.params.jobId;
+    const status = await getSyncStatus(jobId);
+    
+    if (!status) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    
+    res.json(status);
+  } catch (error) {
+    console.error('Status check error:', error);
+    res.status(500).json({ error: 'Failed to check job status' });
+  }
+});
+
 app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
   try {
     await clearAuth();
@@ -367,15 +465,247 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
   }
 });
 
+// Sync endpoint for uploading MyClippings.txt with timeout
+app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res: Response) => {
+  const timeout = 30000; // 30 second timeout
+  const timeoutHandle = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'The request took too long to process. Please try again.'
+      });
+    }
+  }, timeout);
+
+  try {
+    console.log('\n=== Sync Request Received ===');
+    
+    // Get client IP for rate limiting
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const clientIp = Array.isArray(xForwardedFor)
+      ? xForwardedFor[0]
+      : (xForwardedFor || req.socket.remoteAddress);
+    
+    if (!clientIp || typeof clientIp !== 'string') {
+      return res.status(400).json({ error: 'Could not determine client IP' });
+    }
+
+    if (!req.file) {
+      console.log('No file in request');
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileContent = req.file.buffer.toString('utf-8');
+
+    // Get real user ID from Redis OAuth token
+    let userId;
+    let redis;
+    try {
+      // Get token data from Redis
+      redis = await getRedis();
+      const keys = await redis.keys('oauth:*');
+      
+      if (keys.length === 0) {
+        throw new Error('No OAuth tokens found in Redis');
+      }
+      
+      const tokenData = await redis.get(keys[0]);
+      if (!tokenData) {
+        throw new Error('Failed to retrieve token data from Redis');
+      }
+
+      const tokenDataObj = JSON.parse(tokenData);
+      if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
+        throw new Error('Invalid or missing user ID in token data');
+      }
+
+      userId = tokenDataObj.userId;
+      console.log('Processing for user:', userId);
+    } catch (error) {
+      console.error('Failed to get user ID from Redis:', error);
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please reconnect to Notion'
+      });
+    } finally {
+      if (redis) {
+        await redisPool.release(redis);
+      }
+    }
+
+
+    // Increment rate limit counter after validation passes
+    rateLimiter.increment(clientIp);
+    console.log('Processing for user:', userId);
+    
+    // Start by creating a job ID
+    const jobId = `sync:${userId}:${Date.now()}`;
+    console.log('Created job ID:', jobId);
+    
+    // Set initial status in Redis
+    await setJobStatus(jobId, {
+      state: 'queued',
+      progress: 0,
+      message: 'Uploading highlights for processing',
+      total: 0
+    });
+    console.log('Job status set in Redis');
+
+    console.log('\n=== Upload Processing Start ===');
+    console.log('File content length:', fileContent.length);
+    console.log('Preview:', fileContent.slice(0, 200));
+    
+    // Verify Redis connection first
+    console.log('\n=== Verifying Redis Connection ===');
+    try {
+      try {
+        const redisTest = await verifyRedisConnection({
+          maxRetries: 3,
+          retryDelay: 1000,
+          timeout: 5000
+        });
+
+        console.log('✅ Redis connection verified successfully', {
+          pingResponse: redisTest.pingResponse,
+          testOperation: redisTest.testOperation,
+          connectionTime: redisTest.connectionTime,
+          retryCount: redisTest.retryCount
+        });
+      } catch (redisError) {
+        console.error('❌ Redis connection failed:', {
+          error: redisError instanceof Error ? redisError.stack : redisError,
+          redisUrl: process.env.REDIS_URL,
+          connectionTime: new Date().toISOString()
+        });
+        
+        await setJobStatus(jobId, {
+          state: 'failed',
+          message: 'Redis connection failed - please try again',
+          progress: 0,
+          errorDetails: redisError instanceof Error ? redisError.message : 'Unknown Redis error'
+        });
+        
+        throw new Error('Redis connection failed');
+      }
+
+      console.log('=== Starting File Processing ===');
+      console.log('Trigger Details:', {
+        fileContentLength: fileContent.length,
+        userId,
+        jobId,
+        githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
+        clientIp,
+        redisConnected: true
+      });
+      
+      console.log('Starting job processing...');
+      try {
+        // First add job to queue which will add user to active set
+        await addJobToQueue(jobId, userId);
+        console.log('Job added to queue');
+
+        // Then trigger GitHub processing
+        const result = await triggerProcessing(fileContent, userId, clientIp);
+        console.log('\n✅ Successfully triggered GitHub processing:', {
+          jobId,
+          fileName: result,
+          userId,
+          fileSize: fileContent.length
+        });
+        
+        // Update job status with file name for tracking
+        await setJobStatus(jobId, {
+          state: 'pending',
+          message: 'File uploaded and queued for processing',
+          progress: 0,
+          result: { fileName: result }
+        });
+  
+        // Send response only after successful processing
+        res.json({
+          success: true,
+          jobId,
+          message: 'Upload received and processing started.',
+          info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
+        });
+      } catch (error) {
+        console.error('Failed to trigger GitHub processing:', error);
+        const errorMessage = error instanceof Error ?
+          `${error.message} (Redis connected: true)` :
+          'Unknown error occurred while triggering processing';
+
+        await setJobStatus(jobId, {
+          state: 'failed',
+          message: errorMessage,
+          progress: 0
+        });
+        throw error;
+      }
+    } catch (error: any) {
+      console.error('\n❌ Failed to trigger processing:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      await setJobStatus(jobId, {
+        state: 'failed',
+        message: 'Failed to start processing. Please try again.',
+        progress: 0
+      });
+    }
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({
+      error: 'Failed to start sync job',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Initialize worker interval
+let workerInterval: NodeJS.Timeout | undefined;
+
 // Start the server if not in Vercel environment
 if (!process.env.VERCEL) {
-  const server = app.listen(port, () => {
+  const server = app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
+    
+    
+    // Start Redis cleanup scheduler
+    try {
+      await startCleanupScheduler();
+      console.log('Redis cleanup scheduler started');
+    } catch (error) {
+      console.error('Failed to start Redis cleanup scheduler:', error);
+    }
+    
+    if (process.env.NODE_ENV !== 'production') {
+      // Start continuous background worker for local development
+      workerInterval = setInterval(async () => {
+        try {
+          await startWorker();
+        } catch (error) {
+          console.error('Worker iteration error:', error);
+        }
+      }, 30000); // Run every 30 seconds in development
+    }
   });
 
   // Handle shutdown
   const cleanup = async () => {
     console.log('Server shutting down...');
+    if (workerInterval) {
+      clearInterval(workerInterval);
+    }
+    
+    // Stop Redis cleanup scheduler
+    try {
+      await stopCleanupScheduler();
+      console.log('Redis cleanup scheduler stopped');
+    } catch (error) {
+      console.error('Failed to stop Redis cleanup scheduler:', error);
+    }
+    
     server.close();
   };
 
