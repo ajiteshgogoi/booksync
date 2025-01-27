@@ -120,8 +120,6 @@ class WorkerService {
             continue;
           }
           
-          // Reset empty poll count when job is found
-          this.emptyPollCount = 0;
           const { jobId, messageId, uploadId } = result;
           
           // If this is a new upload, add to queue
@@ -133,10 +131,13 @@ class WorkerService {
           
           // Only process jobs in 'parsed' state
           if (status.state !== 'parsed') {
-            logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
-            this.emptyPollCount++;
-            continue;
+           logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
+           this.emptyPollCount++;
+           continue;
           }
+
+          // Reset empty poll count when we find a job in parsed state
+          this.emptyPollCount = 0;
 
           // Check if user already has an upload in progress
           const activeUpload = await workerStateService.getActiveUserUpload(status.userId);
@@ -303,8 +304,6 @@ class WorkerService {
             continue;
           }
           
-          // Reset empty poll count when job is found
-          emptyPolls = 0;
           const { jobId, messageId } = result;
           this.currentJobId = jobId;
 
@@ -316,10 +315,13 @@ class WorkerService {
 
           // Only process jobs in 'parsed' state
           if (status.state !== 'parsed') {
-            logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
-            emptyPolls++;
-            continue;
+           logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
+           emptyPolls++;
+           continue;
           }
+
+          // Reset empty poll count when we find a job in parsed state
+          emptyPolls = 0;
 
           // Update job status to processing
           await setJobStatus(jobId, {
