@@ -137,15 +137,19 @@ router.post('/upload', async (request, env: Environment) => {
 
     console.log('File stored successfully, creating job...');
 
-    // Create sync job using KVJobStore
-    const jobStore = new KVJobStore(env.JOB_STORE);
-    const job = await jobStore.createJob({
-      userId,
-      fileKey,
-      workspaceId,
-      expiresAt: Date.now() + JOB_EXPIRY
+    // Create sync job
+    const jobStore = env.JOB_STORE.get(env.JOB_STORE.idFromName(userId));
+    const jobResponse = await callDurableObject(jobStore, '/create', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        userId, 
+        fileKey,
+        workspaceId,
+        expiresAt: Date.now() + JOB_EXPIRY
+      })
     });
 
+    const job = await jobResponse.json<Job>();
     console.log('Job created successfully:', job.id);
     
     return successResponse(job);
@@ -167,17 +171,18 @@ router.post('/sync', async (request, env: Environment) => {
     console.log('Processing sync for job:', jobId, 'user:', userId);
 
     // Initialize stores and clients
-    const jobStore = new KVJobStore(env.JOB_STORE);
+    const jobStore = env.JOB_STORE.get(env.JOB_STORE.idFromName(userId));
     const kvStore = createKVStore(env.OAUTH_STORE);
     const notionStore = new NotionStore(kvStore);
 
     // Get job status
     console.log('Fetching job status...');
-    const job = await jobStore.getJob(jobId);
+    const jobResponse = await callDurableObject(jobStore, `/status?id=${jobId}`);
+    const job = await jobResponse.json<Job>();
     if (!job) {
       return errorResponse('Job not found', 404);
     }
-
+    
     if (!job.fileKey || !job.workspaceId) {
       return errorResponse('Invalid job state', 400);
     }
@@ -191,14 +196,20 @@ router.post('/sync', async (request, env: Environment) => {
     // Check if job has expired
     if (job.expiresAt && job.expiresAt < Date.now()) {
       console.log('Job expired:', job.id);
-      await jobStore.updateJob(jobId, { status: 'expired' });
+      await callDurableObject(jobStore, '/update', {
+        method: 'POST',
+        body: JSON.stringify({ id: jobId, status: 'expired' })
+      });
       return errorResponse('Job has expired', 400);
     }
 
     try {
       // Update job status to processing
       console.log('Updating job status to processing...');
-      await jobStore.updateJob(jobId, { status: 'processing' });
+      await callDurableObject(jobStore, '/update', {
+        method: 'POST',
+        body: JSON.stringify({ id: jobId, status: 'processing' })
+      });
 
       // Get file from R2
       console.log('Fetching file from R2:', job.fileKey);
@@ -231,7 +242,10 @@ router.post('/sync', async (request, env: Environment) => {
         batchDelay: 100,
         onProgress: async (progress, message) => {
           console.log(message);
-          await jobStore.updateJob(jobId, { progress: Math.min(progress, 100) });
+          await callDurableObject(jobStore, '/update', {
+            method: 'POST',
+            body: JSON.stringify({ id: jobId, progress: Math.min(progress, 100) })
+          });
         }
       });
 
@@ -241,9 +255,13 @@ router.post('/sync', async (request, env: Environment) => {
 
       // Mark job as completed
       console.log('Marking job as completed...');
-      await jobStore.updateJob(jobId, {
-        status: 'completed',
-        completedAt: new Date().toISOString()
+      await callDurableObject(jobStore, '/update', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          id: jobId, 
+          status: 'completed',
+          completedAt: new Date().toISOString()
+        })
       });
 
       return successResponse({ 
@@ -255,9 +273,13 @@ router.post('/sync', async (request, env: Environment) => {
       console.error('Sync error:', error);
       
       // Update job with error
-      await jobStore.updateJob(jobId, {
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Unknown error'
+      await callDurableObject(jobStore, '/update', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          id: jobId, 
+          status: 'failed',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
       });
 
       return errorResponse('Sync failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -277,13 +299,14 @@ const errorHandler = async (error: Error) => {
 // Scheduled task handler
 async function handleScheduled(env: Environment, ctx: ExecutionContext, type: string) {
   console.log(`Running scheduled ${type}...`);
-
-  const jobStore = new KVJobStore(env.JOB_STORE);
+  
+  const jobStore = env.JOB_STORE.get(env.JOB_STORE.idFromName('scheduled-jobs'));
 
   if (type === 'sync') {
-    // Get all pending jobs
+    // Get all pending jobs from Durable Object
     console.log('Fetching pending jobs...');
-    const jobs = await jobStore.listJobs('', 'pending');
+    const jobResponse = await callDurableObject(jobStore, '/list?status=pending');
+    const jobs = await jobResponse.json<Job[]>();
     console.log(`Found ${jobs.length} pending jobs`);
 
     // Process each pending job
@@ -302,8 +325,11 @@ async function handleScheduled(env: Environment, ctx: ExecutionContext, type: st
     }
   } else if (type === 'cleanup') {
     console.log('Running job cleanup...');
-    const cleanedCount = await jobStore.cleanupJobs();
-    console.log('Cleanup complete:', { cleaned: cleanedCount });
+    const response = await callDurableObject(jobStore, '/cleanup', {
+      method: 'POST'
+    });
+    const result = await response.json();
+    console.log('Cleanup complete:', result);
   }
 }
 
