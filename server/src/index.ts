@@ -216,34 +216,16 @@ app.get(`${apiBasePath}/auth/notion`, (req: Request, res: Response) => {
 });
 
 // Authentication status check
-app.post(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
+app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
-    console.log('Auth check request received', {
-      headers: req.headers,
-      cookies: req.cookies,
-      timestamp: new Date().toISOString()
-    });
-
     const authToken = req.cookies.auth_token;
     
     if (!authToken) {
-      console.log('No auth token found in cookies');
       return res.status(401).json({ authenticated: false });
     }
 
-    console.log('Auth token found, verifying with worker service');
-
     // Verify token with worker service
     const user = await forwardToWorker('/auth/verify', 'POST', { token: authToken });
-    
-    // Set auth cookie with proper configuration
-    res.cookie('auth_token', authToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 1 week
-      domain: process.env.NODE_ENV === 'production' ? '.booksync.vercel.app' : 'localhost'
-    });
     
     res.json({
       authenticated: true,
@@ -254,19 +236,10 @@ app.post(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Auth check error:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString(),
-      headers: req.headers,
-      cookies: req.cookies
-    });
+    console.error('Auth check error:', error);
     res.status(401).json({ 
       authenticated: false,
-      error: error instanceof Error ? error.message : 'Authentication check failed',
-      details: process.env.NODE_ENV === 'development' ? {
-        stack: error instanceof Error ? error.stack : undefined
-      } : undefined
+      error: error instanceof Error ? error.message : 'Authentication check failed'
     });
   }
 });

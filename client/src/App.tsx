@@ -10,9 +10,7 @@ const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 function App() {
   const checkAuthExpiration = () => {
     const authTimestamp = localStorage.getItem('authTimestamp');
-    const workspaceId = localStorage.getItem('workspaceId');
-    
-    if (!authTimestamp || !workspaceId) return false;
+    if (!authTimestamp) return false;
     
     const expirationTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     const elapsed = Date.now() - parseInt(authTimestamp);
@@ -253,41 +251,21 @@ function App() {
           'Failed to connect to Notion. Please try again.');
       }
 
-      // Check authentication status with proper error handling
+      // Check authentication status
       try {
         const authResponse = await fetch(`${apiBase}/auth/check`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
           credentials: 'include'
         });
-
-        if (!authResponse.ok) {
-          throw new Error('Authentication check failed');
-        }
-
-        const authData = await authResponse.json();
-        if (authData.id && authData.email && authData.workspaceId) {
+        if (authResponse.ok) {
           setIsAuthenticated(true);
           localStorage.setItem('isAuthenticated', 'true');
-          localStorage.setItem('authTimestamp', Date.now().toString());
-          localStorage.setItem('userId', authData.id);
-          localStorage.setItem('workspaceId', authData.workspaceId);
         } else {
-          throw new Error('Invalid auth response');
+          setIsAuthenticated(false);
+          localStorage.removeItem('isAuthenticated');
         }
       } catch (error) {
-        console.error('Auth check error:', error);
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('authTimestamp');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('workspaceId');
-        
-        if (error instanceof Error) {
-          setErrorMessage('Session expired. Please reconnect to Notion.');
-        }
       }
     };
 

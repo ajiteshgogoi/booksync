@@ -78,63 +78,6 @@ router.get('/health', (_, env: Environment) => {
   });
 });
 
-// Auth verification endpoint
-router.post('/auth/verify', async (request, env: Environment) => {
-  try {
-    const { token } = await request.json();
-    
-    if (!token) {
-      return errorResponse('Missing token', 400);
-    }
-
-    // Validate API key
-    const authError = validateApiKey(request, env);
-    if (authError) return authError;
-
-    // Define token type
-    interface AuthToken {
-      userId: string;
-      email: string;
-      workspaceId: string;
-      expiresAt: number;
-    }
-
-    // Get and validate token from KV store
-    const kvStore = createKVStore(env.NOTION_STORE);
-    const storedTokenStr = await kvStore.get(`auth:${token}`);
-    
-    if (!storedTokenStr) {
-      return errorResponse('Invalid or expired token', 401);
-    }
-
-    // Parse and validate token
-    let storedToken: AuthToken;
-    try {
-      storedToken = JSON.parse(storedTokenStr);
-      
-      if (!storedToken.userId || !storedToken.email || !storedToken.workspaceId) {
-        return errorResponse('Invalid token structure', 401);
-      }
-
-      // Check if token is expired
-      if (storedToken.expiresAt && storedToken.expiresAt < Date.now()) {
-        return errorResponse('Token has expired', 401);
-      }
-    } catch (error) {
-      return errorResponse('Invalid token format', 401);
-    }
-
-    return successResponse({
-      id: storedToken.userId,
-      email: storedToken.email,
-      workspaceId: storedToken.workspaceId
-    });
-  } catch (error) {
-    console.error('Auth verification error:', error);
-    return errorResponse('Failed to verify token');
-  }
-});
-
 // Test webhook endpoint
 router.post('/test-webhook', async (request) => {
   try {
