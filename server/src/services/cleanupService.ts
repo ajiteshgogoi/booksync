@@ -1,12 +1,19 @@
 import { jobStateService, type JobMetadata } from './jobStateService.js';
 import { logger } from '../utils/logger.js';
-import { uploadObject, deleteObject, listObjects, downloadObject } from './r2Service.js';
+import {
+  uploadObject,
+  deleteObject,
+  listObjects,
+  downloadObject,
+  getObjectInfo
+} from './r2Service.js';
 
 const ACTIVE_USERS_PREFIX = 'active-users/';
 const UPLOADS_PREFIX = 'uploads/';
 const JOB_STATE_PREFIX = 'jobs/';
 const LOCK_TIMEOUT = 30000; // 30 seconds
 const LOCK_FILE_PREFIX = 'locks/';
+const UPLOAD_EXPIRY = 15 * 60 * 1000; // 15 minutes
 
 interface Lock {
   lockedBy: string;
@@ -14,7 +21,7 @@ interface Lock {
   expiresAt: number;
 }
 
-interface UserState {
+export interface UserState {
   hasActiveUploads: boolean;
   hasActiveJobs: boolean;
 }
@@ -109,6 +116,54 @@ export class CleanupService {
   }
 
   /**
+   * Clean up unqueued upload files that are older than 15 minutes
+   */
+  private static async cleanupStaleUploads(): Promise<void> {
+    if (!await this.acquireLock('uploads')) {
+      throw new Error('Could not acquire uploads lock');
+    }
+
+    try {
+      // List all .txt files in root (these are uploaded files not yet moved to temp storage)
+      const objects = await listObjects('.txt');
+      if (!objects) return;
+
+      const now = Date.now();
+      let removedCount = 0;
+
+      for (const obj of objects) {
+        if (!obj.key) continue;
+
+        // Get file metadata including lastModified
+        const info = await getObjectInfo(obj.key);
+        if (!info?.lastModified) continue;
+
+        // Skip if not old enough
+        if (now - info.lastModified.getTime() < UPLOAD_EXPIRY) continue;
+
+        // Extract jobId from filename
+        const jobId = obj.key.replace('.txt', '');
+
+        // Check if job exists and is queued
+        const jobState = await jobStateService.getJobState(jobId);
+        if (!jobState || !['queued', 'processing', 'parsed'].includes(jobState.state)) {
+          await deleteObject(obj.key);
+          logger.info(`Removed stale upload file: ${obj.key}`);
+          removedCount++;
+        }
+      }
+
+      if (removedCount > 0) {
+        logger.info(`Cleaned up ${removedCount} stale upload files`);
+      }
+    } catch (error) {
+      logger.error('Error cleaning up stale uploads:', error);
+    } finally {
+      await this.releaseLock('uploads');
+    }
+  }
+
+  /**
    * Check if user has any active jobs
    */
   private static async checkUserJobs(userId: string): Promise<boolean> {
@@ -165,7 +220,7 @@ export class CleanupService {
   /**
    * Update user's active status in R2 based on current state
    */
-  private static async updateUserActiveStatus(
+  public static async updateUserActiveStatus(
     userId: string,
     state: UserState
   ): Promise<void> {
@@ -226,11 +281,15 @@ export class CleanupService {
     logger.info('Starting unified cleanup process');
 
     try {
-      // Run health check first
+      // Clean up stale uploads first
+      await this.cleanupStaleUploads();
+      logger.info('Stale uploads cleanup completed');
+
+      // Run health check
       await this.verifyActiveUsersSetConsistency();
       logger.info('Active users set health check completed');
 
-      // Clean up stale jobs
+      // Clean up expired jobs
       await this.cleanupStaleJobs();
       logger.info('Stale jobs cleanup completed');
 

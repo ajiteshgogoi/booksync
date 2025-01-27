@@ -3,7 +3,7 @@ import { uploadObject, downloadObject, deleteObject } from './r2Service.js';
 import { jobStateService } from './jobStateService.js';
 
 const LOCK_TIMEOUT = 30000; // 30 seconds
-const MAX_ACTIVE_USERS = 3; // Maximum concurrent active users
+const MAX_ACTIVE_USERS = 5; // Maximum concurrent active users
 const LOCK_FILE_PREFIX = 'locks/';
 const QUEUE_FILE = 'queue/upload-queue.json';
 const ACTIVE_USERS_FILE = 'queue/active-users.json';

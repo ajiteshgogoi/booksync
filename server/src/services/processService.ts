@@ -1,8 +1,9 @@
 import { logger } from '../utils/logger.js';
 import { parseClippings } from '../utils/parseClippings.js';
 import { queueSyncJob, processSyncJob } from './syncService.js';
-import { downloadObject } from './r2Service.js';
+import { downloadObject, deleteObject } from './r2Service.js';
 import { jobStateService } from './jobStateService.js';
+import { CleanupService } from './cleanupService.js';
 import { queueService } from './queueService.js';
 import { tempStorageService } from './tempStorageService.js';
 
@@ -153,7 +154,25 @@ export async function processFile(jobId: string): Promise<void> {
       progress: 100
     });
 
-    logger.info('File processing completed successfully', { jobId });
+    // Clean up all associated files and state
+    // Get job metadata to get userId for queue cleanup
+    const currentState = await jobStateService.getJobState(jobId);
+    
+    await Promise.all([
+      // Clean up original upload
+      deleteObject(`${jobId}.txt`),
+      // Clean up temp files, highlights, and processing state
+      tempStorageService.cleanupJob(jobId),
+      deleteObject(`temp/${jobId}_state.json`),
+      // Delete job state
+      jobStateService.deleteJob(jobId),
+      // Remove from queue if present
+      currentState?.userId ? queueService.removeFromActive(currentState.userId) : Promise.resolve()
+    ]).catch(error => {
+      logger.error('Error cleaning up after successful job', { jobId, error });
+    });
+
+    logger.info('File processing and cleanup completed successfully', { jobId });
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -165,6 +184,29 @@ export async function processFile(jobId: string): Promise<void> {
       errorDetails: errorMessage,
       completedAt: Date.now()
     });
+
+    // Get job metadata for cleanup even in failure case
+    const currentState = await jobStateService.getJobState(jobId);
+    const userId = currentState?.userId;
+
+    if (userId) {
+      // Clean up on failure too
+      await Promise.all([
+        deleteObject(`${jobId}.txt`),
+        tempStorageService.cleanupJob(jobId),
+        deleteObject(`temp/${jobId}_state.json`),
+        jobStateService.deleteJob(jobId),
+        // Remove from queue if present
+        queueService.removeFromActive(userId),
+        // Update active users state - this checks other jobs/uploads and removes from active if none remain
+        CleanupService.updateUserActiveStatus(userId, {
+          hasActiveUploads: false,
+          hasActiveJobs: false
+        })
+      ]).catch(error => {
+        logger.error('Error cleaning up after failed job', { jobId, error });
+      });
+    }
 
     throw error;
   }
