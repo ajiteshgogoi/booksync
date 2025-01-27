@@ -1,15 +1,46 @@
 import { Client, isFullPage } from '@notionhq/client';
 import { createHash } from 'crypto';
 import axios from 'axios';
-import {
-  getRedis,
-  storeOAuthToken,
-  getOAuthToken as getRedisOAuthToken,
-  refreshOAuthToken as refreshRedisOAuthToken,
-  deleteOAuthToken as deleteRedisOAuthToken
-} from './redisService.js';
+import { uploadObject, downloadObject, deleteObject, listObjects } from './r2Service.js';
 import type { NotionToken } from '../types.js';
 import { Highlight } from '../types/highlight.js';
+
+const TOKEN_PREFIX = 'tokens/notion/';
+
+async function storeOAuthToken(
+  tokenData: string,
+  workspaceId: string,
+  databaseId: string,
+  userId: string
+): Promise<void> {
+  const tokenKey = `${TOKEN_PREFIX}${workspaceId}.json`;
+  await uploadObject(tokenKey, JSON.stringify({
+    tokenData: JSON.parse(tokenData),
+    databaseId,
+    userId
+  }));
+}
+
+async function getOAuthToken(): Promise<string | null> {
+  try {
+    const objects = await listObjects(TOKEN_PREFIX);
+    if (!objects || objects.length === 0) return null;
+    
+    // Get the first token file
+    const tokenData = await downloadObject(objects[0].key);
+    const parsed = JSON.parse(tokenData.toString());
+    return JSON.stringify(parsed.tokenData);
+  } catch (error) {
+    console.error('Error getting OAuth token:', error);
+    return null;
+  }
+}
+
+async function deleteOAuthToken(workspaceId: string): Promise<void> {
+  const tokenKey = `${TOKEN_PREFIX}${workspaceId}.json`;
+  await deleteObject(tokenKey);
+}
+
 import { withRetry } from '../utils/retry.js';
 
 // Make Highlight type available for external use
@@ -198,7 +229,7 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
 export async function getClient(): Promise<Client> {
   try {
     if (!_client) {
-      const tokenData = await getRedisOAuthToken();
+      const tokenData = await getOAuthToken();
       if (!tokenData) {
         throw new Error('No OAuth token available');
       }
@@ -226,7 +257,7 @@ export async function getClient(): Promise<Client> {
 
 export async function refreshToken(): Promise<void> {
   try {
-    const currentToken = await getRedisOAuthToken();
+    const currentToken = await getOAuthToken();
     if (!currentToken) {
       throw new Error('No token to refresh');
     }

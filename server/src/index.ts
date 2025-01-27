@@ -535,8 +535,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         userId,
         jobId,
         githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
-        clientIp,
-        redisConnected: true
+        clientIp
       });
       
       console.log('Starting job processing...');

@@ -4,7 +4,9 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  HeadObjectCommandOutput
+  HeadObjectCommandOutput,
+  DeleteObjectCommand,
+  ListObjectsV2Command
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
@@ -153,6 +155,36 @@ export async function downloadObject(key: string): Promise<Buffer> {
     });
   } catch (error) {
     logger.error('Error downloading object from R2:', error);
+    throw error;
+  }
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(command);
+    logger.debug('Successfully deleted object from R2', { key });
+  } catch (error) {
+    logger.error('Error deleting object from R2:', error);
+    throw error;
+  }
+}
+
+export async function listObjects(prefix: string): Promise<Array<{ key: string | undefined }>> {
+  try {
+    const command = new ListObjectsV2Command({
+      Bucket: R2_BUCKET_NAME,
+      Prefix: prefix
+    });
+
+    const response = await s3Client.send(command);
+    return (response.Contents || []).map(obj => ({ key: obj.Key }));
+  } catch (error) {
+    logger.error('Error listing objects from R2:', error);
     throw error;
   }
 }
