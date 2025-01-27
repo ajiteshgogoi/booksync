@@ -91,17 +91,28 @@ class WorkerService {
         }
       };
 
-      // Run first cycle immediately
-      runWorker();
+      // Setup recursive worker execution
+      let timeout: NodeJS.Timeout;
       
-      // Then run every 120 seconds after the first cycle completes
-      setTimeout(() => {
-        const interval = setInterval(runWorker, 120000);
-        // Add cleanup handler to clear interval when stopping
-        this.cleanupHandlers.push(async () => {
-          clearInterval(interval);
-        });
-      }, 120000);
+      const scheduleNextRun = () => {
+        if (this.isRunning) {
+          timeout = setTimeout(async () => {
+            await runWorker();
+            scheduleNextRun(); // Schedule next run after current one completes
+          }, 120000);
+        }
+      };
+
+      // Add cleanup handler to clear timeout when stopping
+      this.cleanupHandlers.push(async () => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      });
+
+      // Run first cycle immediately then schedule next
+      await runWorker();
+      scheduleNextRun();
       
       return;
     }
@@ -391,15 +402,7 @@ class WorkerService {
       logger.error('Error in worker cycle', error);
       throw error;
     } finally {
-      try {
-        await this.stop();
-        logger.info('Worker cycle completed');
-      } catch (error) {
-        logger.error('Error during worker cycle cleanup', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined
-        });
-      }
+      logger.info('Worker cycle completed');
     }
   }
 
