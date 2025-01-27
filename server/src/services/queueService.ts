@@ -1,5 +1,6 @@
 import { logger } from '../utils/logger.js';
 import { uploadObject, downloadObject, deleteObject } from './r2Service.js';
+import { jobStateService } from './jobStateService.js';
 
 const LOCK_TIMEOUT = 30000; // 30 seconds
 const MAX_ACTIVE_USERS = 3; // Maximum concurrent active users
@@ -162,13 +163,22 @@ export class QueueService {
         return null;
       }
 
-      // Get next user from queue
+      // Get next entry from queue
       const nextEntry = queueState.queue.shift();
       if (!nextEntry) {
         return null;
       }
 
-      // Add to active users
+      // Check job state - only activate if parsed
+      const jobState = await jobStateService.getJobState(nextEntry.uploadId);
+      if (!jobState || jobState.state !== 'parsed') {
+        // Put entry back in queue if not ready
+        queueState.queue.unshift(nextEntry);
+        await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
+        return null;
+      }
+
+      // Add to active users if job is ready
       activeState.activeUsers[nextEntry.userId] = {
         uploadId: nextEntry.uploadId,
         startedAt: Date.now()

@@ -101,7 +101,8 @@ export async function processFile(jobId: string): Promise<void> {
       checkTimeout();
       
       if (!await tempStorageService.exists(jobId, 'content')) {
-        const fileContent = await downloadObject(`uploads/${jobId}.txt`);
+        // During parsing stage, get content from original upload location in root
+        const fileContent = await downloadObject(`${jobId}.txt`);
         await tempStorageService.storeFileContent(jobId, fileContent.toString('utf-8'));
       }
 

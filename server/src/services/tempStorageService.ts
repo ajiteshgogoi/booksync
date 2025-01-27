@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger.js';
-import { uploadObject, downloadObject } from './r2Service.js';
+import { uploadObject, downloadObject, deleteObject } from './r2Service.js';
 import { Highlight } from './notionClient.js';
 
 const TEMP_PREFIX = 'temp/';
@@ -68,9 +68,9 @@ export class TempStorageService {
 
   async cleanupJob(jobId: string): Promise<void> {
     try {
-      // Upload empty content to effectively delete the objects
-      await uploadObject(this.getContentPath(jobId), '');
-      await uploadObject(this.getHighlightPath(jobId), '');
+      // Properly delete objects instead of uploading empty content
+      await deleteObject(this.getContentPath(jobId));
+      await deleteObject(this.getHighlightPath(jobId));
     } catch (error) {
       logger.error('Error cleaning up job files from R2', { jobId, error });
       // Don't throw error for cleanup failures
