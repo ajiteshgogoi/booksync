@@ -17,27 +17,26 @@ jobs:
     timeout-minutes: 60  # 1 hour timeout for file processing
 
     env:
-      REDIS_URL: ${{ secrets.REDIS_URL }}
-      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
-      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
-      NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
-      GITHUB_ACTIONS: true
       NODE_ENV: production
+      GITHUB_ACTIONS: true
       R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
+      NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
+      NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
 
     steps:
-      - name: Log Full Event Details
+      - name: Log Event Details
         run: |
-          echo "=== Full Event Details ==="
-          echo 'Event type: ${{ github.event.action }}'
-          echo 'Has client payload: ${{ github.event.client_payload != null }}'
-          echo 'Has fileContent: ${{ github.event.client_payload.fileContent != null }}'
-          echo 'Has userId: ${{ github.event.client_payload.userId != null }}'
-          echo 'Has databaseId: ${{ github.event.client_payload.databaseId != null }}'
-          echo "=========================="
+          echo "=== Event Details ==="
+          echo "Event type: ${{ github.event.action }}"
+          echo "Has client payload: ${{ github.event.client_payload != null }}"
+          echo "Has jobId: ${{ github.event.client_payload.jobId != null }}"
+          echo "Has userId: ${{ github.event.client_payload.userId != null }}"
+          echo "Has databaseId: ${{ github.event.client_payload.databaseId != null }}"
+          echo "========================"
 
       - uses: actions/checkout@v4
 
@@ -62,52 +61,44 @@ jobs:
           npm run build
           echo "Build complete"
 
-      - name: Reset Redis Connections
-        working-directory: server
-        run: |
-          echo "Resetting Redis connections..."
-          node resetRedis.js
-
       - name: Process File
         if: success()
         working-directory: server
         env:
-          FILE_NAME: ${{ github.event.client_payload.fileName }}
-          R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
+          JOB_ID: ${{ github.event.client_payload.jobId }}
           DATABASE_ID: ${{ github.event.client_payload.databaseId }}
           USER_ID: ${{ github.event.client_payload.userId }}
           DEBUG: 'true'
-          NODE_OPTIONS: '--trace-warnings'
         run: |
           echo "Environment Check:"
-          echo "- FILE_CONTENT length: ${#FILE_CONTENT}"
-          echo "- FILE_NAME: $FILE_NAME"
+          echo "- JOB_ID: $JOB_ID"
+          echo "- DATABASE_ID: $DATABASE_ID"
+          echo "- USER_ID: $USER_ID"
           echo "- R2 Config Status:"
           echo "  - ENDPOINT: ${R2_ENDPOINT:+configured}"
           echo "  - ACCESS_KEY: ${R2_ACCESS_KEY_ID:+configured}"
           echo "  - SECRET_KEY: ${R2_SECRET_ACCESS_KEY:+configured}"
           echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
-          echo "- Redis URL Status: ${REDIS_URL:+configured}"
+          
           echo "Starting file processing..."
-          set -o pipefail
-          node --experimental-vm-modules processHighlights.js 2>&1 | tee process.log
-          echo "Process log:"
-          cat process.log
-
-      - name: Cleanup Redis
-        if: always()
-        working-directory: server
-        run: |
-          echo "Cleaning up Redis connections..."
           node --experimental-vm-modules -e "
           (async () => {
             try {
-              const { redisPool, RedisService } = await import('./build/src/services/redisService.js');
-              await RedisService.cleanup();
-              await redisPool.cleanup();
-              console.log('Redis connections cleaned up');
+              const { processFile } = await import('./build/src/services/processService.js');
+              const { jobStateService } = await import('./build/src/services/jobStateService.js');
+              const { storageCleanupService } = await import('./build/src/services/storageCleanupService.js');
+              
+              // Process the file
+              await processFile(process.env.JOB_ID);
+              
+              // Run storage cleanup after successful processing
+              await storageCleanupService.cleanupJob(process.env.JOB_ID);
+              
+              console.log('Processing completed successfully');
+              process.exit(0);
             } catch (error) {
-              console.error('Error during Redis cleanup:', error);
+              console.error('Error:', error);
+              process.exit(1);
             }
           })();
           "
@@ -121,15 +112,9 @@ jobs:
           echo "=== Webhook Test Event Details ==="
           echo "Event type: ${{ github.event.action }}"
           echo "Client Payload:"
-          echo "- Has fileContent: ${{ github.event.client_payload.fileContent != null }}"
-          if [ -n "${{ github.event.client_payload.fileContent }}" ]; then
-            echo "- fileContent is present"
-          else
-            echo "- fileContent is empty"
-          fi
-          echo "- Using default fileName: My Clippings.txt"
+          echo "- Has jobId: ${{ github.event.client_payload.jobId != null }}"
           echo "Full payload: ${{ toJSON(github.event.client_payload) }}"
-      
+       
       - name: Verify Required Secrets
         run: |
           echo "=== Required Secrets Check ==="

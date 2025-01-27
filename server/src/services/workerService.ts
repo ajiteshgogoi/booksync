@@ -1,314 +1,172 @@
 import { logger } from '../utils/logger.js';
-import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
-import {
-  getRedis,
-  initializeStream,
-  getNextJob,
-  setJobStatus,
-  getJobStatus,
-  acknowledgeJob,
-  RedisService,
-  STREAM_NAME,
-  redisPool
-} from './redisService.js';
 import { processFile } from './processService.js';
-import type { JobStatus } from '../types/job.js';
-import { workerStateService } from './workerStateService.js';
-import { completeJob as completeUpload } from './uploadTrackingService.js';
-import { devWorkerService } from './devWorkerService.js';
+import { queueService } from './queueService.js';
+import { jobStateService } from './jobStateService.js';
+import { downloadObject } from './r2Service.js';
 
-// Maximum number of empty polls before exiting
-const MAX_EMPTY_POLLS = 10; // Will exit after ~10 seconds of no jobs
 const POLL_INTERVAL = 1000; // 1 second between polls
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
 
-class WorkerService {
+export class WorkerService {
   private isRunning: boolean = false;
+  private shouldContinue: boolean = false;
   private currentJobId: string | null = null;
-  private emptyPollCount: number = 0;
-  private cleanupHandlers: (() => Promise<void>)[] = [];
-  private currentUploadId: string | null = null;
-
-  constructor() {
-    // Setup signal handlers for graceful shutdown
-    process.on('SIGTERM', () => this.gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => this.gracefulShutdown('SIGINT'));
-  }
-
-  private async gracefulShutdown(signal: string): Promise<void> {
-    logger.info(`Received ${signal}, initiating graceful shutdown...`);
-    this.isRunning = false;
-    
-    // Run all cleanup handlers
-    for (const handler of this.cleanupHandlers) {
-      try {
-        await handler();
-      } catch (error) {
-        logger.error('Error during cleanup handler execution', { error });
-      }
-    }
-    
-    // Force exit after cleanup
-    process.exit(0);
-  }
 
   async start(): Promise<void> {
-    if (this.isRunning) {
-      logger.warn('Worker is already running');
-      return;
-    }
-
-    // Register cleanup handlers
-    this.cleanupHandlers.push(
-      async () => {
-        try {
-          await this.stop();
-        } catch (error) {
-          logger.error('Error during worker cleanup', { error });
-        }
+    logger.info('Starting worker service');
+    
+    const runWorker = async () => {
+      try {
+        await this.runWorkerCycle();
+      } catch (error) {
+        logger.error('Error in worker cycle', error);
       }
-    );
+    };
 
-    logger.info('Starting worker service with sequential upload processing');
+    // Setup recursive worker execution that enforces delay between cycles
+    const scheduleNextRun = async () => {
+      while (true) {
+        // Start a cycle
+        this.isRunning = true;
+        await runWorker();
+        
+        // After cycle completes, wait for cleanup to finish
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        this.isRunning = false;
+        logger.info('Worker cycle completed. Starting delay...');
+        
+        // Use a separate flag to track if we're stopping completely
+        if (!this.shouldContinue) break;
+        
+        await new Promise(resolve => setTimeout(resolve, 30000));
+        
+        // Check again if we should continue after the delay
+        if (!this.shouldContinue) break;
+        
+        logger.info('Delay completed, starting next cycle...');
+      }
+      
+      logger.info('Worker scheduler stopped');
+    };
 
-    // Initialize Redis stream and consumer group
-    try {
-      await initializeStream();
-      logger.info('Redis stream and consumer group initialized');
-    } catch (error) {
-      logger.error('Failed to initialize Redis stream', error);
-      throw error;
-    }
-
-    // If in development mode, use the development worker service
-    if (process.env.NODE_ENV === 'development') {
-      await devWorkerService.start();
-      return;
-    }
-
-    // Production behavior
+    // Initialize and start the first cycle
+    this.shouldContinue = true;
     this.isRunning = true;
+    scheduleNextRun().catch(error => {
+      logger.error('Error in worker scheduler', error);
+      this.shouldContinue = false;
+      this.isRunning = false;
+    });
+  }
 
+  async stop(): Promise<void> {
+    logger.info('Stopping worker service');
+    this.shouldContinue = false;
+    this.isRunning = false;
+    
+    if (this.currentJobId) {
+      logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
+    }
+
+    // Ensure we wait for any ongoing operations to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  private async runWorkerCycle(): Promise<void> {
     try {
-      // Initialize Redis stream and consumer group
-      await initializeStream();
+      logger.info('Starting worker cycle');
+      
+      // Poll for available jobs from the queue
+      let pollCount = 0;
+      while (pollCount < 10) {
+        if (!this.isRunning) {
+          logger.info('Worker cycle stopped before completion');
+          return;
+        }
 
-      // Start processing loop
-      while (this.isRunning) {
+        pollCount++;
+        logger.info(`Starting poll ${pollCount} of max 10`);
+        
         try {
-          const result = await getNextJob();
+          // Try to get next job from queue
+          const nextInQueue = await queueService.moveToActive();
           
-          if (!result) {
-            this.emptyPollCount++;
-            if (this.emptyPollCount >= MAX_EMPTY_POLLS) {
-              logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, stopping worker`);
-              await this.stop(); // Use stop() to properly cleanup
-              return; // Exit the start method entirely
-            }
-            // No jobs available, wait before checking again
+          if (!nextInQueue) {
+            logger.info(`No jobs found in poll ${pollCount}`);
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
           
-          const { jobId, messageId, uploadId } = result;
-          
-          // If this is a new upload, add to queue
-          // Get job status and verify state
-          const status = await getJobStatus(jobId);
-          if (!status?.userId) {
-            throw new Error('Cannot process job: userId not found');
+          const { uploadId, userId } = nextInQueue;
+
+          // Get job metadata
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState) {
+            throw new Error('Job metadata not found');
           }
-          
+
           // Only process jobs in 'parsed' state
-          if (status.state !== 'parsed') {
-           logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
-           this.emptyPollCount++;
-           continue;
+          if (jobState.state !== 'parsed') {
+            logger.info(`Skipping job ${uploadId} - not in parsed state (current state: ${jobState.state})`);
+            continue;
           }
 
-          // Reset empty poll count when we find a job in parsed state
-          this.emptyPollCount = 0;
+          this.currentJobId = uploadId;
 
-          // Check if user already has an upload in progress
-          const activeUpload = await workerStateService.getActiveUserUpload(status.userId);
-          if (activeUpload) {
-            throw new Error(`User ${status.userId} already has an upload in progress`);
-          }
-
-          // Check upload limit
-          const queueLength = await workerStateService.getUploadQueueLength();
-          if (queueLength >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
-            throw new Error(
-              `Maximum active uploads reached (${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). ` +
-              'Please try again later.'
-            );
-          }
-
-          if (uploadId && !(await workerStateService.isInUploadQueue(uploadId))) {
-            await workerStateService.addToUploadQueue(uploadId);
-            await workerStateService.setActiveUserUpload(status.userId, uploadId);
-          }
-
-          // Wait if another upload is being processed
-          while (await workerStateService.isUploadProcessing() &&
-                 (await workerStateService.getCurrentProcessingUpload()) !== uploadId) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-
-          // Start processing this upload
-          if (uploadId) {
-            this.currentUploadId = uploadId;
-            await workerStateService.setProcessingUpload(uploadId);
-          }
-
-          this.currentJobId = jobId;
-
-          // Update job status to processing
-          await setJobStatus(jobId, {
+          // Update job state to processing
+          await jobStateService.updateJobState(uploadId, {
             state: 'processing',
-            message: 'Starting file processing',
-            uploadId
+            message: 'Starting file processing'
           });
 
           try {
-            try {
-              // Process the job with highlight limit
-              await processFile(jobId);
-              
-              // Update job status to completed
-              await setJobStatus(jobId, {
-                state: 'completed',
-                message: 'File processing completed',
-                completedAt: Date.now(),
-                uploadId
-              });
+            // Process the file
+            await processFile(uploadId);
 
-              // If this was the last job in the upload, mark upload complete
-              if (uploadId) {
-                const status = await getJobStatus(jobId);
-                if (status?.userId) {
-                  // Call upload tracking service to handle complete cleanup
-                  await completeUpload(uploadId, jobId);
-                  // Clean up worker state
-                  await workerStateService.setProcessingUpload(null);
-                  this.currentUploadId = null;
-                  await workerStateService.removeFromUploadQueue(uploadId);
-                  await workerStateService.removeActiveUserUpload(status.userId);
-                }
-              }
-            } finally {
-              // Acknowledge message once after processing is complete or failed
-              await acknowledgeJob(messageId);
-            }
+            // Update job state to completed
+            await jobStateService.updateJobState(uploadId, {
+              state: 'completed',
+              message: 'File processing completed',
+              completedAt: Date.now()
+            });
 
-          } catch (error) {
+            // Remove from active users
+            await queueService.removeFromActive(userId);
+            
+            logger.info('Job processed successfully, stopping cycle');
+            break;
+
+          } catch (error: any) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            await setJobStatus(jobId, {
+            await jobStateService.updateJobState(uploadId, {
               state: 'failed',
               message: `File processing failed: ${errorMessage}`,
-              uploadId
+              errorDetails: errorMessage
             });
-            logger.error('Job processing failed', { jobId, error });
 
-            // If upload failed, perform complete cleanup
-            if (uploadId && status?.userId) {
-              // Call upload tracking service to handle complete cleanup
-              await completeUpload(uploadId, jobId);
-              // Clean up worker state
-              await workerStateService.setProcessingUpload(null);
-              this.currentUploadId = null;
-              await workerStateService.removeFromUploadQueue(uploadId);
-              
-              // Clean up all jobs for this upload
-              const redis = await getRedis();
-              try {
-                // Remove all jobs with this uploadId from stream
-                await redis.xdel(STREAM_NAME, uploadId);
-              } catch (error) {
-                logger.error('Error cleaning up failed upload jobs', { uploadId, error });
-              } finally {
-                redisPool.release(redis);
-              }
-            }
+            // Remove from active users on failure
+            await queueService.removeFromActive(userId);
+            
+            logger.error('Job processing failed', { uploadId, error });
+            break;
           }
 
-          this.currentJobId = null;
-
         } catch (error) {
-          logger.error('Error in worker loop', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined
-          });
-          // Wait before retrying on error
-          await new Promise(resolve => setTimeout(resolve, Math.max(POLL_INTERVAL, UPLOAD_LIMITS.UPLOAD_LIMIT_RETRY_DELAY)));
+          logger.error('Error in worker loop', error);
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
     } catch (error) {
-      logger.error('Fatal error in worker service', error);
-      this.isRunning = false;
+      logger.error('Error in worker cycle', error);
       throw error;
-    }
-  }
-
-  async stop(fullStop: boolean = true): Promise<void> {
-    if (process.env.NODE_ENV === 'development') {
-      await devWorkerService.stop();
-      return;
-    }
-
-    if (fullStop) {
-      logger.info('Stopping worker service completely');
-      this.isRunning = false;
-      this.emptyPollCount = 0;
-      
-      // Log worker exit reason
-      if (this.currentJobId) {
-        logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
-      }
-      
-      // Only cleanup Redis on full stop
-      try {
-        await RedisService.cleanup();
-        logger.info('Successfully cleaned up Redis connections');
-      } catch (error) {
-        logger.error('Error cleaning up Redis connections', { error });
-      }
-
-      // Ensure we wait for any ongoing operations to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } else {
-      // Just reset running state for cycle stop
-      logger.info('Stopping current worker cycle');
-      this.isRunning = false;
-      this.emptyPollCount = 0;
-    }
-  }
-
-  private async checkUploadCompletion(uploadId: string): Promise<boolean> {
-    const redis = await getRedis();
-    try {
-      // Get all jobs for this upload
-      const jobs = await redis.xread('STREAMS', STREAM_NAME, '0-0');
-      if (!jobs || jobs.length === 0) return true;
-
-      const streamMessages = jobs[0][1];
-      if (!streamMessages || streamMessages.length === 0) return true;
-
-      // Check if any jobs remain for this upload
-      const remainingJobs = streamMessages.filter(([_, fields]) => {
-        const uploadIdIndex = fields.indexOf('uploadId');
-        return uploadIdIndex !== -1 &&
-               fields[uploadIdIndex + 1] === uploadId;
-      });
-
-      return remainingJobs.length === 0;
     } finally {
-      redisPool.release(redis);
+      logger.info('Worker cycle completed');
+      this.currentJobId = null;
+      this.isRunning = false;
     }
-  }
-
-  getCurrentJob(): string | null {
-    return this.currentJobId;
   }
 }
 

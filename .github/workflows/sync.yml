@@ -25,11 +25,15 @@ permissions:
   statuses: write
 
 env:
-  REDIS_URL: ${{ secrets.REDIS_URL }}
+  NODE_ENV: production
+  GITHUB_ACTIONS: true
+  R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+  R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+  R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
   NOTION_OAUTH_CLIENT_ID: ${{ secrets.NOTION_OAUTH_CLIENT_ID }}
   NOTION_OAUTH_CLIENT_SECRET: ${{ secrets.NOTION_OAUTH_CLIENT_SECRET }}
   NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
-  NODE_ENV: production
 
 jobs:
   sync:
@@ -46,60 +50,38 @@ jobs:
           cache: 'npm'
           cache-dependency-path: server/package-lock.json
 
-      - name: Clear npm cache and install dependencies
+      - name: Install dependencies
         run: |
           cd server
-          npm cache clean --force
           npm ci --include=dev
 
       - name: Build server
         run: |
           cd server
-          # Build TypeScript files
-          echo "Building server..."
           npm run build
-          echo "Build complete"
-
-      - name: Initialize Redis and run worker
+          
+      - name: Initialize worker and process pending jobs
         run: |
           cd server
-          echo "Initializing Redis connection pool and starting worker..."
           node --experimental-vm-modules -e "
           (async () => {
             try {
               console.log('Importing modules...');
-              const { RedisService } = await import('./build/src/services/redisService.js');
-              const { startWorker } = await import('./build/src/worker.js');
-              
-              console.log('Initializing Redis...');
-              global.redisService = await RedisService.init();
+              const { queueService } = await import('./build/src/services/queueService.js');
+              const { workerService } = await import('./build/src/services/workerService.js');
+              const { storageCleanupService } = await import('./build/src/services/storageCleanupService.js');
               
               console.log('Starting worker...');
-              await startWorker();
+              await workerService.start();
+              
+              // Run cleanup service after processing
+              console.log('Running storage cleanup...');
+              await storageCleanupService.runCleanupCycle();
+              
               console.log('Worker completed successfully');
               process.exit(0);
             } catch (error) {
               console.error('Error:', error);
-              process.exit(1);
-            }
-          })();
-          "
-
-      - name: Cleanup Redis connection
-        if: always()
-        run: |
-          cd server
-          echo "Cleaning up Redis connection..."
-          node --experimental-vm-modules -e "
-          (async () => {
-            try {
-              if (global.redisService) {
-                await RedisService.cleanup();
-                console.log('Redis connection cleaned up');
-              }
-              process.exit(0);
-            } catch (error) {
-              console.error('Error during Redis cleanup:', error);
               process.exit(1);
             }
           })();
