@@ -171,11 +171,8 @@ router.post('/sync', async (request, env: Environment) => {
 
     // Get job status
     console.log('Fetching job status...');
-    const jobStoreInstance = new JobStore(jobStore);
-    const job = await jobStoreInstance.getJob(jobId);
-    if (!job) {
-      return errorResponse('Job not found', 404);
-    }
+    const jobResponse = await callDurableObject(jobStore, `/status?id=${jobId}`);
+    const job = await jobResponse.json<Job>();
     
     if (!job.fileKey || !job.workspaceId) {
       return errorResponse('Invalid job state', 400);
