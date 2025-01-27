@@ -22,6 +22,7 @@ const POLL_INTERVAL = 1000; // 1 second between polls
 
 class WorkerService {
   private isRunning: boolean = false;
+  private shouldContinue: boolean = false;
   private currentJobId: string | null = null;
   private emptyPollCount: number = 0;
   private cleanupHandlers: (() => Promise<void>)[] = [];
@@ -34,6 +35,7 @@ class WorkerService {
 
   private async gracefulShutdown(signal: string): Promise<void> {
     logger.info(`Received ${signal}, initiating graceful shutdown...`);
+    this.shouldContinue = false;
     this.isRunning = false;
     
     // Run all cleanup handlers
@@ -91,23 +93,41 @@ class WorkerService {
         }
       };
 
-      // Setup recursive worker execution that runs every 120 seconds after previous cycle stops
+      // Setup recursive worker execution that enforces 120s delay between cycles
       const scheduleNextRun = async () => {
-        if (this.isRunning) {
-          // Wait 120 seconds after previous cycle stops
-          await new Promise(resolve => setTimeout(resolve, 120000));
-          
-          this.isRunning = true; // Reset for new cycle
+        while (true) {
+          // Start a cycle
+          this.isRunning = true;
           await runWorker();
-          // Schedule next run only after current one completes
-          scheduleNextRun();
+          
+          // After cycle completes, wait for cleanup to finish
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          
+          this.isRunning = false;
+          logger.info('Worker cycle completed. Starting 30 second delay...');
+          
+          // Use a separate flag to track if we're stopping completely
+          if (!this.shouldContinue) break;
+          
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          
+          // Check again if we should continue after the delay
+          if (!this.shouldContinue) break;
+          
+          logger.info('30 second delay completed, starting next cycle...');
         }
+        
+        logger.info('Worker scheduler stopped');
       };
 
-      // Run first cycle immediately then schedule next
+      // Initialize and start the first cycle
+      this.shouldContinue = true;
       this.isRunning = true;
-      await runWorker();
-      scheduleNextRun();
+      scheduleNextRun().catch(error => {
+        logger.error('Error in worker scheduler', error);
+        this.shouldContinue = false;
+        this.isRunning = false;
+      });
       
       return;
     }
@@ -277,47 +297,58 @@ class WorkerService {
     }
   }
 
-  async stop(): Promise<void> {
-    logger.info('Stopping worker service');
-    this.isRunning = false;
-    this.emptyPollCount = 0;
-    
-    // Log worker exit reason
-    if (this.currentJobId) {
-      logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
-    }
-    
-    // Clean up Redis connections and wait for cleanup to complete
-    try {
-      await RedisService.cleanup();
-      logger.info('Successfully cleaned up Redis connections');
-    } catch (error) {
-      logger.error('Error cleaning up Redis connections', { error });
-    }
+  async stop(fullStop: boolean = true): Promise<void> {
+    if (fullStop) {
+      logger.info('Stopping worker service completely');
+      this.shouldContinue = false;
+      this.isRunning = false;
+      this.emptyPollCount = 0;
+      
+      // Log worker exit reason
+      if (this.currentJobId) {
+        logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
+      }
+      
+      // Only cleanup Redis on full stop
+      try {
+        await RedisService.cleanup();
+        logger.info('Successfully cleaned up Redis connections');
+      } catch (error) {
+        logger.error('Error cleaning up Redis connections', { error });
+      }
 
-    // Ensure we wait for any ongoing operations to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+      // Ensure we wait for any ongoing operations to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+      // Just reset running state for cycle stop
+      logger.info('Stopping current worker cycle');
+      this.isRunning = false;
+      this.emptyPollCount = 0;
+    }
   }
 
   private async runWorkerCycle(): Promise<void> {
     try {
       if (process.env.NODE_ENV === 'development') {
-        logger.info('Starting local worker cycle');
+        logger.info('Starting local worker cycle - will poll until job found or max 10 times');
       }
       
-      // Process jobs until MAX_EMPTY_POLLS is reached (including non-parsed jobs)
-      let emptyPolls = 0;
-      while (emptyPolls < MAX_EMPTY_POLLS && this.isRunning) {
+      // Poll up to 10 times or until a job is processed
+      let pollCount = 0;
+      while (pollCount < 10) {
+        if (!this.isRunning) {
+          logger.info('Worker cycle stopped before completion');
+          return;
+        }
+
+        pollCount++;
+        logger.info(`Starting poll ${pollCount} of max 10`);
+        
         try {
           const result = await getNextJob();
           
           if (!result) {
-            emptyPolls++;
-            if (emptyPolls >= MAX_EMPTY_POLLS) {
-              logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, exiting cycle`);
-              this.isRunning = false;
-              return;
-            }
+            logger.info(`No jobs found in poll ${pollCount}`);
             // No jobs available, wait before checking again
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
@@ -335,12 +366,10 @@ class WorkerService {
           // Only process jobs in 'parsed' state
           if (status.state !== 'parsed') {
            logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
-           emptyPolls++;
            continue;
           }
 
-          // Reset empty poll count when we find a job in parsed state
-          emptyPolls = 0;
+          logger.info(`Found job in parsed state on poll ${pollCount} - will process and stop cycle`);
 
           // Update job status to processing
           await setJobStatus(jobId, {
@@ -348,47 +377,53 @@ class WorkerService {
             message: 'Starting file processing'
           });
 
+          // Process the job and then stop the cycle
           try {
-            try {
-              // Process the job
-              await processFile(jobId);
+            await processFile(jobId);
 
-              // Update job status to completed
-              const status = await getJobStatus(jobId);
-              await setJobStatus(jobId, {
-                ...status,
-                state: 'completed',
-                message: 'File processing completed',
-                completedAt: Date.now()
-              });
+            // Update job status to completed
+            const updatedStatus = await getJobStatus(jobId);
+            await setJobStatus(jobId, {
+              ...updatedStatus,
+              state: 'completed',
+              message: 'File processing completed',
+              completedAt: Date.now()
+            });
 
-              // Handle upload completion in dev mode
-              if (status?.uploadId && status?.userId) {
-                await completeUpload(status.uploadId, jobId);
-              }
-            } finally {
-              // Acknowledge message once after processing is complete or failed
-              await acknowledgeJob(messageId);
+            // Handle upload completion in dev mode
+            const completedStatus = updatedStatus ?? await getJobStatus(jobId);
+            if (completedStatus?.uploadId && completedStatus.userId) {
+              await completeUpload(completedStatus.uploadId, jobId);
             }
 
-          } catch (error) {
-
+            // Job processed successfully, acknowledge and break the cycle
+            await acknowledgeJob(messageId);
+            logger.info('Job processed successfully, stopping cycle');
+            break;
+          } catch (error: unknown) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            const status = await getJobStatus(jobId);
-            await setJobStatus(jobId, {
-              ...status,
-              state: 'failed',
-              message: `File processing failed: ${errorMessage}`
-            });
-            logger.error('Job processing failed', { jobId, error });
+            const failedStatus = await getJobStatus(jobId);
+            if (failedStatus) {
+              await setJobStatus(jobId, {
+                ...failedStatus,
+                state: 'failed',
+                message: `File processing failed: ${errorMessage}`
+              });
 
-            // Handle upload failure in dev mode
-            if (status?.uploadId && status?.userId) {
-              await completeUpload(status.uploadId, jobId);
+              // Handle upload failure in dev mode
+              if (failedStatus.uploadId && failedStatus.userId) {
+                await completeUpload(failedStatus.uploadId, jobId);
+              }
             }
+
+            // Acknowledge the failed job and break the cycle
+            await acknowledgeJob(messageId);
+            logger.info('Job failed, stopping cycle');
+            break;
           }
 
+          // Reset currentJobId
           this.currentJobId = null;
 
         } catch (error) {
@@ -401,7 +436,18 @@ class WorkerService {
       logger.error('Error in worker cycle', error);
       throw error;
     } finally {
+      // Mark cycle as completed and cleanup
       logger.info('Worker cycle completed');
+      this.currentJobId = null;
+      
+      // Stop this cycle but don't cleanup Redis connections
+      // This allows us to maintain the connections between cycles
+      this.isRunning = false;
+      this.emptyPollCount = 0;
+      
+      if (process.env.NODE_ENV === 'development') {
+        logger.info('Local worker cycle completed - waiting for next scheduled run');
+      }
     }
   }
 
