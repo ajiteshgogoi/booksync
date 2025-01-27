@@ -305,6 +305,20 @@ class WorkerService {
           const { jobId, messageId } = result;
           this.currentJobId = jobId;
 
+          // Get job status and verify state
+          const status = await getJobStatus(jobId);
+          if (!status?.userId) {
+            throw new Error('Cannot process job: userId not found');
+          }
+
+          // Only process jobs in 'parsed' state
+          if (status.state !== 'parsed') {
+            logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
+            emptyPolls++;
+            await acknowledgeJob(messageId);
+            continue;
+          }
+
           // Update job status to processing
           await setJobStatus(jobId, {
             state: 'processing',
