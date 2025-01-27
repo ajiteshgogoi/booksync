@@ -91,9 +91,18 @@ class WorkerService {
         }
       };
 
-      // Run immediately and then every 120 seconds
+      // Run first cycle immediately
       runWorker();
-      setInterval(runWorker, 120000);
+      
+      // Then run every 120 seconds after the first cycle completes
+      setTimeout(() => {
+        const interval = setInterval(runWorker, 120000);
+        // Add cleanup handler to clear interval when stopping
+        this.cleanupHandlers.push(async () => {
+          clearInterval(interval);
+        });
+      }, 120000);
+      
       return;
     }
 
