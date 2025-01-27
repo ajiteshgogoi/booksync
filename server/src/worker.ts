@@ -1,6 +1,7 @@
 import { logger } from './utils/logger.js';
 import { jobCleanupService } from './services/jobCleanupService.js';
 import { workerService } from './services/workerService.js';
+import { CleanupService } from './services/cleanupService.js';
 
 let isWorkerRunning = false;
 
@@ -14,6 +15,12 @@ export async function startWorker(): Promise<void> {
 
   try {
     logger.info('Starting worker process');
+    
+    // Run cleanup service first
+    await CleanupService.cleanup();
+    logger.info('Cleanup service completed');
+    
+    // Start the worker service
     await workerService.start();
   } catch (error) {
     logger.error('Worker process error', error);

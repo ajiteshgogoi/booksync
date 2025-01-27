@@ -14,51 +14,22 @@ export class WorkerService {
   private currentJobId: string | null = null;
 
   async start(): Promise<void> {
-    logger.info('Starting worker service');
-    
-    const runWorker = async () => {
-      try {
-        await this.runWorkerCycle();
-      } catch (error) {
-        logger.error('Error in worker cycle', error);
-      }
-    };
+    if (this.isRunning) {
+      logger.debug('Worker already running');
+      return;
+    }
 
-    // Setup recursive worker execution that enforces delay between cycles
-    const scheduleNextRun = async () => {
-      while (true) {
-        // Start a cycle
-        this.isRunning = true;
-        await runWorker();
-        
-        // After cycle completes, wait for cleanup to finish
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        this.isRunning = false;
-        logger.info('Worker cycle completed. Starting delay...');
-        
-        // Use a separate flag to track if we're stopping completely
-        if (!this.shouldContinue) break;
-        
-        await new Promise(resolve => setTimeout(resolve, 30000));
-        
-        // Check again if we should continue after the delay
-        if (!this.shouldContinue) break;
-        
-        logger.info('Delay completed, starting next cycle...');
-      }
-      
-      logger.info('Worker scheduler stopped');
-    };
-
-    // Initialize and start the first cycle
-    this.shouldContinue = true;
     this.isRunning = true;
-    scheduleNextRun().catch(error => {
-      logger.error('Error in worker scheduler', error);
-      this.shouldContinue = false;
+    
+    try {
+      logger.info('Starting worker service');
+      await this.runWorkerCycle();
+    } catch (error) {
+      logger.error('Error in worker cycle', error);
+    } finally {
       this.isRunning = false;
-    });
+      logger.info('Worker service completed');
+    }
   }
 
   async stop(): Promise<void> {

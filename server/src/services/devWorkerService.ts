@@ -23,7 +23,7 @@ export class DevWorkerService {
       }
     };
 
-    // Setup recursive worker execution that enforces 200s delay between cycles
+    // Setup recursive worker execution that enforces 120s delay between cycles
     const scheduleNextRun = async () => {
       while (true) {
         // Start a cycle
@@ -34,12 +34,12 @@ export class DevWorkerService {
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         this.isRunning = false;
-        logger.info('Worker cycle completed. Starting 200 second delay...');
+        logger.info('Worker cycle completed. Starting 120 second delay...');
         
         // Use a separate flag to track if we're stopping completely
         if (!this.shouldContinue) break;
         
-        await new Promise(resolve => setTimeout(resolve, 200000));
+        await new Promise(resolve => setTimeout(resolve, 120000));
         
         // Check again if we should continue after the delay
         if (!this.shouldContinue) break;

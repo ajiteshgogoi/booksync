@@ -610,33 +610,24 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
   }
 });
 
-// Initialize worker interval
-let workerInterval: NodeJS.Timeout | undefined;
-
 // Start the server if not in Vercel environment
 if (!process.env.VERCEL) {
   const server = app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
     
     if (process.env.NODE_ENV !== 'production') {
-      // Start continuous background worker for local development
-      workerInterval = setInterval(async () => {
-        try {
-          await startWorker();
-        } catch (error) {
-          console.error('Worker iteration error:', error);
-        }
-      }, 30000); // Run every 30 seconds in development
+      // Start worker for local development
+      try {
+        await startWorker();
+      } catch (error) {
+        console.error('Worker start error:', error);
+      }
     }
   });
 
   // Handle shutdown
   const cleanup = async () => {
     console.log('Server shutting down...');
-    if (workerInterval) {
-      clearInterval(workerInterval);
-    }
-    
     server.close();
   };
 
