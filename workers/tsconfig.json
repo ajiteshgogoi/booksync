@@ -10,12 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
     "types": ["@cloudflare/workers-types"],
-    "composite": true,
-    "baseUrl": ".",
-    "paths": {
-      "@booksync/shared": ["../shared/src"],
-      "@booksync/shared/*": ["../shared/src/*"]
-    }
+    "composite": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"],

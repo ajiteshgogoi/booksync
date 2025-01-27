@@ -1,12 +1,11 @@
 import { Router } from 'itty-router';
+import { JobStore } from './services/jobStore';
 import type { Environment } from './types/env';
 import type { Job } from './types/job';
-import {
-  parseClippings,
-  NotionStore,
-  NotionClient,
-  createKVStore
-} from '@booksync/shared';
+import { parseClippings } from '@booksync/shared';
+import { NotionStore } from '@booksync/shared/services/notionStore';
+import { NotionClient } from '@booksync/shared/services/notionClient';
+import { createKVStore } from '@booksync/shared/services/kvStore';
 
 // Constants
 const BATCH_SIZE = 10; // Number of highlights to process per batch
@@ -172,8 +171,8 @@ router.post('/sync', async (request, env: Environment) => {
 
     // Get job status
     console.log('Fetching job status...');
-    const jobResponse = await callDurableObject(jobStore, `/status?id=${jobId}`);
-    const job = await jobResponse.json<Job>();
+    const jobStoreInstance = new JobStore(jobStore);
+    const job = await jobStoreInstance.getJob(jobId);
     if (!job) {
       return errorResponse('Job not found', 404);
     }
@@ -357,3 +356,4 @@ export default {
   }
 };
 
+export { JobStore };
