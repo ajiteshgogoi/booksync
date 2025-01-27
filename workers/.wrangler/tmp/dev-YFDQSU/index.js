@@ -2904,14 +2904,14 @@ var require_src = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-6Krkjf/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-c2YnVy/middleware-loader.entry.ts
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
 init_virtual_unenv_global_polyfill_set_immediate();
 init_virtual_unenv_global_polyfill_clear_immediate();
 
-// .wrangler/tmp/bundle-6Krkjf/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-c2YnVy/middleware-insertion-facade.js
 init_virtual_unenv_global_polyfill_process();
 init_virtual_unenv_global_polyfill_performance();
 init_virtual_unenv_global_polyfill_console();
@@ -6450,6 +6450,64 @@ __name(storeHashes, "storeHashes");
 var _client = null;
 var _databaseId = null;
 var _store = null;
+async function setOAuthToken(store, tokenData) {
+  if (!store) {
+    throw new Error("[OAuth] NotionStore is required");
+  }
+  try {
+    console.log("[OAuth] Validating token data...", {
+      hasWorkspaceId: !!tokenData?.workspace_id,
+      hasAccessToken: !!tokenData?.access_token,
+      hasOwner: !!tokenData?.owner,
+      ownerType: tokenData?.owner?.type,
+      hasUserId: !!tokenData?.owner?.user?.id
+    });
+    if (!tokenData?.workspace_id || !tokenData?.access_token) {
+      throw new Error("Invalid token data - missing required fields");
+    }
+    const workspaceId = tokenData.workspace_id;
+    const userId = tokenData.owner?.user?.id || "";
+    console.log("[OAuth] Preparing to store token...", {
+      workspaceId,
+      userId,
+      hasDatabaseId: !!_databaseId,
+      hasStore: !!store,
+      storeType: store.constructor.name
+    });
+    console.log("[OAuth] Storing token data...");
+    await store.setToken(tokenData);
+    console.log("[OAuth] Updating global store reference...");
+    _store = store;
+    console.log("[OAuth] Initializing Notion client...");
+    _client = new import_client2.Client({
+      auth: tokenData.access_token
+    });
+    console.log("[OAuth] Searching for Kindle Highlights database...");
+    await findKindleHighlightsDatabase();
+    if (_databaseId) {
+      console.log("[OAuth] Found database ID:", _databaseId);
+      try {
+        console.log("[OAuth] Storing database ID...");
+        await store.setDatabaseId(workspaceId, _databaseId);
+        console.log("[OAuth] Database ID storage updated");
+      } catch (dbError) {
+        console.error("[OAuth] Failed to store database ID:", dbError);
+      }
+    } else {
+      console.log("[OAuth] No database ID found - continuing with token storage only");
+    }
+    console.log("[OAuth] OAuth flow completed successfully");
+  } catch (error3) {
+    const errorDetails = {
+      message: error3 instanceof Error ? error3.message : "Unknown error",
+      stack: error3 instanceof Error ? error3.stack : void 0,
+      type: error3?.constructor?.name
+    };
+    console.error("[OAuth] Failed to set OAuth token:", errorDetails);
+    throw error3;
+  }
+}
+__name(setOAuthToken, "setOAuthToken");
 async function getClient() {
   try {
     if (!_client && _store) {
@@ -6477,67 +6535,24 @@ async function getClient() {
 }
 __name(getClient, "getClient");
 async function findKindleHighlightsDatabase() {
-  if (!_client) {
+  if (!_client)
     throw new Error("Notion client not initialized");
-  }
-  const client = _client;
   try {
-    console.debug("Searching for Kindle Highlights database...");
-    const response = await client.search({
-      query: "Highlights",
-      page_size: 100,
-      // Per Notion API v2023-09-01, use this filter syntax
-      filter: { value: "database", property: "object" }
+    const response = await _client.search({
+      filter: {
+        value: "database",
+        property: "object"
+      },
+      page_size: 100
     });
-    console.debug("Search results:", {
-      resultCount: response.results.length,
-      hasMore: response.has_more,
-      nextCursor: response.next_cursor
-    });
-    let searchResults = response;
-    if (response.results.length === 0) {
-      console.debug("No results found, trying without query...");
-      searchResults = await client.search({
-        filter: {
-          property: "object",
-          value: "database"
-        },
-        page_size: 100
-      });
-      console.debug("Fallback search results:", {
-        resultCount: searchResults.results.length
-      });
-    }
-    for (const result of searchResults.results) {
-      if (result.object !== "database") {
-        console.debug("Skipping non-database result:", result.object);
+    for (const result of response.results) {
+      if (result.object !== "database")
         continue;
-      }
       try {
-        console.debug("Checking database:", result.id);
-        const db = await client.databases.retrieve({ database_id: result.id });
+        const db = await _client.databases.retrieve({ database_id: result.id });
         const props = db.properties;
-        const requiredProps = {
-          "Title": "title",
-          "Author": "rich_text",
-          "Highlights": "number",
-          "Last Highlighted": "date",
-          "Last Synced": "date",
-          "Highlight Hash": "rich_text"
-        };
-        const missingProps = Object.entries(requiredProps).filter(([name, type]) => props[name]?.type !== type).map(([name, type]) => ({
-          name,
-          expectedType: type,
-          actualType: props[name]?.type || "missing"
-        }));
-        console.debug("Database property check:", {
-          databaseId: result.id,
-          hasAllProps: missingProps.length === 0,
-          missingProps
-        });
-        if (missingProps.length === 0) {
+        if (props.Title?.type === "title" && props.Author?.type === "rich_text" && props.Highlights?.type === "number" && props["Last Highlighted"]?.type === "date" && props["Last Synced"]?.type === "date" && props["Highlight Hash"]?.type === "rich_text") {
           _databaseId = result.id;
-          console.debug("Found matching database:", result.id);
           break;
         }
       } catch (error3) {
@@ -6694,25 +6709,9 @@ var NotionClient = class {
         workspaceName: token.workspace_name,
         ownerType: token.owner.type
       });
-      console.log("[NotionClient] Processing token...");
-      console.log("[NotionClient] Initializing client...");
-      _client = new import_client2.Client({
-        auth: token.access_token
-      });
       console.log("[NotionClient] Storing token...");
-      _store = this.store;
-      await this.store.setToken(token);
+      await setOAuthToken(this.store, token);
       console.log("[NotionClient] Token stored successfully");
-      console.log("[NotionClient] Searching for database...");
-      try {
-        await findKindleHighlightsDatabase();
-        if (_databaseId) {
-          console.log("[NotionClient] Found database:", _databaseId);
-          await this.store.setDatabaseId(token.workspace_id, _databaseId);
-        }
-      } catch (error3) {
-        console.error("[NotionClient] Database search error:", error3);
-      }
       return token;
     } catch (error3) {
       console.error("Failed to exchange code for token:", error3);
@@ -7504,10 +7503,20 @@ var OAuthCallbackService = class {
       } else {
         console.log("No user ID found in token data, using default:", userId);
       }
+      console.log("Creating sync job...");
+      const jobParams = {
+        userId,
+        workspaceId: tokenData.workspace_id,
+        fileKey: `pending-${tokenData.workspace_id}`,
+        expiresAt: Date.now() + 24 * 60 * 60 * 1e3
+        // 24 hours
+      };
+      const job = await this.jobStore.createJob(jobParams);
+      console.log("Job created:", job.id);
       console.log("Building redirect URL...");
       const clientUrl = new URL(this.env.CLIENT_URL || "http://localhost:5173");
-      clientUrl.searchParams.set("status", "success");
-      clientUrl.searchParams.set("workspaceId", tokenData.workspace_id);
+      clientUrl.searchParams.set("syncStatus", "queued");
+      clientUrl.searchParams.set("jobId", job.id);
       const redirectUrl = clientUrl.toString();
       console.log("Redirecting to:", redirectUrl);
       return { redirectUrl };
@@ -7986,7 +7995,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env3, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-6Krkjf/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-c2YnVy/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -8023,7 +8032,7 @@ function __facade_invoke__(request, env3, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-6Krkjf/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-c2YnVy/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

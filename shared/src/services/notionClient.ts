@@ -177,7 +177,7 @@ export async function setOAuthToken(store: NotionStore, tokenData: NotionToken):
     // Find the database
     console.log('[OAuth] Searching for Kindle Highlights database...');
     try {
-      await findKindleHighlightsDatabase(_client);
+      await findKindleHighlightsDatabase();
     } catch (error) {
       console.error('[OAuth] Error finding database:', error);
       // Continue with token storage even if database search fails
@@ -303,10 +303,12 @@ export async function clearAuth(): Promise<void> {
   }
 }
 
-async function findKindleHighlightsDatabase(client: Client) {
-  if (!client) {
+async function findKindleHighlightsDatabase() {
+  if (!_client) {
     throw new Error('Notion client not initialized');
   }
+  
+  const client = _client; // Cache the non-null client at the start
   
   try {
     console.debug('Searching for Kindle Highlights database...');
@@ -576,36 +578,49 @@ export class NotionClient {
 
       console.log('[NotionClient] Processing token...');
       
-      // Set store and store token first
-      console.log('[NotionClient] Storing token...');
-      _store = this.store;
-      await this.store.setToken(token);
-      console.log('[NotionClient] Token stored successfully');
-      
-      // Then initialize client
+      // Initialize the client first
       console.log('[NotionClient] Initializing client...');
       _client = new Client({
         auth: token.access_token
       });
       
-      // Search for database is required
+      // Set store and store token
+      console.log('[NotionClient] Storing token...');
+      _store = this.store;
+      await this.store.setToken(token);
+      console.log('[NotionClient] Token stored successfully');
+      
+      // Search for database after client is initialized
       console.log('[NotionClient] Searching for database...');
       try {
-        if (!_client) {
-          throw new Error('Client not initialized');
+        await findKindleHighlightsDatabase();
+        if (_databaseId) {
+          console.log('[NotionClient] Found database:', _databaseId);
+          await this.store.setDatabaseId(token.workspace_id, _databaseId);
         }
-        await findKindleHighlightsDatabase(_client);
-        if (!_databaseId) {
-          throw new Error('Could not find Kindle Highlights database. Please ensure you have copied the template to your workspace.');
-        }
-        console.log('[NotionClient] Found database:', _databaseId);
-        await this.store.setDatabaseId(token.workspace_id, _databaseId);
       } catch (error) {
         console.error('[NotionClient] Database search error:', error);
-        // Database ID is required for sync to work
-        throw error;
+        // Continue even if database search fails
       }
       
+      // Initialize client
+      console.log('[NotionClient] Initializing Notion client...');
+      _client = new Client({
+        auth: token.access_token
+      });
+      
+      // Search for database
+      console.log('[NotionClient] Searching for database...');
+      try {
+        await findKindleHighlightsDatabase();
+        if (_databaseId) {
+          console.log('[NotionClient] Found database:', _databaseId);
+          await this.store.setDatabaseId(token.workspace_id, _databaseId);
+        }
+      } catch (error) {
+        console.error('[NotionClient] Database search error:', error);
+        // Don't throw here - we can still proceed with the OAuth flow
+      }
 
       return token;
     } catch (error) {
@@ -621,7 +636,7 @@ export class NotionClient {
     // Ensure we have found the Kindle Highlights database
     if (!_databaseId) {
       console.log('Finding Kindle Highlights database...');
-      await findKindleHighlightsDatabase(client);
+      await findKindleHighlightsDatabase();
       if (!_databaseId) {
         throw new Error('Could not find Kindle Highlights database. Please ensure you have copied the template to your workspace.');
       }

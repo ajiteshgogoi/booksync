@@ -204,45 +204,21 @@ function App() {
       
       // Check URL parameters for auth status
       const searchParams = new URLSearchParams(window.location.search);
-      const status = searchParams.get('status');
-      const workspaceId = searchParams.get('workspaceId');
+      const authResult = searchParams.get('auth');
       const error = searchParams.get('error');
       
       // Clear URL parameters regardless of result
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      if (status === 'success' && workspaceId) {
-        // Validate that both OAuth and database setup were successful
-        try {
-          const response = await fetch(`${apiBase}/auth/validate`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ workspaceId }),
-            credentials: 'include'
-          });
-          
-          if (!response.ok) {
-            throw new Error('Failed to validate setup');
-          }
-          
-          const data = await response.json();
-          if (data.databaseId) {
-            setIsAuthenticated(true);
-            localStorage.setItem('isAuthenticated', 'true');
-            localStorage.setItem('authTimestamp', Date.now().toString());
-            localStorage.setItem('workspaceId', workspaceId);
-          } else {
-            throw new Error('Database not found');
-          }
-        } catch (error) {
-          setIsAuthenticated(false);
-          localStorage.removeItem('isAuthenticated');
-          localStorage.removeItem('authTimestamp');
-          setErrorMessage('Database not found. Please ensure you have copied the template to your workspace.');
+      if (authResult === 'success') {
+        const userId = searchParams.get('userId');
+        setIsAuthenticated(true);
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('authTimestamp', Date.now().toString());
+        if (userId) {
+          localStorage.setItem('userId', userId);
         }
-      } else if (status === 'error' || error) {
+      } else if (authResult === 'error' || error) {
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
         localStorage.removeItem('authTimestamp');
