@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getUploadUrl } from './r2Service.js';
 import { getRedis } from './redisService.js';
 
-async function getTokenData(retryCount = 0): Promise<string> {
+async function getTokenData(retryCount = 0): Promise<{ userId: string; databaseId: string }> {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
 
@@ -25,8 +25,15 @@ async function getTokenData(retryCount = 0): Promise<string> {
       throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
     }
 
-    console.log('Successfully retrieved user ID from Redis token');
-    return tokenDataObj.userId;
+    if (!tokenDataObj.databaseId || typeof tokenDataObj.databaseId !== 'string') {
+      throw new Error(`Invalid database ID format: ${tokenDataObj.databaseId}`);
+    }
+
+    console.log('Successfully retrieved user ID and database ID from Redis token');
+    return {
+      userId: tokenDataObj.userId,
+      databaseId: tokenDataObj.databaseId
+    };
   } catch (error) {
     if (retryCount < MAX_RETRIES) {
       console.warn(`Retry ${retryCount + 1}/${MAX_RETRIES}: Failed to get token data, retrying...`, error);
@@ -43,9 +50,9 @@ export async function triggerProcessing(
   clientIp: string
 ): Promise<string> {
   console.log('Starting triggerProcessing...');
-  // Get real user ID from Redis with retries
-  const userId = await getTokenData();
-  console.log('Retrieved userId from Redis:', userId);
+  // Get real user ID and database ID from Redis with retries
+  const { userId, databaseId } = await getTokenData();
+  console.log('Retrieved userId and databaseId from Redis:', { userId, databaseId });
   
   // Generate unique file name with real user ID from Redis
   const fileName = `clippings-${userId}-${Date.now()}.txt`;
@@ -182,6 +189,7 @@ export async function triggerProcessing(
       client_payload: {
         fileName, // Only send the R2 file reference
         userId,
+        databaseId, // Added databaseId from Redis
         timestamp: new Date().toISOString(),
         clientIp,
         fileSize: fileContent.length // Send file size for information
@@ -191,7 +199,9 @@ export async function triggerProcessing(
     console.log('\nPreparing GitHub dispatch:', {
       url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
       payloadSize: JSON.stringify(payload).length,
-      fileName
+      fileName,
+      userId,
+      databaseId
     });
 
     // Send the dispatch request
@@ -250,4 +260,3 @@ export async function triggerProcessing(
     console.log('\n=== GitHub Processing Trigger End ===\n');
   }
 }
-

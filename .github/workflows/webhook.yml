@@ -72,9 +72,10 @@ jobs:
         if: success()
         working-directory: server
         env:
-          FILE_CONTENT: ${{ github.event.client_payload.fileContent }}
           FILE_NAME: ${{ github.event.client_payload.fileName }}
           R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
+          DATABASE_ID: ${{ github.event.client_payload.databaseId }}
+          USER_ID: ${{ github.event.client_payload.userId }}
           DEBUG: 'true'
           NODE_OPTIONS: '--trace-warnings'
         run: |
