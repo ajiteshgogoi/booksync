@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger.js';
-import { uploadObject, downloadObject } from './r2Service.js';
+import { uploadObject, downloadObject, deleteObject } from './r2Service.js';
 
 const LOCK_TIMEOUT = 30000; // 30 seconds
 const MAX_ACTIVE_USERS = 3; // Maximum concurrent active users
@@ -79,10 +79,13 @@ export class QueueService {
   private async releaseLock(resource: string): Promise<void> {
     const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
     try {
-      // Delete the lock file
-      await uploadObject(lockFile, '');
+      // Properly delete the lock file instead of uploading empty content
+      await deleteObject(lockFile);
     } catch (error) {
-      logger.error('Error releasing lock:', error);
+      // Ignore NotFound errors when trying to delete the lock
+      if ((error as any)?.name !== 'NotFound') {
+        logger.error('Error releasing lock:', error);
+      }
     }
   }
 
