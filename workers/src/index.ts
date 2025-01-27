@@ -8,7 +8,6 @@ import {
   SyncService,
   parseClippings
 } from '@booksync/shared';
-import { KVJobStore } from './services/kvJobStore';
 
 // Constants
 const BATCH_SIZE = 10; // Number of highlights to process per batch
@@ -39,7 +38,20 @@ const successResponse = (data: any) =>
   new Response(JSON.stringify(data), {
     headers: { 'Content-Type': 'application/json' }
   });
-// Validate environment
+
+// DO request helper
+async function callDurableObject(obj: DurableObjectStub, path: string, init?: RequestInit) {
+  const url = new URL(path, 'https://dummy-base');
+  const response = await obj.fetch(url.pathname + url.search, init);
+  
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DO request failed: ${text}`);
+  }
+  
+  return response;
+}
+
 // Validate environment
 function validateEnvironment(env: Environment): string[] {
   const errors: string[] = [];
@@ -359,4 +371,3 @@ export default {
   }
 };
 
-export { JobStore } from './services/jobStore';
