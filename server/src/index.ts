@@ -50,9 +50,21 @@ const port = process.env.PORT || 3001;
 const upload = multer({ storage: multer.memoryStorage() });
 const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
-// Initialize stores
-const kvStore = createKVStore();
+// Initialize stores with Cloudflare KV
+const kvStore = createKVStore({
+  type: 'CloudflareKVStore',
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+  namespaceId: process.env.CLOUDFLARE_KV_NAMESPACE_ID,
+  apiToken: process.env.CLOUDFLARE_API_TOKEN
+});
+
 const notionStore = new NotionStore(kvStore);
+
+// Verify KV store connection
+kvStore.ready().catch(err => {
+  console.error('Failed to initialize KV store:', err);
+  process.exit(1);
+});
 
 // Middlewares
 app.use(cors({
@@ -233,7 +245,16 @@ app.post(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
     // Verify token with worker service
     let user;
     try {
-      user = await forwardToWorker('/auth/verify', 'POST', { token: authToken });
+      // Get full token data from Notion store
+      const tokenData = await notionStore.getToken(authToken);
+      if (!tokenData) {
+        throw new Error('Token not found in store');
+      }
+      
+      // Verify token with worker using extended format
+      user = await forwardToWorker('/auth/verify', 'POST', {
+        token: authToken
+      });
     } catch (error) {
       console.error('Worker verification failed:', {
         error: error instanceof Error ? error.message : 'Unknown error',
