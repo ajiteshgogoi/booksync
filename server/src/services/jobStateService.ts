@@ -1,8 +1,18 @@
 import { logger } from '../utils/logger.js';
 import { uploadObject, downloadObject } from './r2Service.js';
 import { JobStatus } from '../types/job.js';
+import { S3Client, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const JOB_STATE_PREFIX = 'jobs/';
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || ''
+  }
+});
 
 export interface JobMetadata extends JobStatus {
   jobId: string;
@@ -108,24 +118,63 @@ export class JobStateService {
   }
 
   async listPendingJobs(): Promise<JobMetadata[]> {
-    // Note: This is a placeholder that will need proper R2 list implementation
-    // You would need to:
-    // 1. List all objects with prefix JOB_STATE_PREFIX
-    // 2. Download each job state
-    // 3. Filter for non-terminal states (not completed or failed)
-    return [];
+    try {
+      const jobs = await this.listAllJobs();
+      return jobs.filter(job => !this.isTerminalState(job.state));
+    } catch (error) {
+      logger.error('Error listing pending jobs:', error);
+      return [];
+    }
   }
 
   async listJobsByState(state: JobStatus['state']): Promise<JobMetadata[]> {
-    // Similar placeholder - would need R2 list implementation
-    // This would be particularly useful for finding 'parsed' jobs ready for processing
-    return [];
+    try {
+      const jobs = await this.listAllJobs();
+      return jobs.filter(job => job.state === state);
+    } catch (error) {
+      logger.error('Error listing jobs by state:', { state, error });
+      return [];
+    }
+  }
+
+  private async listAllJobs(): Promise<JobMetadata[]> {
+    try {
+      const command = new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: JOB_STATE_PREFIX
+      });
+
+      const response = await s3Client.send(command);
+      const jobs: JobMetadata[] = [];
+      
+      if (response.Contents) {
+        for (const obj of response.Contents) {
+          if (obj.Key) {
+            try {
+              const jobData = await downloadObject(obj.Key);
+              const job = JSON.parse(jobData.toString()) as JobMetadata;
+              jobs.push(job);
+            } catch (error) {
+              logger.error('Error parsing job data:', { key: obj.Key, error });
+            }
+          }
+        }
+      }
+      
+      return jobs;
+    } catch (error) {
+      logger.error('Error listing all jobs:', error);
+      return [];
+    }
   }
 
   async deleteJob(jobId: string): Promise<void> {
     try {
-      // Upload empty content to effectively delete the file
-      await uploadObject(this.getJobPath(jobId), '');
+      const command = new DeleteObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: this.getJobPath(jobId)
+      });
+      await s3Client.send(command);
     } catch (error) {
       logger.error('Error deleting job state:', { jobId, error });
       throw error;

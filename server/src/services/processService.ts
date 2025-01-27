@@ -57,6 +57,17 @@ export async function processFileContent(
 }
 
 export async function processFile(jobId: string): Promise<void> {
+  // Define processing timeout
+  const PROCESSING_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+  const startTime = Date.now();
+
+  // Implement timeout check function
+  const checkTimeout = () => {
+    if (Date.now() - startTime > PROCESSING_TIMEOUT) {
+      throw new Error('Processing timeout exceeded');
+    }
+  };
+
   try {
     // Get job metadata
     const jobState = await jobStateService.getJobState(jobId);
@@ -64,10 +75,9 @@ export async function processFile(jobId: string): Promise<void> {
       throw new Error('Job not found');
     }
 
-    // Get the current state
+    // Get the current state and validate transition
     switch (jobState.state) {
       case 'pending':
-        // Update to queued state when starting processing
         await jobStateService.updateJobState(jobId, {
           state: 'queued',
           message: 'Starting file processing'
@@ -77,29 +87,36 @@ export async function processFile(jobId: string): Promise<void> {
       case 'failed':
         logger.info(`Job ${jobId} is already in terminal state: ${jobState.state}`);
         return;
+      case 'processing':
+        if (jobState.lastCheckpoint && Date.now() - jobState.lastCheckpoint > PROCESSING_TIMEOUT) {
+          throw new Error('Processing timeout exceeded');
+        }
+        break;
       default:
         break;
     }
 
-    // Ensure we have highlights in temporary storage
+    // Process highlights with timeout checks
     if (!await tempStorageService.exists(jobId, 'highlights')) {
-      // If highlights don't exist, we need to reprocess the file content
+      checkTimeout();
+      
       if (!await tempStorageService.exists(jobId, 'content')) {
-        // Get content from uploads
         const fileContent = await downloadObject(`uploads/${jobId}.txt`);
         await tempStorageService.storeFileContent(jobId, fileContent.toString('utf-8'));
       }
 
-      // Re-parse the content
+      checkTimeout();
       const fileContent = await tempStorageService.getFileContent(jobId);
       const highlights = await parseClippings(fileContent);
+      
+      checkTimeout();
       await tempStorageService.storeHighlights(jobId, highlights);
 
-      // Update state to parsed once highlights are ready
       await jobStateService.updateJobState(jobId, {
         state: 'parsed',
         message: 'File parsed successfully',
-        total: highlights.length
+        total: highlights.length,
+        lastCheckpoint: Date.now()
       });
     }
 
@@ -110,14 +127,28 @@ export async function processFile(jobId: string): Promise<void> {
       return;
     }
 
-    // Process the job using existing syncService
+    checkTimeout();
+
+    // Process the job using existing syncService with timeout checks
     await processSyncJob(jobId, async (progress: number, message: string) => {
+      checkTimeout();
       await jobStateService.updateJobState(jobId, {
         state: 'processing',
         progress,
-        message
+        message,
+        lastCheckpoint: Date.now()
       });
     });
+
+    // Final state update
+    await jobStateService.updateJobState(jobId, {
+      state: 'completed',
+      message: 'Processing completed successfully',
+      completedAt: Date.now(),
+      progress: 100
+    });
+
+    logger.info('File processing completed successfully', { jobId });
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -126,11 +157,10 @@ export async function processFile(jobId: string): Promise<void> {
     await jobStateService.updateJobState(jobId, {
       state: 'failed',
       message: `Processing failed: ${errorMessage}`,
-      errorDetails: errorMessage
+      errorDetails: errorMessage,
+      completedAt: Date.now()
     });
 
     throw error;
   }
-
-  logger.info('File processing completed successfully', { jobId });
 }
