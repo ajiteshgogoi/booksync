@@ -71,16 +71,6 @@ class MemoryKVStore implements KVStore {
 class CloudflareKVStore implements KVStore {
   constructor(private kv: KVNamespace) {}
 
-  async ready(): Promise<void> {
-    // Test connection by getting a non-existent key
-    try {
-      await this.get('__connection_test__');
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(new Error('Failed to connect to Cloudflare KV'));
-    }
-  }
-
   async get(key: string): Promise<string | null> {
     if (!this.kv || typeof this.kv.get !== 'function') {
       console.error('[KVStore] KV namespace is invalid:', this.kv);
@@ -156,83 +146,18 @@ class CloudflareKVStore implements KVStore {
 }
 
 // Factory function to create appropriate store
-export interface KVStoreConfig {
-  type: 'CloudflareKVStore' | 'MemoryKVStore';
-  accountId?: string;
-  namespaceId?: string;
-  apiToken?: string;
-}
+export function createKVStore(kv?: KVNamespace): KVStore {
+  console.log('[KVStore] Creating KV store:', {
+    hasKV: !!kv,
+    type: kv ? 'CloudflareKVStore' : 'MemoryKVStore'
+  });
 
-export function createKVStore(config?: KVStoreConfig | KVNamespace): KVStore {
-  let store: KVStore;
-  
-  if (config && typeof config === 'object' && 'type' in config) {
-    // Using config object
-    console.log('[KVStore] Creating KV store with config:', config);
-    
-    if (config.type === 'CloudflareKVStore') {
-      if (!config.accountId || !config.namespaceId || !config.apiToken) {
-        throw new Error('Missing required Cloudflare KV configuration');
-      }
-      
-      // Create Cloudflare KV namespace
-      const kv = {
-        get: async (key: string) => {
-          const response = await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/storage/kv/namespaces/${config.namespaceId}/values/${key}`,
-            {
-              headers: {
-                Authorization: `Bearer ${config.apiToken}`
-              }
-            }
-          );
-          return response.text();
-        },
-        put: async (key: string, value: string) => {
-          await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/storage/kv/namespaces/${config.namespaceId}/values/${key}`,
-            {
-              method: 'PUT',
-              headers: {
-                Authorization: `Bearer ${config.apiToken}`,
-                'Content-Type': 'text/plain'
-              },
-              body: value
-            }
-          );
-        },
-        delete: async (key: string) => {
-          await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/storage/kv/namespaces/${config.namespaceId}/values/${key}`,
-            {
-              method: 'DELETE',
-              headers: {
-                Authorization: `Bearer ${config.apiToken}`
-              }
-            }
-          );
-        }
-      };
-      
-      store = new CloudflareKVStore(kv as KVNamespace);
-    } else {
-      store = new MemoryKVStore();
-    }
-  } else {
-    // Legacy KVNamespace parameter
-    console.log('[KVStore] Creating KV store:', {
-      hasKV: !!config,
-      type: config ? 'CloudflareKVStore' : 'MemoryKVStore'
-    });
-
-    if (config && (!(config as KVNamespace).get || !(config as KVNamespace).put || !(config as KVNamespace).delete)) {
-      console.error('[KVStore] Invalid KV namespace provided:', config);
-      throw new Error('Invalid KV namespace: missing required methods');
-    }
-
-    store = config ? new CloudflareKVStore(config as KVNamespace) : new MemoryKVStore();
+  if (kv && (!kv.get || !kv.put || !kv.delete)) {
+    console.error('[KVStore] Invalid KV namespace provided:', kv);
+    throw new Error('Invalid KV namespace: missing required methods');
   }
 
+  const store = kv ? new CloudflareKVStore(kv) : new MemoryKVStore();
   console.log('[KVStore] Successfully created store');
   return store;
 }
