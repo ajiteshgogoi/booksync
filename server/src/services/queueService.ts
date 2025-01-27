@@ -217,7 +217,12 @@ export class QueueService {
 
   async isUserActive(userId: string): Promise<boolean> {
     const activeState = await this.getActiveUsersState();
-    return !!activeState.activeUsers[userId];
+    
+    // Check if user has any jobs in parsed state
+    const queueState = await this.getQueueState();
+    const hasQueuedJobs = queueState.queue.some(entry => entry.userId === userId);
+    
+    return !!activeState.activeUsers[userId] || hasQueuedJobs;
   }
 
   async getQueueLength(): Promise<number> {

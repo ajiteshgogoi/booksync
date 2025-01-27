@@ -40,9 +40,6 @@ export async function processFileContent(
     // Note: queueSyncJob will update the state to 'queued' and then 'parsed'
     const jobIdFromQueue = await queueSyncJob(databaseId, fileContent, userId);
 
-    // Add to processing queue
-    await queueService.addToQueue(jobIdFromQueue, userId);
-
     logger.info('Sync job queued successfully', { jobId: jobIdFromQueue });
     return jobIdFromQueue;
   } catch (error) {
@@ -113,12 +110,19 @@ export async function processFile(jobId: string): Promise<void> {
       checkTimeout();
       await tempStorageService.storeHighlights(jobId, highlights);
 
-      await jobStateService.updateJobState(jobId, {
+      const updatedJobState = await jobStateService.updateJobState(jobId, {
         state: 'parsed',
         message: 'File parsed successfully',
         total: highlights.length,
         lastCheckpoint: Date.now()
       });
+
+      // Add to processing queue only after parsing is complete
+      if (updatedJobState?.userId) {
+        await queueService.addToQueue(jobId, updatedJobState.userId);
+      } else {
+        logger.error('Could not add job to queue - missing userId', { jobId });
+      }
     }
 
     // Don't proceed with processing if job isn't in 'parsed' state

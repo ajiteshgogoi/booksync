@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { jobStateService } from './jobStateService.js';
 import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 import { tempStorageService } from './tempStorageService.js';
+import { startUpload, addJobToUpload, completeJob } from './uploadTrackingService.js';
 
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
@@ -33,10 +34,11 @@ export async function queueSyncJob(
   try {
     logger.debug('Starting sync job', { databaseId });
     
-    const jobId = `sync:${userId}:${Date.now()}`;
+    const uploadId = `upload:${userId}:${Date.now()}`;
+    const baseJobId = `sync:${userId}:${Date.now()}`;
     
-    // Store initial processing state
-    await tempStorageService.storeProcessingState(jobId, {
+    // Store initial processing state for first job
+    await tempStorageService.storeProcessingState(baseJobId, {
       databaseId,
       userId,
       stage: 'initialization',
@@ -44,17 +46,20 @@ export async function queueSyncJob(
     });
 
     // Update job state to queued when starting processing
-    await jobStateService.updateJobState(jobId, {
+    await jobStateService.updateJobState(baseJobId, {
       state: 'queued',
       message: 'Starting file processing',
       progress: 0
     });
 
+    // Initialize upload tracking
+    await startUpload(userId, uploadId, 0); // we'll update total count after parsing
+
     // Get Notion client to check for existing highlights
     const notionClient = await getClient();
 
     // Get highlights from temp storage
-    const bookHighlights = await tempStorageService.getHighlights(jobId);
+    const bookHighlights = await tempStorageService.getHighlights(baseJobId);
     const bookMap = new Map<string, Highlight[]>();
     
     for (const highlight of bookHighlights) {
@@ -94,20 +99,46 @@ export async function queueSyncJob(
 
     logger.debug('Total unique highlights to queue', { count: uniqueHighlights.length });
 
-    // Store unique highlights back to temp storage
-    await tempStorageService.storeHighlights(jobId, uniqueHighlights);
+    // Update upload with total highlight count
+    await startUpload(userId, uploadId, uniqueHighlights.length);
 
-    // Update job state to parsed after successful processing
-    await jobStateService.updateJobState(jobId, {
-      state: 'parsed',
-      message: uniqueHighlights.length > 0 
-        ? `Found ${uniqueHighlights.length} new highlights to process`
-        : 'No new highlights to process',
-      total: uniqueHighlights.length,
-      progress: 0
-    });
+    // Split highlights into chunks of 1000 if needed
+    const chunks = [];
+    const MAX_HIGHLIGHTS = 1000;
+    for (let i = 0; i < uniqueHighlights.length; i += MAX_HIGHLIGHTS) {
+      chunks.push(uniqueHighlights.slice(i, i + MAX_HIGHLIGHTS));
+    }
 
-    return jobId;
+    // Create jobs for each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkJobId = chunks.length === 1 ? baseJobId : `${baseJobId}_${i + 1}`;
+      
+      // Store chunk highlights in temp storage
+      await tempStorageService.storeHighlights(chunkJobId, chunk);
+
+      // Create job state for chunk
+      if (i > 0) { // First chunk already has state created
+        await jobStateService.updateJobState(chunkJobId, {
+          state: 'queued',
+          message: 'Starting file processing',
+          progress: 0
+        });
+      }
+
+      // Update job state to parsed
+      await jobStateService.updateJobState(chunkJobId, {
+        state: 'parsed',
+        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
+        total: chunk.length,
+        progress: 0
+      });
+
+      // Add job to upload tracking
+      await addJobToUpload(uploadId, chunkJobId, chunk.length);
+    }
+
+    return baseJobId;
   } catch (error) {
     logger.error('Error queueing sync job:', error);
     throw error;
@@ -195,27 +226,38 @@ export async function processSyncJob(
     }
 
     // Update final state
-    await jobStateService.updateJobState(jobId, {
-      state: 'completed',
-      progress: 100,
-      message: 'Sync completed successfully'
-    });
+   await jobStateService.updateJobState(jobId, {
+     state: 'completed',
+     progress: 100,
+     message: 'Sync completed successfully'
+   });
 
-    logger.info('Highlights sync completed', {
-      jobId,
-      totalSynced: total,
-      totalBatches: Math.ceil(total / BASE_BATCH_SIZE)
-    });
+   // Extract uploadId from jobId format (sync:userId:timestamp or sync:userId:timestamp_chunkNum)
+   const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0]; // Remove chunk number if present
+   const isUploadComplete = await completeJob(uploadId, jobId);
 
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await jobStateService.updateJobState(jobId, {
-      state: 'failed',
-      message: `Sync failed: ${errorMessage}`,
-      errorDetails: errorMessage
-    });
-    throw error;
-  }
+   logger.info('Highlights sync completed', {
+     jobId,
+     uploadId,
+     isUploadComplete,
+     totalSynced: total,
+     totalBatches: Math.ceil(total / BASE_BATCH_SIZE)
+   });
+
+ } catch (error) {
+   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+   await jobStateService.updateJobState(jobId, {
+     state: 'failed',
+     message: `Sync failed: ${errorMessage}`,
+     errorDetails: errorMessage
+   });
+
+   // Extract uploadId and mark job as complete even on failure
+   const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0];
+   await completeJob(uploadId, jobId);
+
+   throw error;
+ }
 }
 
 export async function getSyncStatus(jobId: string) {

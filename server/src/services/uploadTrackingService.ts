@@ -7,14 +7,19 @@ const UPLOAD_JOBS_PREFIX = 'upload-jobs/';
 const JOB_TTL = 3600; // 1 hour
 
 interface UploadTracking {
-  userId: string;
+  userId: string;          // Notion user ID
   uploadId: string;
-  jobs: string[];
+  jobs: Array<{
+    jobId: string;
+    state: string;
+    highlightCount: number;
+  }>;
+  totalHighlights: number;
   createdAt: number;
   updatedAt: number;
 }
 
-export async function startUpload(userId: string, uploadId: string): Promise<void> {
+export async function startUpload(userId: string, uploadId: string, totalHighlights: number): Promise<void> {
   try {
     // Check if user has an active upload
     const activeUpload = await getUserActiveUpload(userId);
@@ -27,6 +32,7 @@ export async function startUpload(userId: string, uploadId: string): Promise<voi
       userId,
       uploadId,
       jobs: [],
+      totalHighlights,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -37,14 +43,14 @@ export async function startUpload(userId: string, uploadId: string): Promise<voi
       uploadObject(`${UPLOAD_JOBS_PREFIX}${uploadId}.json`, JSON.stringify(tracking))
     ]);
 
-    logger.debug(`Started new upload ${uploadId} for user ${userId}`);
+    logger.debug(`Started new upload ${uploadId} for user ${userId} with ${totalHighlights} highlights`);
   } catch (error) {
     logger.error(`Error starting upload for user ${userId}:`, error);
     throw error;
   }
 }
 
-export async function addJobToUpload(uploadId: string, jobId: string): Promise<void> {
+export async function addJobToUpload(uploadId: string, jobId: string, highlightCount: number): Promise<void> {
   try {
     // Get current tracking data
     const tracking = await getUploadTracking(uploadId);
@@ -53,7 +59,11 @@ export async function addJobToUpload(uploadId: string, jobId: string): Promise<v
     }
 
     // Add job and update timestamp
-    tracking.jobs.push(jobId);
+    tracking.jobs.push({
+      jobId,
+      state: 'created',
+      highlightCount
+    });
     tracking.updatedAt = Date.now();
 
     // Update tracking data
@@ -62,7 +72,7 @@ export async function addJobToUpload(uploadId: string, jobId: string): Promise<v
       JSON.stringify(tracking)
     );
 
-    logger.debug(`Added job ${jobId} to upload ${uploadId}`);
+    logger.debug(`Added job ${jobId} to upload ${uploadId} with ${highlightCount} highlights`);
   } catch (error) {
     logger.error(`Error adding job ${jobId} to upload ${uploadId}:`, error);
     throw error;
@@ -78,8 +88,8 @@ export async function completeJob(uploadId: string, jobId: string): Promise<bool
       return false;
     }
 
-    // Remove job from tracking
-    tracking.jobs = tracking.jobs.filter(j => j !== jobId);
+    // Remove completed job from tracking
+    tracking.jobs = tracking.jobs.filter(job => job.jobId !== jobId);
     tracking.updatedAt = Date.now();
 
     if (tracking.jobs.length === 0) {
