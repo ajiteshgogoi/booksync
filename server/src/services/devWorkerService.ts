@@ -48,7 +48,7 @@ export class DevWorkerService {
         // Use a separate flag to track if we're stopping completely
         if (!this.shouldContinue) break;
         
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        await new Promise(resolve => setTimeout(resolve, 125000));
         
         // Check again if we should continue after the delay
         if (!this.shouldContinue) break;
