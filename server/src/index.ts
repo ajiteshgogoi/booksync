@@ -85,26 +85,8 @@ async function forwardToWorker(path: string, method: string, data?: any, headers
     });
     return response.data;
   } catch (error) {
-    console.error(`Worker request failed (${path}):`, {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      path,
-      method,
-      workerHost: process.env.WORKER_HOST,
-      timestamp: new Date().toISOString()
-    });
-
-    // Handle specific axios errors
-    if (axios.isAxiosError(error)) {
-      if (error.response) {
-        // Worker responded with error status
-        throw new Error(error.response.data?.error || `Worker responded with ${error.response.status}`);
-      } else if (error.request) {
-        // Request made but no response
-        throw new Error('Worker is not responding. Please try again later.');
-      }
-    }
-    
-    throw new Error('Failed to communicate with worker service');
+    console.error(`Worker request failed (${path}):`, error);
+    throw error;
   }
 }
 
