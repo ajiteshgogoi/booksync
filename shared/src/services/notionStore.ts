@@ -86,8 +86,4 @@ export class NotionStore {
   async setDatabaseId(workspaceId: string, databaseId: string): Promise<void> {
     await this.kvStore.set(this.getDbKey(workspaceId), databaseId);
   }
-
-  async set(key: string, value: any): Promise<void> {
-    await this.kvStore.set(key, value);
-  }
 }

@@ -482,7 +482,7 @@ export interface NotionClientConfig {
 }
 
 export class NotionClient {
-  public store: NotionStore;
+  private store: NotionStore;
   private clientId: string;
   private clientSecret: string;
   private redirectUri: string;

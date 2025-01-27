@@ -1,14 +1,7 @@
 import { KVJobStore } from './kvJobStore';
-import { NotionClient, setOAuthToken } from '@booksync/shared/src/services/notionClient';
+import { NotionClient } from '@booksync/shared/src/services/notionClient';
 import { NotionStore } from '@booksync/shared/src/services/notionStore';
 import type { NotionToken } from '@booksync/shared/src/types/notion';
-
-interface ExtendedNotionToken extends NotionToken {
-  authToken: string;
-  userId: string;
-  workspaceId: string;
-  expiresAt: number;
-}
 import { createKVStore } from '@booksync/shared';
 import type { Environment } from '../types/env';
 import type { CreateJobParams } from '../types/job';
@@ -124,7 +117,7 @@ export class OAuthCallbackService {
     }
   }
 
-  async handleCallback(code: string): Promise<{ redirectUrl: string; authToken: string }> {
+  async handleCallback(code: string): Promise<{ redirectUrl: string }> {
     try {
       console.log('Starting OAuth callback handling...');
 
@@ -153,41 +146,16 @@ export class OAuthCallbackService {
         console.log('No user ID found in token data, using default:', userId);
       }
 
-      // Generate auth token
-      const authToken = crypto.randomUUID();
-      
-      console.log('Storing auth token mapping...', {
-        authToken,
-        userId,
-        workspaceId: tokenData.workspace_id
-      });
-
-      // Store auth token mapping using NotionClient's setOAuthToken method
-      const extendedToken: ExtendedNotionToken = {
-        ...tokenData,
-        authToken,
-        userId,
-        workspaceId: tokenData.workspace_id,
-        expiresAt: Date.now() + (1000 * 60 * 60 * 24 * 7) // 1 week
-      };
-      await setOAuthToken(this.notionClient.store, extendedToken);
-
-      console.log('Auth token stored successfully');
-
-      // Build redirect URL with auth token
+      // Build redirect URL - just return to frontend after successful auth
       console.log('Building redirect URL...');
       const clientUrl = new URL(this.env.CLIENT_URL || 'http://localhost:5173');
       clientUrl.searchParams.set('status', 'success');
       clientUrl.searchParams.set('workspaceId', tokenData.workspace_id);
-      clientUrl.searchParams.set('authToken', authToken);
 
       const redirectUrl = clientUrl.toString();
       console.log('Redirecting to:', redirectUrl);
 
-      return { 
-        redirectUrl,
-        authToken 
-      };
+      return { redirectUrl };
     } catch (error) {
       console.error('OAuth callback error:', {
         error: error instanceof Error ? error.message : 'Unknown error',
