@@ -84,8 +84,9 @@ import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
-import { setJobStatus, getRedis, redisPool } from './services/redisService.js';
+import { getRedis, redisPool } from './services/redisService.js';
 import type { JobStatus } from './types/job.js';
+import { jobStateService } from './services/jobStateService.js';
 import { verifyRedisConnection } from './utils/redisUtils.js';
 import { addJobToQueue } from './services/redisJobService.js';
 import { triggerProcessing } from './services/githubService.js';
@@ -542,14 +543,21 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     const jobId = `sync:${userId}:${Date.now()}`;
     console.log('Created job ID:', jobId);
     
-    // Set initial status in Redis
-    await setJobStatus(jobId, {
-      state: 'pending',
+    // Create initial job and set state
+    await jobStateService.createJob({
+      jobId,
+      fileName: 'MyClippings.txt',
+      userId,
+      databaseId: ''  // Will be set later in the process
+    });
+
+    // Update with initial progress
+    await jobStateService.updateJobState(jobId, {
       progress: 0,
       message: 'Uploading highlights for processing',
       total: 0
     });
-    console.log('Job status set in Redis');
+    console.log('Initial job state created');
 
     console.log('\n=== Upload Processing Start ===');
     console.log('File content length:', fileContent.length);
@@ -578,7 +586,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           connectionTime: new Date().toISOString()
         });
         
-        await setJobStatus(jobId, {
+        await jobStateService.updateJobState(jobId, {
           state: 'failed',
           message: 'Redis connection failed - please try again',
           progress: 0,
@@ -613,8 +621,8 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           fileSize: fileContent.length
         });
         
-        // Update job status after successful trigger
-        await setJobStatus(jobId, {
+        // Update job state after successful trigger
+        await jobStateService.updateJobState(jobId, {
           state: 'queued',
           message: 'File uploaded and queued for processing',
           progress: 0,
@@ -634,7 +642,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           `${error.message} (Redis connected: true)` :
           'Unknown error occurred while triggering processing';
 
-        await setJobStatus(jobId, {
+        await jobStateService.updateJobState(jobId, {
           state: 'failed',
           message: errorMessage,
           progress: 0
@@ -647,7 +655,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         response: error.response?.data,
         status: error.response?.status
       });
-      await setJobStatus(jobId, {
+      await jobStateService.updateJobState(jobId, {
         state: 'failed',
         message: 'Failed to start processing. Please try again.',
         progress: 0
