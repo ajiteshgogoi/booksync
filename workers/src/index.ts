@@ -2,7 +2,7 @@ import { Router } from 'itty-router';
 import { JobStore } from './services/jobStore';
 import type { Environment } from './types/env';
 import type { Job } from './types/job';
-import { parseClippings } from '@booksync/shared';
+import { parseClippings, type Highlight } from '@booksync/shared';
 import { NotionStore } from '@booksync/shared/services/notionStore';
 import { NotionClient } from '@booksync/shared/services/notionClient';
 import { createKVStore } from '@booksync/shared/services/kvStore';
@@ -14,30 +14,18 @@ const JOB_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 // Initialize router
 const router = Router();
 
-// Response helpers
+// Error response helper
 const errorResponse = (message: string, status = 500) => 
   new Response(JSON.stringify({ error: message }), { 
     status, 
     headers: { 'Content-Type': 'application/json' }
   });
 
+// Success response helper
 const successResponse = (data: any) => 
   new Response(JSON.stringify(data), {
     headers: { 'Content-Type': 'application/json' }
   });
-
-// DO request helper
-async function callDurableObject(obj: DurableObjectStub, path: string, init?: RequestInit) {
-  const url = new URL(path, 'https://dummy-base');
-  const response = await obj.fetch(url.pathname + url.search, init);
-  
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`DO request failed: ${text}`);
-  }
-  
-  return response;
-}
 
 // Validate environment
 function validateEnvironment(env: Environment): string[] {
@@ -133,7 +121,7 @@ router.post('/upload', async (request, env: Environment) => {
 
     // Create sync job
     const jobStore = env.JOB_STORE.get(env.JOB_STORE.idFromName(userId));
-    const jobResponse = await callDurableObject(jobStore, '/create', {
+    const jobResponse = await jobStore.fetch('http://localhost/create', {
       method: 'POST',
       body: JSON.stringify({ 
         userId, 
@@ -142,6 +130,12 @@ router.post('/upload', async (request, env: Environment) => {
         expiresAt: Date.now() + JOB_EXPIRY
       })
     });
+
+    if (!jobResponse.ok) {
+      console.error('Failed to create job:', await jobResponse.text());
+      await env.HIGHLIGHTS_BUCKET.delete(fileKey);
+      return errorResponse('Failed to create job');
+    }
 
     const job = await jobResponse.json<Job>();
     console.log('Job created successfully:', job.id);
@@ -171,9 +165,12 @@ router.post('/sync', async (request, env: Environment) => {
 
     // Get job status
     console.log('Fetching job status...');
-    const jobResponse = await callDurableObject(jobStore, `/status?id=${jobId}`);
+    const jobResponse = await jobStore.fetch(`http://localhost/status?id=${jobId}`);
+    if (!jobResponse.ok) {
+      return errorResponse('Job not found', 404);
+    }
+
     const job = await jobResponse.json<Job>();
-    
     if (!job.fileKey || !job.workspaceId) {
       return errorResponse('Invalid job state', 400);
     }
@@ -187,7 +184,7 @@ router.post('/sync', async (request, env: Environment) => {
     // Check if job has expired
     if (job.expiresAt && job.expiresAt < Date.now()) {
       console.log('Job expired:', job.id);
-      await callDurableObject(jobStore, '/update', {
+      await jobStore.fetch('http://localhost/update', {
         method: 'POST',
         body: JSON.stringify({ id: jobId, status: 'expired' })
       });
@@ -197,7 +194,7 @@ router.post('/sync', async (request, env: Environment) => {
     try {
       // Update job status to processing
       console.log('Updating job status to processing...');
-      await callDurableObject(jobStore, '/update', {
+      await jobStore.fetch('http://localhost/update', {
         method: 'POST',
         body: JSON.stringify({ id: jobId, status: 'processing' })
       });
@@ -238,7 +235,7 @@ router.post('/sync', async (request, env: Environment) => {
 
         // Update progress
         const progress = Math.floor((i + BATCH_SIZE) / highlights.length * 100);
-        await callDurableObject(jobStore, '/update', {
+        await jobStore.fetch('http://localhost/update', {
           method: 'POST',
           body: JSON.stringify({ id: jobId, progress: Math.min(progress, 100) })
         });
@@ -249,7 +246,7 @@ router.post('/sync', async (request, env: Environment) => {
 
       // Mark job as completed
       console.log('Marking job as completed...');
-      await callDurableObject(jobStore, '/update', {
+      await jobStore.fetch('http://localhost/update', {
         method: 'POST',
         body: JSON.stringify({ 
           id: jobId, 
@@ -267,7 +264,7 @@ router.post('/sync', async (request, env: Environment) => {
       console.error('Sync error:', error);
       
       // Update job with error
-      await callDurableObject(jobStore, '/update', {
+      await jobStore.fetch('http://localhost/update', {
         method: 'POST',
         body: JSON.stringify({ 
           id: jobId, 
@@ -299,7 +296,7 @@ async function handleScheduled(env: Environment, ctx: ExecutionContext, type: st
   if (type === 'sync') {
     // Get all pending jobs from Durable Object
     console.log('Fetching pending jobs...');
-    const jobResponse = await callDurableObject(jobStore, '/list?status=pending');
+    const jobResponse = await jobStore.fetch('http://localhost/list?status=pending');
     const jobs = await jobResponse.json<Job[]>();
     console.log(`Found ${jobs.length} pending jobs`);
 
@@ -307,19 +304,19 @@ async function handleScheduled(env: Environment, ctx: ExecutionContext, type: st
     for (const job of jobs) {
       console.log(`Scheduling job ${job.id} for processing...`);
       ctx.waitUntil(
-        fetch(`https://${env.WORKER_HOST}/sync`, {
+        fetch(new Request('http://localhost/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             jobId: job.id,
             userId: job.userId
           })
-        })
+        }))
       );
     }
   } else if (type === 'cleanup') {
     console.log('Running job cleanup...');
-    const response = await callDurableObject(jobStore, '/cleanup', {
+    const response = await jobStore.fetch('http://localhost/cleanup', {
       method: 'POST'
     });
     const result = await response.json();

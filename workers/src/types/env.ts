@@ -8,9 +8,6 @@ export interface Environment {
   NOTION_CLIENT_ID: string;
   NOTION_CLIENT_SECRET: string;
   NOTION_REDIRECT_URI: string;
-
-  // Worker configuration
-  WORKER_HOST: string;
 }
 
 // R2 object metadata
