@@ -413,6 +413,14 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
 const userId = response.data.owner?.user?.id;
 await setOAuthToken(response.data);
 
+// Set userId cookie and include it in redirect URL
+res.cookie('userId', userId, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+});
+
 // Include userId in redirect URL
 res.redirect(`${process.env.CLIENT_URL}?auth=success&userId=${userId}`);
   } catch (error) {

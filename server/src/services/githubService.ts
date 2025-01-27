@@ -1,38 +1,40 @@
 import axios from 'axios';
 import { getUploadUrl, downloadObject } from './r2Service.js';
+import { jobStateService } from './jobStateService.js';
 
-const TOKEN_PREFIX = 'tokens/oauth/';
+import { listObjects } from './r2Service.js';
 
-async function getTokenData(retryCount = 0): Promise<{ userId: string; databaseId: string }> {
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY = 1000; // 1 second
-
+async function getTokenData(userId: string): Promise<{ userId: string; databaseId: string }> {
+  const NOTION_TOKEN_PREFIX = 'tokens/notion/';
+  
   try {
-    // Get token from R2 storage
-    const tokenKey = `${TOKEN_PREFIX}notion_token.json`; // Using a fixed path since we only support one user for now
-    const tokenData = await downloadObject(tokenKey);
-    const tokenDataObj = JSON.parse(tokenData.toString());
+    // List all token files
+    const tokens = await listObjects(NOTION_TOKEN_PREFIX);
     
-    if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
-      throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
+    // Find token file
+    for (const token of tokens) {
+      if (!token.key) continue;
+      
+      const tokenData = await downloadObject(token.key);
+      const tokenDataObj = JSON.parse(tokenData.toString());
+      
+      // Check if this token belongs to the user
+      if (tokenDataObj.userId === userId) {
+        if (!tokenDataObj.databaseId) {
+          throw new Error('No database ID found in token data');
+        }
+        
+        return {
+          userId: tokenDataObj.userId,
+          databaseId: tokenDataObj.databaseId
+        };
+      }
     }
-
-    if (!tokenDataObj.databaseId || typeof tokenDataObj.databaseId !== 'string') {
-      throw new Error(`Invalid database ID format: ${tokenDataObj.databaseId}`);
-    }
-
-    console.log('Successfully retrieved user ID and database ID from R2 token');
-    return {
-      userId: tokenDataObj.userId,
-      databaseId: tokenDataObj.databaseId
-    };
+    
+    throw new Error('No token found for user');
   } catch (error) {
-    if (retryCount < MAX_RETRIES) {
-      console.warn(`Retry ${retryCount + 1}/${MAX_RETRIES}: Failed to get token data, retrying...`, error);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * Math.pow(2, retryCount)));
-      return getTokenData(retryCount + 1);
-    }
-    throw error;
+    console.error('Error getting token data:', error);
+    throw new Error('Failed to get Notion token data');
   }
 }
 
@@ -42,8 +44,9 @@ export async function triggerProcessing(
   clientIp: string
 ): Promise<string> {
   console.log('Starting triggerProcessing...');
-  // Get real user ID and database ID from R2 with retries
-  const { userId, databaseId } = await getTokenData();
+  // Get database ID from R2 storage using the provided userId
+  const { databaseId } = await getTokenData(_userId);
+  const userId = _userId;
   console.log('Retrieved userId and databaseId from R2:', { userId, databaseId });
   
   // Generate unique file name with real user ID from token
@@ -175,16 +178,35 @@ export async function triggerProcessing(
       throw new Error(`GitHub token validation failed: ${errorDetails.message || errorDetails.fullError}`);
     }
 
-    // Prepare the payload with only file reference - no large content
+    // Format job ID consistently with the rest of the application
+    const jobId = `sync:${userId}:${Date.now()}`;
+
+    // Initialize job state
+    await jobStateService.createJob({
+      jobId,
+      fileName,
+      userId,
+      databaseId
+    });
+
+    // Update initial job state
+    await jobStateService.updateJobState(jobId, {
+      state: 'pending',
+      message: 'Preparing to process file',
+      progress: 0
+    });
+
+    // Prepare the payload with jobId and file reference
     const payload = {
       event_type: 'process_highlights',
       client_payload: {
-        fileName, // Only send the R2 file reference
+        jobId,  // Required by webhook.yml
+        fileName,
         userId,
-        databaseId, // Added databaseId from R2
+        databaseId,
         timestamp: new Date().toISOString(),
         clientIp,
-        fileSize: fileContent.length // Send file size for information
+        fileSize: fileContent.length
       }
     };
 
