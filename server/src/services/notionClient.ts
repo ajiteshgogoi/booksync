@@ -27,6 +27,9 @@ async function getOAuthToken(): Promise<string | null> {
     if (!objects || objects.length === 0) return null;
     
     // Get the first token file
+    if (!objects[0].key) {
+      return null;
+    }
     const tokenData = await downloadObject(objects[0].key);
     const parsed = JSON.parse(tokenData.toString());
     return JSON.stringify(parsed.tokenData);
@@ -297,10 +300,10 @@ export async function refreshToken(): Promise<void> {
 
 export async function clearAuth(): Promise<void> {
   try {
-    const token = await getRedisOAuthToken();
+    const token = await getOAuthToken();
     if (token) {
       const tokenData = JSON.parse(token);
-      await deleteRedisOAuthToken(tokenData.workspace_id);
+      await deleteOAuthToken(tokenData.workspace_id);
     }
     _client = null;
     _databaseId = null;
