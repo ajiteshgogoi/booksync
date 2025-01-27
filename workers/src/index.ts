@@ -2,11 +2,10 @@ import { Router } from 'itty-router';
 import type { Environment } from './types/env';
 import type { Job } from './types/job';
 import {
+  parseClippings,
   NotionStore,
   NotionClient,
-  createKVStore,
-  SyncService,
-  parseClippings
+  createKVStore
 } from '@booksync/shared';
 
 // Constants
@@ -225,29 +224,32 @@ router.post('/sync', async (request, env: Environment) => {
         throw new Error('No highlights found in file');
       }
 
-      // Initialize services
-      console.log('Initializing services...');
+      // Initialize Notion client
+      console.log('Initializing Notion client...');
       const notionClient = new NotionClient({
         store: notionStore,
         clientId: env.NOTION_CLIENT_ID,
         clientSecret: env.NOTION_CLIENT_SECRET
       });
 
-      const syncService = new SyncService(notionClient, {
-        batchSize: BATCH_SIZE,
-        batchDelay: 100,
-        onProgress: async (progress, message) => {
-          console.log(message);
-          await callDurableObject(jobStore, '/update', {
-            method: 'POST',
-            body: JSON.stringify({ id: jobId, progress: Math.min(progress, 100) })
-          });
-        }
-      });
+      // Process highlights in batches
+      console.log('Processing highlights in batches...');
+      for (let i = 0; i < highlights.length; i += BATCH_SIZE) {
+        const batch = highlights.slice(i, Math.min(i + BATCH_SIZE, highlights.length));
+        
+        console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(highlights.length / BATCH_SIZE)}`);
+        await notionClient.updateNotionDatabase(batch, job.workspaceId);
 
-      // Process highlights
-      console.log('Processing highlights...');
-      await syncService.syncHighlights(text, job.workspaceId);
+        // Update progress
+        const progress = Math.floor((i + BATCH_SIZE) / highlights.length * 100);
+        await callDurableObject(jobStore, '/update', {
+          method: 'POST',
+          body: JSON.stringify({ id: jobId, progress: Math.min(progress, 100) })
+        });
+
+        // Allow other requests to be processed
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
 
       // Mark job as completed
       console.log('Marking job as completed...');
