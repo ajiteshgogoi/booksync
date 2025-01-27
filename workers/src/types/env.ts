@@ -11,7 +11,6 @@ export interface Environment {
 
   // Worker configuration
   WORKER_HOST: string;
-  WORKER_API_KEY: string;
 }
 
 // R2 object metadata
