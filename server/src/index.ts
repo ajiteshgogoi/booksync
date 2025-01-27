@@ -181,7 +181,8 @@ app.get(`${apiBasePath}/auth/notion`, (req: Request, res: Response) => {
   try {
     const state = generateState();
     const clientId = process.env.NOTION_OAUTH_CLIENT_ID;
-    const redirectUri = process.env.NOTION_REDIRECT_URI;
+    const redirectUri = process.env.NOTION_REDIRECT_URI || 
+      `http://localhost:3001${apiBasePath}/auth/notion/callback`;
 
     if (!clientId) {
       return res.status(500).json({
@@ -225,8 +226,9 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
   }
 
   try {
-    const redirectUri = process.env.NOTION_REDIRECT_URI;
-    
+    const redirectUri = process.env.NOTION_REDIRECT_URI || 
+      `http://localhost:3001${apiBasePath}/auth/notion/callback`;
+
     const response = await axios.post('https://api.notion.com/v1/oauth/token', {
       grant_type: 'authorization_code',
       code: code,

@@ -166,22 +166,14 @@ export async function setOAuthToken(store: NotionStore, tokenData: NotionToken):
     console.log('[OAuth] Updating global store reference...');
     _store = store;
 
-    // Only initialize client if it hasn't been initialized yet
-    if (!_client) {
-      console.log('[OAuth] Initializing Notion client...');
-      _client = new Client({
-        auth: tokenData.access_token,
-      });
-    }
+    console.log('[OAuth] Initializing Notion client...');
+    _client = new Client({
+      auth: tokenData.access_token,
+    });
 
     // Find the database
     console.log('[OAuth] Searching for Kindle Highlights database...');
-    try {
-      await findKindleHighlightsDatabase();
-    } catch (error) {
-      console.error('[OAuth] Error finding database:', error);
-      // Continue with token storage even if database search fails
-    }
+    await findKindleHighlightsDatabase();
 
     // If we found the database ID, update it in store
     if (_databaseId) {
@@ -304,81 +296,30 @@ export async function clearAuth(): Promise<void> {
 }
 
 async function findKindleHighlightsDatabase() {
-  if (!_client) {
-    throw new Error('Notion client not initialized');
-  }
-  
-  const client = _client; // Cache the non-null client at the start
+  if (!_client) throw new Error('Notion client not initialized');
   
   try {
-    console.debug('Searching for Kindle Highlights database...');
-    // First try to find database using search
-    const response = await client.search({
-      query: 'Highlights',
-      page_size: 100,
-      // Per Notion API v2023-09-01, use this filter syntax
-      filter: { value: 'database', property: 'object' }
-    });
-
-    console.debug('Search results:', {
-      resultCount: response.results.length,
-      hasMore: response.has_more,
-      nextCursor: response.next_cursor
-    });
-
-    let searchResults = response;
-    if (response.results.length === 0) {
-      // If no results with query, try without query
-      console.debug('No results found, trying without query...');
-      searchResults = await client.search({
-        filter: {
-          property: 'object',
-          value: 'database'
-        },
-        page_size: 100
-      });
-      console.debug('Fallback search results:', {
-        resultCount: searchResults.results.length
-      });
-    }
-    
-    for (const result of searchResults.results) {
-      if (result.object !== 'database') {
-        console.debug('Skipping non-database result:', result.object);
-        continue;
+    const response = await _client.search({
+      filter: {
+        property: 'object',
+        value: 'database'
       }
+    });
+    
+    for (const result of response.results) {
+      if (result.object !== 'database') continue;
       
       try {
-        console.debug('Checking database:', result.id);
-        const db = await client.databases.retrieve({ database_id: result.id });
+        const db = await _client.databases.retrieve({ database_id: result.id });
         const props = db.properties;
         
-        const requiredProps = {
-          'Title': 'title',
-          'Author': 'rich_text',
-          'Highlights': 'number',
-          'Last Highlighted': 'date',
-          'Last Synced': 'date',
-          'Highlight Hash': 'rich_text'
-        };
-
-        const missingProps = Object.entries(requiredProps)
-          .filter(([name, type]) => props[name]?.type !== type)
-          .map(([name, type]) => ({
-            name,
-            expectedType: type,
-            actualType: props[name]?.type || 'missing'
-          }));
-
-        console.debug('Database property check:', {
-          databaseId: result.id,
-          hasAllProps: missingProps.length === 0,
-          missingProps
-        });
-
-        if (missingProps.length === 0) {
+        if (props.Title?.type === 'title' &&
+            props.Author?.type === 'rich_text' &&
+            props.Highlights?.type === 'number' &&
+            props['Last Highlighted']?.type === 'date' &&
+            props['Last Synced']?.type === 'date' &&
+            props['Highlight Hash']?.type === 'rich_text') {
           _databaseId = result.id;
-          console.debug('Found matching database:', result.id);
           break;
         }
       } catch (error) {
@@ -576,51 +517,9 @@ export class NotionClient {
         ownerType: token.owner.type
       });
 
-      console.log('[NotionClient] Processing token...');
-      
-      // Initialize the client first
-      console.log('[NotionClient] Initializing client...');
-      _client = new Client({
-        auth: token.access_token
-      });
-      
-      // Set store and store token
       console.log('[NotionClient] Storing token...');
-      _store = this.store;
-      await this.store.setToken(token);
+      await setOAuthToken(this.store, token);
       console.log('[NotionClient] Token stored successfully');
-      
-      // Search for database after client is initialized
-      console.log('[NotionClient] Searching for database...');
-      try {
-        await findKindleHighlightsDatabase();
-        if (_databaseId) {
-          console.log('[NotionClient] Found database:', _databaseId);
-          await this.store.setDatabaseId(token.workspace_id, _databaseId);
-        }
-      } catch (error) {
-        console.error('[NotionClient] Database search error:', error);
-        // Continue even if database search fails
-      }
-      
-      // Initialize client
-      console.log('[NotionClient] Initializing Notion client...');
-      _client = new Client({
-        auth: token.access_token
-      });
-      
-      // Search for database
-      console.log('[NotionClient] Searching for database...');
-      try {
-        await findKindleHighlightsDatabase();
-        if (_databaseId) {
-          console.log('[NotionClient] Found database:', _databaseId);
-          await this.store.setDatabaseId(token.workspace_id, _databaseId);
-        }
-      } catch (error) {
-        console.error('[NotionClient] Database search error:', error);
-        // Don't throw here - we can still proceed with the OAuth flow
-      }
 
       return token;
     } catch (error) {
