@@ -1,7 +1,6 @@
 import { logger } from './utils/logger.js';
 import { jobCleanupService } from './services/jobCleanupService.js';
 import { workerService } from './services/workerService.js';
-import { RedisPool } from './services/redisService.js';
 
 let isWorkerRunning = false;
 
@@ -40,8 +39,4 @@ export async function stopWorker(): Promise<void> {
 
 export function isWorkerActive(): boolean {
   return isWorkerRunning;
-}
-
-export function getCurrentJob(): string | null {
-  return workerService.getCurrentJob();
 }
