@@ -15,23 +15,12 @@
       "next"
     ],
     "outDir": "./build",
-    "rootDir": "../",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true
+    "forceConsistentCasingInFileNames": true
   },
-  "include": [
-    "src/**/*",
-    "../shared/src/**/*",
-    "../workers/src/**/*"
-  ],
-  "exclude": ["node_modules"],
-  "references": [
-    { "path": "../shared" },
-    { "path": "../workers" }
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
 }

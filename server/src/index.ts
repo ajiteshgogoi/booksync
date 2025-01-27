@@ -79,8 +79,6 @@ declare global {
   }
 }
 import axios from 'axios';
-import type { Job } from '../../workers/src/types/job.js';
-import { createKVStore } from '../../shared/src/services/kvStore.js';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { triggerProcessing } from './services/githubService.js';
@@ -91,7 +89,7 @@ import { rateLimiter } from './services/rateLimiter.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
-const app: express.Express = express();
+const app = express();
 const port = process.env.PORT || 3001;
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -100,28 +98,7 @@ const apiBasePath = process.env.NODE_ENV === 'production' ? '/api' : '';
 
 // Import handlers and services
 import { uploadUrlHandler } from './api/upload-url.js';
-import { createSyncValidationService, ValidationError } from './services/syncValidationService.js';
-import type { JobState } from './services/syncValidationService.js';
-
-// Create job state implementation for server environment
-const jobState: JobState = {
-  async getUserPendingJobs(userId: string): Promise<Job[]> {
-    try {
-      const response = await axios.get(`${process.env.JOB_STORE_URL || 'http://localhost:8787/jobs'}/list?userId=${userId}`);
-      if (response.status >= 400) {
-        throw new Error(`Failed to check user jobs: ${response.status} ${response.statusText}`);
-      }
-      return response.data;
-    } catch (error) {
-      console.error('[JobState] Error checking user jobs:', error);
-      throw new Error('Failed to check job status');
-    }
-  }
-};
-
-// Create sync validation service instance
-const kvStore = createKVStore();
-const syncValidationService = createSyncValidationService(kvStore, jobState);
+import { syncValidationService, ValidationError } from './services/syncValidationService.js';
 
 // Middlewares
 app.use(cors({
