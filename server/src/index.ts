@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 import axios from 'axios';
 import multer from 'multer';
 import qs from 'querystring';
-import { NotionStore, createKVStore } from '../../shared/src/index';
+import { NotionStore, createKVStore } from '../../shared/dist/index.js';
 
 // Configure dotenv
 function loadEnv() {
