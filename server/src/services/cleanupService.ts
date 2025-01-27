@@ -82,9 +82,8 @@ export class CleanupService {
               logger.debug(`Refreshed TTL for active job ${jobId} (user ${userId})`);
               return true;
             } else if (!status || !this.ACTIVE_STATES.includes(status.state)) {
-              // Acknowledge completed/failed jobs in the stream
-              await acknowledgeJob(messageId);
-              logger.debug(`Acknowledged completed/failed job ${jobId} in stream`);
+              // Log completed/failed jobs found in stream
+              logger.debug(`Found completed/failed job ${jobId} in stream`);
             }
           } catch (error) {
             logger.error(`Error checking job status for ${jobId}:`, error);
