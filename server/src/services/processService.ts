@@ -21,7 +21,7 @@ export async function processFileContent(
     // Create job ID
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create job metadata
+    // Create job metadata with initial 'pending' state
     await jobStateService.createJob({
       jobId,
       fileName: 'uploaded-content.txt',
@@ -37,6 +37,7 @@ export async function processFileContent(
     await tempStorageService.storeHighlights(jobId, highlights);
 
     // Queue the job for processing
+    // Note: queueSyncJob will update the state to 'queued' and then 'parsed'
     const jobIdFromQueue = await queueSyncJob(databaseId, fileContent, userId);
 
     // Add to processing queue
@@ -63,11 +64,22 @@ export async function processFile(jobId: string): Promise<void> {
       throw new Error('Job not found');
     }
 
-    // Update job state to queued
-    await jobStateService.updateJobState(jobId, {
-      state: 'queued',
-      message: 'Starting file processing'
-    });
+    // Get the current state
+    switch (jobState.state) {
+      case 'pending':
+        // Update to queued state when starting processing
+        await jobStateService.updateJobState(jobId, {
+          state: 'queued',
+          message: 'Starting file processing'
+        });
+        break;
+      case 'completed':
+      case 'failed':
+        logger.info(`Job ${jobId} is already in terminal state: ${jobState.state}`);
+        return;
+      default:
+        break;
+    }
 
     // Ensure we have highlights in temporary storage
     if (!await tempStorageService.exists(jobId, 'highlights')) {
@@ -83,12 +95,19 @@ export async function processFile(jobId: string): Promise<void> {
       const highlights = await parseClippings(fileContent);
       await tempStorageService.storeHighlights(jobId, highlights);
 
-      // Update job state to parsed
+      // Update state to parsed once highlights are ready
       await jobStateService.updateJobState(jobId, {
         state: 'parsed',
         message: 'File parsed successfully',
         total: highlights.length
       });
+    }
+
+    // Don't proceed with processing if job isn't in 'parsed' state
+    const updatedState = await jobStateService.getJobState(jobId);
+    if (updatedState?.state !== 'parsed') {
+      logger.info(`Job ${jobId} not ready for processing, current state: ${updatedState?.state}`);
+      return;
     }
 
     // Process the job using existing syncService

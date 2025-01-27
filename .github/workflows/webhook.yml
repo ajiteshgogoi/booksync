@@ -61,7 +61,7 @@ jobs:
           npm run build
           echo "Build complete"
 
-      - name: Process File
+      - name: Parse File
         if: success()
         working-directory: server
         env:
@@ -80,21 +80,23 @@ jobs:
           echo "  - SECRET_KEY: ${R2_SECRET_ACCESS_KEY:+configured}"
           echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
           
-          echo "Starting file processing..."
+          echo "Starting file parsing..."
           node --experimental-vm-modules -e "
           (async () => {
             try {
               const { processFile } = await import('./build/src/services/processService.js');
               const { jobStateService } = await import('./build/src/services/jobStateService.js');
-              const { storageCleanupService } = await import('./build/src/services/storageCleanupService.js');
               
-              // Process the file
+              // Process will update state: pending -> queued -> parsed
               await processFile(process.env.JOB_ID);
               
-              // Run storage cleanup after successful processing
-              await storageCleanupService.cleanupJob(process.env.JOB_ID);
+              // Verify state is now 'parsed'
+              const jobState = await jobStateService.getJobState(process.env.JOB_ID);
+              if (jobState?.state !== 'parsed') {
+                throw new Error('Job failed to reach parsed state');
+              }
               
-              console.log('Processing completed successfully');
+              console.log('File parsing completed successfully');
               process.exit(0);
             } catch (error) {
               console.error('Error:', error);

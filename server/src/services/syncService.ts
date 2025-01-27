@@ -39,14 +39,21 @@ export async function queueSyncJob(
     await tempStorageService.storeProcessingState(jobId, {
       databaseId,
       userId,
-      stage: 'deduplication',
+      stage: 'initialization',
+      progress: 0
+    });
+
+    // Update job state to queued when starting processing
+    await jobStateService.updateJobState(jobId, {
+      state: 'queued',
+      message: 'Starting file processing',
       progress: 0
     });
 
     // Get Notion client to check for existing highlights
     const notionClient = await getClient();
 
-    // Group highlights by book title and store in temp storage
+    // Get highlights from temp storage
     const bookHighlights = await tempStorageService.getHighlights(jobId);
     const bookMap = new Map<string, Highlight[]>();
     
@@ -90,14 +97,14 @@ export async function queueSyncJob(
     // Store unique highlights back to temp storage
     await tempStorageService.storeHighlights(jobId, uniqueHighlights);
 
-    // Update job status
+    // Update job state to parsed after successful processing
     await jobStateService.updateJobState(jobId, {
-      status: 'pending',
-      progress: 0,
+      state: 'parsed',
       message: uniqueHighlights.length > 0 
         ? `Found ${uniqueHighlights.length} new highlights to process`
         : 'No new highlights to process',
-      totalHighlights: uniqueHighlights.length
+      total: uniqueHighlights.length,
+      progress: 0
     });
 
     return jobId;
@@ -126,7 +133,7 @@ export async function processSyncJob(
 
     if (total === 0) {
       await jobStateService.updateJobState(jobId, {
-        status: 'completed',
+        state: 'completed',
         progress: 100,
         message: 'No highlights to process'
       });
@@ -159,10 +166,9 @@ export async function processSyncJob(
           const progressMessage = `Processing ${currentProcessed}/${total} highlights`;
           
           await jobStateService.updateJobState(jobId, {
-            status: 'processing',
+            state: 'processing',
             progress,
-            message: progressMessage,
-            processedHighlights: currentProcessed
+            message: progressMessage
           });
           
           if (onProgress) {
@@ -188,12 +194,11 @@ export async function processSyncJob(
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
     }
 
-    // Update final status
+    // Update final state
     await jobStateService.updateJobState(jobId, {
-      status: 'completed',
+      state: 'completed',
       progress: 100,
-      message: 'Sync completed successfully',
-      processedHighlights: total
+      message: 'Sync completed successfully'
     });
 
     logger.info('Highlights sync completed', {
@@ -205,9 +210,9 @@ export async function processSyncJob(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     await jobStateService.updateJobState(jobId, {
-      status: 'failed',
+      state: 'failed',
       message: `Sync failed: ${errorMessage}`,
-      error: errorMessage
+      errorDetails: errorMessage
     });
     throw error;
   }

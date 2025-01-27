@@ -53,13 +53,13 @@ export class StorageCleanupService {
 
       for (const job of jobs) {
         try {
-          // Check if job is completed or failed
-          if (job.status === 'completed' || job.status === 'failed') {
+          // Check if job is in terminal state
+          if (jobStateService.isTerminalState(job.state)) {
             // Check if job is older than TTL
             if (job.updatedAt < now - TEMP_FILE_TTL) {
               logger.info('Cleaning up old job files', {
                 jobId: job.jobId,
-                status: job.status,
+                state: job.state,
                 age: Math.round((now - job.updatedAt) / (60 * 60 * 1000)) + ' hours'
               });
 
@@ -67,15 +67,13 @@ export class StorageCleanupService {
               await tempStorageService.cleanupJob(job.jobId);
 
               // Delete job metadata if job is completed
-              // Keep failed job metadata for debugging
-              if (job.status === 'completed') {
+              if (job.state === 'completed') {
                 await jobStateService.deleteJob(job.jobId);
               }
             }
           }
         } catch (error) {
           logger.error('Error cleaning up job:', { jobId: job.jobId, error });
-          // Continue with next job even if one fails
           continue;
         }
       }
@@ -87,7 +85,6 @@ export class StorageCleanupService {
     }
   }
 
-  // Manual cleanup for a specific job
   async cleanupJob(jobId: string): Promise<void> {
     try {
       const job = await jobStateService.getJobState(jobId);
@@ -96,11 +93,9 @@ export class StorageCleanupService {
         return;
       }
 
-      // Clean up temp storage regardless of job status
       await tempStorageService.cleanupJob(jobId);
 
-      // Only delete job metadata if job is completed
-      if (job.status === 'completed') {
+      if (job.state === 'completed') {
         await jobStateService.deleteJob(jobId);
       }
 
