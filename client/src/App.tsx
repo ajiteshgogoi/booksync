@@ -8,18 +8,19 @@ type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'valida
 const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
 
 function App() {
-  const checkAuthExpiration = () => {
-    const authTimestamp = localStorage.getItem('authTimestamp');
-    if (!authTimestamp) return false;
-    
-    const expirationTime = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const elapsed = Date.now() - parseInt(authTimestamp);
-    return elapsed < expirationTime;
+  const checkAuth = async () => {
+    try {
+      const response = await fetch(`${apiBase}/auth/check`, {
+        credentials: 'include'
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      return false;
+    }
   };
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('isAuthenticated') === 'true' && checkAuthExpiration();
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -85,11 +86,10 @@ function App() {
   const handleSync = async () => {
     if (!file || highlightCount === 0) return;
     
-    // Check auth expiration before sync
-    if (!checkAuthExpiration()) {
+    // Check auth status before sync
+    const isStillAuthenticated = await checkAuth();
+    if (!isStillAuthenticated) {
       setIsAuthenticated(false);
-      localStorage.removeItem('isAuthenticated');
-      localStorage.removeItem('authTimestamp');
       setErrorMessage('Your session has expired. Please reconnect to Notion.');
       return;
     }
@@ -147,8 +147,6 @@ function App() {
   useEffect(() => {
     // Initialize authentication state
     const initializeAuth = async () => {
-      const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
-      
       // Check URL parameters for auth status
       const searchParams = new URLSearchParams(window.location.search);
       const authResult = searchParams.get('auth');
@@ -157,52 +155,34 @@ function App() {
       // Clear URL parameters regardless of result
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      if (authResult === 'success') {
-        const userId = searchParams.get('userId');
-        setIsAuthenticated(true);
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('authTimestamp', Date.now().toString());
-        if (userId) {
-          localStorage.setItem('userId', userId);
-        }
-      } else if (authResult === 'error' || error) {
-        setIsAuthenticated(false);
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('authTimestamp');
+      if (error) {
         setErrorMessage(error === 'Invalid OAuth state' ?
           'Connection to Notion was canceled. Please try again.' :
           'Failed to connect to Notion. Please try again.');
+        return;
       }
 
-      // Check authentication status
-      try {
-        const authResponse = await fetch(`${apiBase}/auth/check`, {
-          credentials: 'include'
-        });
-        if (authResponse.ok) {
-          setIsAuthenticated(true);
-          localStorage.setItem('isAuthenticated', 'true');
-        } else {
-          setIsAuthenticated(false);
-          localStorage.removeItem('isAuthenticated');
-        }
-      } catch (error) {
-        setIsAuthenticated(false);
-        localStorage.removeItem('isAuthenticated');
+      // Check server-side auth status
+      const isAuthed = await checkAuth();
+      setIsAuthenticated(isAuthed);
+
+      if (!isAuthed && authResult === 'success') {
+        setErrorMessage('Failed to verify authentication. Please try reconnecting to Notion.');
       }
     };
 
     initializeAuth().catch(console.error);
   }, []);
 
-  // Check auth expiration periodically
+  // Check auth status periodically
   useEffect(() => {
-    const checkInterval = setInterval(() => {
-      if (isAuthenticated && !checkAuthExpiration()) {
-        setIsAuthenticated(false);
-        localStorage.removeItem('isAuthenticated');
-        localStorage.removeItem('authTimestamp');
-        setErrorMessage('Your session has expired. Please reconnect to Notion.');
+    const checkInterval = setInterval(async () => {
+      if (isAuthenticated) {
+        const isStillAuthenticated = await checkAuth();
+        if (!isStillAuthenticated) {
+          setIsAuthenticated(false);
+          setErrorMessage('Your session has expired. Please reconnect to Notion.');
+        }
       }
     }, 60 * 1000); // Check every minute
 
@@ -330,14 +310,17 @@ function App() {
               {syncStatus !== 'queued' && (
                   <button
                     onClick={async () => {
-                      localStorage.removeItem('isAuthenticated');
-                      localStorage.removeItem('authTimestamp');
-                      localStorage.removeItem('userId');
-                      await fetch(`${apiBase}/auth/disconnect`, {
-                        method: 'POST',
-                        credentials: 'include'
-                      });
-                      window.location.href = '/';
+                      try {
+                        await fetch(`${apiBase}/auth/disconnect`, {
+                          method: 'POST',
+                          credentials: 'include'
+                        });
+                        setIsAuthenticated(false);
+                        setErrorMessage(null);
+                        window.location.href = '/';
+                      } catch (error) {
+                        setErrorMessage('Failed to disconnect. Please try again.');
+                      }
                     }}
                     className={`mt-4 max-w-sm mx-auto bg-[#991b1b] hover:bg-[#7f1d1d] text-white text-center font-medium px-6 py-2 rounded-md transition-colors font-serif block ${
                       ['parsing', 'queued', 'starting', 'validating'].includes(syncStatus)

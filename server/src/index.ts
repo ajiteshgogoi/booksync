@@ -38,7 +38,9 @@ function loadEnv() {
       'R2_ENDPOINT',
       'R2_ACCESS_KEY_ID',
       'R2_SECRET_ACCESS_KEY',
-      'R2_BUCKET_NAME'
+      'R2_BUCKET_NAME',
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN'
     ];
   
   const missing = required.filter(key => !process.env[key]);
@@ -319,12 +321,23 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 // Auth check endpoint
 app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
-    const client = await getClient();
-    if (client) {
-      res.status(200).json({ authenticated: true });
-    } else {
-      res.status(401).json({ authenticated: false });
+    const userId = req.cookies.userId;
+    if (!userId) {
+      return res.status(401).json({ authenticated: false });
     }
+
+    const { upstashService } = await import('./services/upstashService.js');
+    const userState = await upstashService.getUserState(userId);
+
+    if (userState && userState.oauthToken) {
+      // Also verify Notion client still works
+      const client = await getClient();
+      if (client) {
+        return res.status(200).json({ authenticated: true });
+      }
+    }
+
+    res.status(401).json({ authenticated: false });
   } catch (error) {
     console.error('Auth check error:', error);
     res.status(500).json({ error: 'Failed to check authentication status' });
@@ -411,7 +424,20 @@ app.get(`${apiBasePath}/auth/notion/callback`, async (req: Request, res: Respons
       }
     });
 const userId = response.data.owner?.user?.id;
+const workspaceId = response.data.workspace_id;
+const oauthToken = response.data.access_token;
+
+// Store OAuth data in Upstash
 await setOAuthToken(response.data);
+
+// Store user state in Upstash
+const { upstashService } = await import('./services/upstashService.js');
+await upstashService.saveUserState(userId, {
+  oauthToken,
+  userId,
+  workspaceId,
+  databaseId: '' // Will be set later when user selects database
+});
 
 // Set userId cookie and include it in redirect URL
 res.cookie('userId', userId, {
@@ -458,7 +484,19 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response)
 
 app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
   try {
+    const userId = req.cookies.userId;
+    if (userId) {
+      // Clear user state from Upstash
+      const { upstashService } = await import('./services/upstashService.js');
+      await upstashService.deleteUserState(userId);
+    }
+    
+    // Clear Notion auth
     await clearAuth();
+    
+    // Clear cookie
+    res.clearCookie('userId');
+    
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Disconnect error:', error);
