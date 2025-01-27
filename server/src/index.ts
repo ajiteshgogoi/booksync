@@ -33,14 +33,13 @@ function loadEnv() {
   
   // Validate required environment variables
   const required = [
-    'NOTION_OAUTH_CLIENT_ID',
-    'NOTION_OAUTH_CLIENT_SECRET',
-    'REDIS_URL',
-    'R2_ENDPOINT',
-    'R2_ACCESS_KEY_ID', 
-    'R2_SECRET_ACCESS_KEY',
-    'R2_BUCKET_NAME'
-  ];
+      'NOTION_OAUTH_CLIENT_ID',
+      'NOTION_OAUTH_CLIENT_SECRET',
+      'R2_ENDPOINT',
+      'R2_ACCESS_KEY_ID',
+      'R2_SECRET_ACCESS_KEY',
+      'R2_BUCKET_NAME'
+    ];
   
   const missing = required.filter(key => !process.env[key]);
   if (missing.length > 0) {
@@ -52,8 +51,7 @@ function loadEnv() {
     NOTION_CONFIG: {
       clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
       redirectUri: process.env.NOTION_REDIRECT_URI || 'http://localhost:3001/auth/notion/callback'
-    },
-    REDIS_URL: process.env.REDIS_URL ? 'configured' : 'missing'
+    }
   });
 }
 
@@ -84,17 +82,14 @@ import axios from 'axios';
 import multer from 'multer';
 import { startWorker } from './worker.js';
 import { processSyncJob, getSyncStatus } from './services/syncService.js';
-import { getRedis, redisPool } from './services/redisService.js';
 import type { JobStatus } from './types/job.js';
 import { jobStateService } from './services/jobStateService.js';
-import { verifyRedisConnection } from './utils/redisUtils.js';
-import { addJobToQueue } from './services/redisJobService.js';
+import { queueService } from './services/queueService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
 import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
 import { rateLimiter } from './services/rateLimiter.js';
-import { startCleanupScheduler, stopCleanupScheduler } from './services/redisService.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
 
@@ -198,9 +193,6 @@ app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
       clientId: process.env.NOTION_OAUTH_CLIENT_ID ? 'configured' : 'missing',
       redirectUri: process.env.NOTION_REDIRECT_URI || 'using default',
       clientSecret: process.env.NOTION_OAUTH_CLIENT_SECRET ? 'configured' : 'missing'
-    },
-    redisConfig: {
-      url: process.env.REDIS_URL ? 'configured' : 'missing'
     }
   };
   
@@ -498,42 +490,14 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     const fileContent = req.file.buffer.toString('utf-8');
 
-    // Get real user ID from Redis OAuth token
-    let userId;
-    let redis;
-    try {
-      // Get token data from Redis
-      redis = await getRedis();
-      const keys = await redis.keys('oauth:*');
-      
-      if (keys.length === 0) {
-        throw new Error('No OAuth tokens found in Redis');
-      }
-      
-      const tokenData = await redis.get(keys[0]);
-      if (!tokenData) {
-        throw new Error('Failed to retrieve token data from Redis');
-      }
-
-      const tokenDataObj = JSON.parse(tokenData);
-      if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
-        throw new Error('Invalid or missing user ID in token data');
-      }
-
-      userId = tokenDataObj.userId;
-      console.log('Processing for user:', userId);
-    } catch (error) {
-      console.error('Failed to get user ID from Redis:', error);
+    // Get user ID from the client request
+    const userId = req.cookies.userId;
+    if (!userId) {
       return res.status(401).json({
         error: 'Authentication required',
         message: 'Please reconnect to Notion'
       });
-    } finally {
-      if (redis) {
-        await redisPool.release(redis);
-      }
     }
-
 
     // Increment rate limit counter after validation passes
     rateLimiter.increment(clientIp);
@@ -563,38 +527,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     console.log('File content length:', fileContent.length);
     console.log('Preview:', fileContent.slice(0, 200));
     
-    // Verify Redis connection first
-    console.log('\n=== Verifying Redis Connection ===');
     try {
-      try {
-        const redisTest = await verifyRedisConnection({
-          maxRetries: 3,
-          retryDelay: 1000,
-          timeout: 5000
-        });
-
-        console.log('✅ Redis connection verified successfully', {
-          pingResponse: redisTest.pingResponse,
-          testOperation: redisTest.testOperation,
-          connectionTime: redisTest.connectionTime,
-          retryCount: redisTest.retryCount
-        });
-      } catch (redisError) {
-        console.error('❌ Redis connection failed:', {
-          error: redisError instanceof Error ? redisError.stack : redisError,
-          redisUrl: process.env.REDIS_URL,
-          connectionTime: new Date().toISOString()
-        });
-        
-        await jobStateService.updateJobState(jobId, {
-          state: 'failed',
-          message: 'Redis connection failed - please try again',
-          progress: 0,
-          errorDetails: redisError instanceof Error ? redisError.message : 'Unknown Redis error'
-        });
-        
-        throw new Error('Redis connection failed');
-      }
 
       console.log('=== Starting File Processing ===');
       console.log('Trigger Details:', {
@@ -608,11 +541,11 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       
       console.log('Starting job processing...');
       try {
-        // First add job to queue which will add user to active set
-        await addJobToQueue(jobId, userId);
+        // Add job to queue
+        await queueService.addToQueue(jobId, userId);
         console.log('Job added to queue');
 
-        // Then trigger GitHub processing
+        // Trigger GitHub processing
         const result = await triggerProcessing(fileContent, userId, clientIp);
         console.log('\n✅ Successfully triggered GitHub processing:', {
           jobId,
@@ -639,7 +572,7 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       } catch (error) {
         console.error('Failed to trigger GitHub processing:', error);
         const errorMessage = error instanceof Error ?
-          `${error.message} (Redis connected: true)` :
+          error.message :
           'Unknown error occurred while triggering processing';
 
         await jobStateService.updateJobState(jobId, {
@@ -678,15 +611,6 @@ if (!process.env.VERCEL) {
   const server = app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
     
-    
-    // Start Redis cleanup scheduler
-    try {
-      await startCleanupScheduler();
-      console.log('Redis cleanup scheduler started');
-    } catch (error) {
-      console.error('Failed to start Redis cleanup scheduler:', error);
-    }
-    
     if (process.env.NODE_ENV !== 'production') {
       // Start continuous background worker for local development
       workerInterval = setInterval(async () => {
@@ -704,14 +628,6 @@ if (!process.env.VERCEL) {
     console.log('Server shutting down...');
     if (workerInterval) {
       clearInterval(workerInterval);
-    }
-    
-    // Stop Redis cleanup scheduler
-    try {
-      await stopCleanupScheduler();
-      console.log('Redis cleanup scheduler stopped');
-    } catch (error) {
-      console.error('Failed to stop Redis cleanup scheduler:', error);
     }
     
     server.close();

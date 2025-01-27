@@ -1,25 +1,17 @@
 import axios from 'axios';
-import { getUploadUrl } from './r2Service.js';
-import { getRedis } from './redisService.js';
+import { getUploadUrl, downloadObject } from './r2Service.js';
+
+const TOKEN_PREFIX = 'tokens/oauth/';
 
 async function getTokenData(retryCount = 0): Promise<{ userId: string; databaseId: string }> {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
 
   try {
-    const redis = await getRedis();
-    const keys = await redis.keys('oauth:*');
-    
-    if (keys.length === 0) {
-      throw new Error('No OAuth tokens found in Redis');
-    }
-    
-    const tokenData = await redis.get(keys[0]);
-    if (!tokenData) {
-      throw new Error('Failed to retrieve token data from Redis');
-    }
-
-    const tokenDataObj = JSON.parse(tokenData);
+    // Get token from R2 storage
+    const tokenKey = `${TOKEN_PREFIX}notion_token.json`; // Using a fixed path since we only support one user for now
+    const tokenData = await downloadObject(tokenKey);
+    const tokenDataObj = JSON.parse(tokenData.toString());
     
     if (!tokenDataObj.userId || typeof tokenDataObj.userId !== 'string') {
       throw new Error(`Invalid user ID format: ${tokenDataObj.userId}`);
@@ -29,7 +21,7 @@ async function getTokenData(retryCount = 0): Promise<{ userId: string; databaseI
       throw new Error(`Invalid database ID format: ${tokenDataObj.databaseId}`);
     }
 
-    console.log('Successfully retrieved user ID and database ID from Redis token');
+    console.log('Successfully retrieved user ID and database ID from R2 token');
     return {
       userId: tokenDataObj.userId,
       databaseId: tokenDataObj.databaseId
@@ -46,15 +38,15 @@ async function getTokenData(retryCount = 0): Promise<{ userId: string; databaseI
 
 export async function triggerProcessing(
   fileContent: string,
-  _userId: string, // Kept for compatibility but we use Redis token
+  _userId: string, // Kept for compatibility but we use stored token
   clientIp: string
 ): Promise<string> {
   console.log('Starting triggerProcessing...');
-  // Get real user ID and database ID from Redis with retries
+  // Get real user ID and database ID from R2 with retries
   const { userId, databaseId } = await getTokenData();
-  console.log('Retrieved userId and databaseId from Redis:', { userId, databaseId });
+  console.log('Retrieved userId and databaseId from R2:', { userId, databaseId });
   
-  // Generate unique file name with real user ID from Redis
+  // Generate unique file name with real user ID from token
   const fileName = `clippings-${userId}-${Date.now()}.txt`;
   
   try {
@@ -189,7 +181,7 @@ export async function triggerProcessing(
       client_payload: {
         fileName, // Only send the R2 file reference
         userId,
-        databaseId, // Added databaseId from Redis
+        databaseId, // Added databaseId from R2
         timestamp: new Date().toISOString(),
         clientIp,
         fileSize: fileContent.length // Send file size for information

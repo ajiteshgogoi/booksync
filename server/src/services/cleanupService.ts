@@ -1,6 +1,18 @@
-import { getRedis, redisPool, ACTIVE_USERS_SET, STREAM_NAME, getJobStatus, JOB_TTL, acknowledgeJob } from './redisService.js';
-import type { JobStatus } from '../types/job.js';
+import { jobStateService, type JobMetadata } from './jobStateService.js';
 import { logger } from '../utils/logger.js';
+import { uploadObject, deleteObject, listObjects, downloadObject } from './r2Service.js';
+
+const ACTIVE_USERS_PREFIX = 'active-users/';
+const UPLOADS_PREFIX = 'uploads/';
+const JOB_STATE_PREFIX = 'jobs/';
+const LOCK_TIMEOUT = 30000; // 30 seconds
+const LOCK_FILE_PREFIX = 'locks/';
+
+interface Lock {
+  lockedBy: string;
+  acquiredAt: number;
+  expiresAt: number;
+}
 
 interface UserState {
   hasActiveUploads: boolean;
@@ -9,196 +21,184 @@ interface UserState {
 
 /**
  * Unified cleanup service that handles both upload and job cleanup
- * while maintaining consistency of the ACTIVE_USERS_SET
+ * while maintaining consistency of the active users set in R2
  */
 export class CleanupService {
   private static readonly ACTIVE_STATES = ['pending', 'processing', 'queued'];
+  private static workerId: string = `worker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  private static async acquireLock(resource: string): Promise<boolean> {
+    const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
+    const now = Date.now();
+    const lock: Lock = {
+      lockedBy: this.workerId,
+      acquiredAt: now,
+      expiresAt: now + LOCK_TIMEOUT
+    };
+
+    try {
+      await uploadObject(lockFile, JSON.stringify(lock));
+      return true;
+    } catch (error) {
+      // If file already exists, check if lock is expired
+      try {
+        const existingLock = JSON.parse(await downloadObject(lockFile).then(b => b.toString())) as Lock;
+        if (existingLock.expiresAt < now) {
+          // Lock is expired, try to acquire it
+          await uploadObject(lockFile, JSON.stringify(lock));
+          return true;
+        }
+      } catch (error) {
+        logger.error('Error checking existing lock:', error);
+      }
+      return false;
+    }
+  }
+
+  private static async releaseLock(resource: string): Promise<void> {
+    const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
+    try {
+      // Delete the lock file
+      await deleteObject(lockFile);
+    } catch (error) {
+      logger.error('Error releasing lock:', error);
+    }
+  }
 
   /**
-   * Get all users currently marked as active
+   * Get all users currently marked as active in R2
    */
   private static async getActiveUsers(): Promise<string[]> {
-    const redis = await getRedis();
-    try {
-      return await redis.smembers(ACTIVE_USERS_SET);
-    } finally {
-      redisPool.release(redis);
+    if (!await this.acquireLock('active-users')) {
+      throw new Error('Could not acquire active users lock');
     }
-  }
 
-  /**
-   * Check if user has any active uploads and handle TTL
-   */
-  private static async checkUserUploads(userId: string): Promise<boolean> {
-    const redis = await getRedis();
     try {
-      const uploadStatus = await redis.get(`UPLOAD_STATUS:${userId}`);
-      if (!uploadStatus) {
-        logger.debug(`No upload status found for user ${userId}`);
-        return false;
-      }
-
-      const ttl = await redis.ttl(`UPLOAD_STATUS:${userId}`);
-      if (ttl <= 0) {
-        logger.debug(`Upload status expired for user ${userId}`);
-        return false;
-      }
-
-      // If upload is still valid, refresh TTL
-      await Promise.all([
-        redis.expire(`UPLOAD_STATUS:${userId}`, JOB_TTL),
-        redis.expire(`UPLOAD_JOBS:${uploadStatus}`, JOB_TTL)
-      ]);
-      logger.debug(`Refreshed TTL for active upload ${uploadStatus} (user ${userId})`);
-      return true;
-    } finally {
-      redisPool.release(redis);
-    }
-  }
-
-  /**
-   * Check if user has any active jobs in the stream
-   */
-  private static async checkUserJobs(userId: string): Promise<boolean> {
-    const redis = await getRedis();
-    try {
-      const results = await redis.xread('STREAMS', STREAM_NAME, '0-0');
-      if (!results || results.length === 0) return false;
-
-      const streamMessages = results[0][1];
-      if (!streamMessages || streamMessages.length === 0) return false;
-
-      // Check if any job belongs to the user and is still active
-      for (const [messageId, fields] of streamMessages) {
-        const jobId = fields[fields.indexOf('jobId') + 1];
-        const jobUserId = fields[fields.indexOf('userId') + 1];
-        
-        if (jobUserId === userId) {
-          try {
-            const status = await getJobStatus(jobId);
-            if (status && this.ACTIVE_STATES.includes(status.state)) {
-              // Refresh TTL for active job status
-              await redis.expire(`job:${jobId}:status`, JOB_TTL);
-              logger.debug(`Refreshed TTL for active job ${jobId} (user ${userId})`);
-              return true;
-            } else if (!status || !this.ACTIVE_STATES.includes(status.state)) {
-              // Log completed/failed jobs found in stream
-              logger.debug(`Found completed/failed job ${jobId} in stream`);
-            }
-          } catch (error) {
-            logger.error(`Error checking job status for ${jobId}:`, error);
-            continue;
+      const activeUsers: string[] = [];
+      const objects = await listObjects(ACTIVE_USERS_PREFIX);
+      if (objects) {
+        for (const obj of objects) {
+          if (obj.key) {
+            const userId = obj.key.replace(ACTIVE_USERS_PREFIX, '').replace('.json', '');
+            activeUsers.push(userId);
           }
         }
       }
-      
-      return false;
+      return activeUsers;
     } finally {
-      redisPool.release(redis);
+      await this.releaseLock('active-users');
     }
   }
 
   /**
-   * Clean up stale upload keys for a user
+   * Check if user has any active uploads in R2
+   */
+  private static async checkUserUploads(userId: string): Promise<boolean> {
+    try {
+      const uploadKey = `${UPLOADS_PREFIX}${userId}.json`;
+      const uploadData = await downloadObject(uploadKey);
+      if (uploadData) {
+        // If upload exists, it's considered active
+        return true;
+      }
+    } catch (error) {
+      // If object doesn't exist or any other error, consider it inactive
+      logger.debug(`No active upload found for user ${userId}`);
+    }
+    return false;
+  }
+
+  /**
+   * Check if user has any active jobs
+   */
+  private static async checkUserJobs(userId: string): Promise<boolean> {
+    const userJobs = await jobStateService.listJobsByUser(userId);
+    return userJobs.some(job => this.ACTIVE_STATES.includes(job.state));
+  }
+
+  /**
+   * Clean up user's upload key in R2
    */
   private static async cleanupUserUploads(userId: string): Promise<void> {
-    const redis = await getRedis();
+    if (!await this.acquireLock('uploads')) {
+      throw new Error('Could not acquire uploads lock');
+    }
+
     try {
-      const uploadId = await redis.get(`UPLOAD_STATUS:${userId}`);
-      if (uploadId) {
-        const ttl = await redis.ttl(`UPLOAD_STATUS:${userId}`);
-        if (ttl <= 0) {
-          await Promise.all([
-            redis.del(`UPLOAD_STATUS:${userId}`),
-            redis.del(`UPLOAD_JOBS:${uploadId}`)
-          ]);
-          logger.info(`Cleaned up stale upload ${uploadId} for user ${userId}`);
-        }
-      }
+      const uploadKey = `${UPLOADS_PREFIX}${userId}.json`;
+      await deleteObject(uploadKey);
+      logger.info(`Cleaned up upload for user ${userId}`);
     } catch (error) {
       logger.error(`Error cleaning up uploads for user ${userId}:`, error);
     } finally {
-      redisPool.release(redis);
+      await this.releaseLock('uploads');
     }
   }
 
   /**
-   * Clean up expired job statuses and their related resources
+   * Clean up expired job statuses using jobStateService
    */
   private static async cleanupStaleJobs(): Promise<void> {
-    const redis = await getRedis();
+    if (!await this.acquireLock('jobs')) {
+      throw new Error('Could not acquire jobs lock');
+    }
+
     try {
-      const keys = await redis.keys('job:*:status');
-      for (const key of keys) {
-        try {
-          const ttl = await redis.ttl(key);
-          if (ttl <= 0) {
-            const jobStatus = await redis.get(key);
-            if (jobStatus) {
-              try {
-                const status: JobStatus = JSON.parse(jobStatus);
-                if (status.uploadId) {
-                  const jobId = key.split(':')[1];
-                  // Remove job from upload tracking and possibly trigger upload cleanup
-                  await redis.srem(`UPLOAD_JOBS:${status.uploadId}`, jobId);
-                  
-                  // Check if this was the last job in the upload
-                  const remainingJobs = await redis.scard(`UPLOAD_JOBS:${status.uploadId}`);
-                  if (remainingJobs === 0 && status.userId) {
-                    // Clean up the upload entirely
-                    await Promise.all([
-                      redis.del(`UPLOAD_STATUS:${status.userId}`),
-                      redis.del(`UPLOAD_JOBS:${status.uploadId}`)
-                    ]);
-                    logger.info(`Cleaned up completed upload ${status.uploadId} for user ${status.userId}`);
-                  }
-                }
-              } catch (parseError) {
-                logger.error(`Error parsing job status for ${key}:`, parseError);
-              }
-            }
-            await redis.del(key);
-            logger.debug(`Removed expired job status key: ${key}`);
-          }
-        } catch (error) {
-          logger.error(`Error processing stale job key ${key}:`, error);
-          continue;
-        }
+      const allJobs = await jobStateService.listAllJobs();
+      const now = Date.now();
+      const expiredJobs = allJobs.filter((job: JobMetadata) => {
+        return jobStateService.isTerminalState(job.state) &&
+               now - job.updatedAt > 86400000; // 24 hours
+      });
+
+      for (const job of expiredJobs) {
+        await jobStateService.deleteJob(job.jobId);
+        logger.debug(`Removed expired job: ${job.jobId}`);
       }
+    } catch (error) {
+      logger.error('Error cleaning up stale jobs:', error);
     } finally {
-      redisPool.release(redis);
+      await this.releaseLock('jobs');
     }
   }
 
   /**
-   * Update user's active status based on current state
+   * Update user's active status in R2 based on current state
    */
   private static async updateUserActiveStatus(
-    userId: string, 
+    userId: string,
     state: UserState
   ): Promise<void> {
-    const redis = await getRedis();
+    if (!await this.acquireLock('active-users')) {
+      throw new Error('Could not acquire active users lock');
+    }
+
     try {
-      if (!state.hasActiveUploads && !state.hasActiveJobs) {
-        await redis.srem(ACTIVE_USERS_SET, userId);
+      const activeUserKey = `${ACTIVE_USERS_PREFIX}${userId}.json`;
+      if (state.hasActiveUploads || state.hasActiveJobs) {
+        // Add user to active set
+        await uploadObject(activeUserKey, JSON.stringify({ active: true }));
+        logger.debug(`User ${userId} marked as active`);
+      } else {
+        // Remove user from active set
+        await deleteObject(activeUserKey);
         logger.info(`Removed inactive user ${userId} from active set`);
       }
     } finally {
-      redisPool.release(redis);
+      await this.releaseLock('active-users');
     }
   }
 
-  /**
-   * Main cleanup method that coordinates the entire cleanup process
-   */
   /**
    * Health check to verify active users set consistency
    */
   private static async verifyActiveUsersSetConsistency(): Promise<void> {
-    const redis = await getRedis();
+    if (!await this.acquireLock('active-users')) {
+      throw new Error('Could not acquire active users lock');
+    }
+
     try {
-      const activeUsers = await redis.smembers(ACTIVE_USERS_SET);
-      
+      const activeUsers = await this.getActiveUsers();
       for (const userId of activeUsers) {
         const [hasActiveUploads, hasActiveJobs] = await Promise.all([
           this.checkUserUploads(userId),
@@ -207,29 +207,34 @@ export class CleanupService {
 
         if (!hasActiveUploads && !hasActiveJobs) {
           // User found in active set but has no active work
-          await redis.srem(ACTIVE_USERS_SET, userId);
+          await deleteObject(`${ACTIVE_USERS_PREFIX}${userId}.json`);
           logger.warn(`Health check: Removed user ${userId} from active set (no active work found)`);
         }
       }
     } catch (error) {
       logger.error('Error in active users set health check:', error);
     } finally {
-      redisPool.release(redis);
+      await this.releaseLock('active-users');
     }
   }
 
+  /**
+   * Main cleanup method that coordinates the entire cleanup process
+   */
   public static async cleanup(): Promise<void> {
     const startTime = Date.now();
     logger.info('Starting unified cleanup process');
-    
+
     try {
       // Run health check first
       await this.verifyActiveUsersSetConsistency();
       logger.info('Active users set health check completed');
 
+      // Clean up stale jobs
       await this.cleanupStaleJobs();
       logger.info('Stale jobs cleanup completed');
 
+      // Process active users
       const activeUsers = await this.getActiveUsers();
       logger.info(`Processing ${activeUsers.length} active users`);
       

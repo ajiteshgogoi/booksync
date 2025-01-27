@@ -1,17 +1,9 @@
 import { logger } from '../utils/logger.js';
 import { UPLOAD_LIMITS } from '../config/uploadLimits.js';
-import {
-  getRedis,
-  getNextJob,
-  setJobStatus,
-  getJobStatus,
-  acknowledgeJob,
-  STREAM_NAME,
-  redisPool
-} from './redisService.js';
 import { processFile } from './processService.js';
 import { completeJob as completeUpload } from './uploadTrackingService.js';
-import { workerStateService } from './workerStateService.js';
+import { queueService } from './queueService.js';
+import { jobStateService } from './jobStateService.js';
 
 const POLL_INTERVAL = 1000; // 1 second between polls
 
@@ -19,7 +11,6 @@ export class DevWorkerService {
   private isRunning: boolean = false;
   private shouldContinue: boolean = false;
   private currentJobId: string | null = null;
-  private currentUploadId: string | null = null;
 
   async start(): Promise<void> {
     logger.info('Starting development worker service');
@@ -32,7 +23,7 @@ export class DevWorkerService {
       }
     };
 
-    // Setup recursive worker execution that enforces 30s delay between cycles
+    // Setup recursive worker execution that enforces 200s delay between cycles
     const scheduleNextRun = async () => {
       while (true) {
         // Start a cycle
@@ -43,7 +34,7 @@ export class DevWorkerService {
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         this.isRunning = false;
-        logger.info('Worker cycle completed. Starting 30 second delay...');
+        logger.info('Worker cycle completed. Starting 200 second delay...');
         
         // Use a separate flag to track if we're stopping completely
         if (!this.shouldContinue) break;
@@ -53,7 +44,7 @@ export class DevWorkerService {
         // Check again if we should continue after the delay
         if (!this.shouldContinue) break;
         
-        logger.info('30 second delay completed, starting next cycle...');
+        logger.info('200 second delay completed, starting next cycle...');
       }
       
       logger.info('Worker scheduler stopped');
@@ -98,142 +89,78 @@ export class DevWorkerService {
         logger.info(`Starting poll ${pollCount} of max 10`);
         
         try {
-          const result = await getNextJob();
+          // Try to get next job from queue
+          const nextInQueue = await queueService.moveToActive();
           
-          if (!result) {
+          if (!nextInQueue) {
             logger.info(`No jobs found in poll ${pollCount}`);
-            // No jobs available, wait before checking again
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
           
-          const { jobId, messageId, uploadId } = result;
-          this.currentJobId = jobId;
+          const { uploadId, userId } = nextInQueue;
 
-          // Get job status and verify state
-          const status = await getJobStatus(jobId);
-          if (!status?.userId) {
-            throw new Error('Cannot process job: userId not found');
+          // Get job metadata
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState) {
+            throw new Error('Job metadata not found');
           }
 
           // Only process jobs in 'parsed' state
-          if (status.state !== 'parsed') {
-           logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
-           continue;
+          if (jobState.state !== 'parsed') {
+            logger.info(`Skipping job ${uploadId} - not in parsed state (current state: ${jobState.state})`);
+            continue;
           }
 
-          logger.info(`Found job in parsed state on poll ${pollCount} - will process and stop cycle`);
+          this.currentJobId = uploadId;
 
-          // Check if user already has an upload in progress
-          const activeUpload = await workerStateService.getActiveUserUpload(status.userId);
-          if (activeUpload) {
-            throw new Error(`User ${status.userId} already has an upload in progress`);
-          }
-
-          // Check upload limit
-          const queueLength = await workerStateService.getUploadQueueLength();
-          if (queueLength >= UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS) {
-            throw new Error(
-              `Maximum active uploads reached (${UPLOAD_LIMITS.MAX_ACTIVE_UPLOADS}). ` +
-              'Please try again later.'
-            );
-          }
-
-          if (uploadId && !(await workerStateService.isInUploadQueue(uploadId))) {
-            await workerStateService.addToUploadQueue(uploadId);
-            await workerStateService.setActiveUserUpload(status.userId, uploadId);
-          }
-
-          // Wait if another upload is being processed
-          while (await workerStateService.isUploadProcessing() &&
-                 (await workerStateService.getCurrentProcessingUpload()) !== uploadId) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-
-          // Start processing this upload
-          if (uploadId) {
-            this.currentUploadId = uploadId;
-            await workerStateService.setProcessingUpload(uploadId);
-          }
-
-          // Update job status to processing
-          await setJobStatus(jobId, {
+          // Update job state to processing
+          await jobStateService.updateJobState(uploadId, {
             state: 'processing',
-            message: 'Starting file processing',
-            uploadId
+            message: 'Starting file processing'
           });
 
           try {
-            await processFile(jobId);
+            // Process the file
+            await processFile(uploadId);
 
-            // Update job status to completed
-            await setJobStatus(jobId, {
+            // Update job state to completed
+            await jobStateService.updateJobState(uploadId, {
               state: 'completed',
               message: 'File processing completed',
-              completedAt: Date.now(),
-              uploadId
+              completedAt: Date.now()
             });
 
             // Handle upload completion
-            const completedStatus = await getJobStatus(jobId);
-            if (uploadId && completedStatus?.userId) {
-              // Call upload tracking service to handle complete cleanup
-              await completeUpload(uploadId, jobId);
-              // Clean up worker state
-              await workerStateService.setProcessingUpload(null);
-              this.currentUploadId = null;
-              await workerStateService.removeFromUploadQueue(uploadId);
-              await workerStateService.removeActiveUserUpload(completedStatus.userId);
-            }
-
-            // Job processed successfully, acknowledge and break the cycle
-            await acknowledgeJob(messageId);
+            await completeUpload(uploadId, this.currentJobId);
+            
+            // Remove from active users
+            await queueService.removeFromActive(userId);
+            
             logger.info('Job processed successfully, stopping cycle');
             break;
-          } catch (error: unknown) {
+
+          } catch (error: any) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            await setJobStatus(jobId, {
+            await jobStateService.updateJobState(uploadId, {
               state: 'failed',
               message: `File processing failed: ${errorMessage}`,
-              uploadId
+              errorDetails: errorMessage
             });
-            logger.error('Job processing failed', { jobId, error });
 
-            // Handle upload failure
-            if (uploadId && status?.userId) {
-              // Call upload tracking service to handle complete cleanup
-              await completeUpload(uploadId, jobId);
-              // Clean up worker state
-              await workerStateService.setProcessingUpload(null);
-              this.currentUploadId = null;
-              await workerStateService.removeFromUploadQueue(uploadId);
-              
-              // Clean up all jobs for this upload
-              const redis = await getRedis();
-              try {
-                // Remove all jobs with this uploadId from stream
-                await redis.xdel(STREAM_NAME, uploadId);
-              } catch (error) {
-                logger.error('Error cleaning up failed upload jobs', { uploadId, error });
-              } finally {
-                redisPool.release(redis);
-              }
-            }
-
-            // Acknowledge the failed job and break the cycle
-            await acknowledgeJob(messageId);
-            logger.info('Job failed, stopping cycle');
+            // Handle upload failure cleanup
+            await completeUpload(uploadId, this.currentJobId);
+            
+            // Remove from active users on failure
+            await queueService.removeFromActive(userId);
+            
+            logger.error('Job processing failed', { uploadId, error });
             break;
           }
 
-          // Reset currentJobId and uploadId
-          this.currentJobId = null;
-          this.currentUploadId = null;
-
         } catch (error) {
           logger.error('Error in worker loop', error);
-          // Wait before retrying on error
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
@@ -242,9 +169,8 @@ export class DevWorkerService {
       throw error;
     } finally {
       // Mark cycle as completed and cleanup
-      logger.info('Worker cycle completed');
+      logger.info('Local worker cycle completed');
       this.currentJobId = null;
-      this.currentUploadId = null;
       this.isRunning = false;
       
       logger.info('Local worker cycle completed - waiting for next scheduled run');

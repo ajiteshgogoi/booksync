@@ -137,7 +137,17 @@ export class JobStateService {
     }
   }
 
-  private async listAllJobs(): Promise<JobMetadata[]> {
+  async listJobsByUser(userId: string): Promise<JobMetadata[]> {
+    try {
+      const jobs = await this.listAllJobs();
+      return jobs.filter(job => job.userId === userId);
+    } catch (error) {
+      logger.error('Error listing jobs by user:', { userId, error });
+      return [];
+    }
+  }
+
+  async listAllJobs(): Promise<JobMetadata[]> {
     try {
       const command = new ListObjectsV2Command({
         Bucket: R2_BUCKET_NAME,
