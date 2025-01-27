@@ -21,26 +21,9 @@ export class NotionStore {
   }
 
   async setToken(token: NotionToken): Promise<void> {
-    // Validate required fields
-    if (!token.access_token) {
-      throw new Error('Invalid token data - missing access_token');
-    }
-    if (token.token_type !== 'bearer') {
-      throw new Error('Invalid token data - token_type must be "bearer"');
-    }
-    if (!token.bot_id) {
-      throw new Error('Invalid token data - missing bot_id');
-    }
-    if (!token.workspace_name) {
-      throw new Error('Invalid token data - missing workspace_name');
-    }
     if (!token.workspace_id) {
       throw new Error('Invalid token data - missing workspace_id');
     }
-    if (!token.owner?.type) {
-      throw new Error('Invalid token data - missing owner.type');
-    }
-
     await this.kvStore.set(
       this.getTokenKey(token.workspace_id),
       JSON.stringify(token)

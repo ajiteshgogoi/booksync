@@ -228,8 +228,7 @@ router.post('/sync', async (request, env: Environment) => {
       const notionClient = new NotionClient({
         store: notionStore,
         clientId: env.NOTION_CLIENT_ID,
-        clientSecret: env.NOTION_CLIENT_SECRET,
-        redirectUri: env.NOTION_REDIRECT_URI
+        clientSecret: env.NOTION_CLIENT_SECRET
       });
 
       const syncService = new SyncService(notionClient, {
