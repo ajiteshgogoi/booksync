@@ -113,7 +113,7 @@ class WorkerService {
             if (this.emptyPollCount >= MAX_EMPTY_POLLS) {
               logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, stopping worker`);
               await this.stop(); // Use stop() to properly cleanup
-              break;
+              return; // Exit the start method entirely
             }
             // No jobs available, wait before checking again
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
@@ -286,14 +286,18 @@ class WorkerService {
         logger.info('Starting local worker cycle');
       }
       
-      // Process jobs until MAX_EMPTY_POLLS is reached
+      // Process jobs until MAX_EMPTY_POLLS is reached (including non-parsed jobs)
       let emptyPolls = 0;
-      while (emptyPolls < MAX_EMPTY_POLLS) {
+      while (emptyPolls < MAX_EMPTY_POLLS && this.isRunning) {
         try {
           const result = await getNextJob();
           
           if (!result) {
             emptyPolls++;
+            if (emptyPolls >= MAX_EMPTY_POLLS) {
+              logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, exiting cycle`);
+              return;
+            }
             // No jobs available, wait before checking again
             await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
