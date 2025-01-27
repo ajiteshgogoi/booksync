@@ -180,37 +180,37 @@ class WorkerService {
           });
 
           try {
-            // Process the job with highlight limit
-            await processFile(jobId);
+            try {
+              // Process the job with highlight limit
+              await processFile(jobId);
+              
+              // Update job status to completed
+              await setJobStatus(jobId, {
+                state: 'completed',
+                message: 'File processing completed',
+                completedAt: Date.now(),
+                uploadId
+              });
 
-            // Acknowledge message after successful processing
-            await acknowledgeJob(messageId);
-            
-            // Update job status to completed
-            await setJobStatus(jobId, {
-              state: 'completed',
-              message: 'File processing completed',
-              completedAt: Date.now(),
-              uploadId
-            });
-
-            // If this was the last job in the upload, mark upload complete
-            if (uploadId) {
-              const status = await getJobStatus(jobId);
-              if (status?.userId) {
-                // Call upload tracking service to handle complete cleanup
-                await completeUpload(uploadId, jobId);
-                // Clean up worker state
-                await workerStateService.setProcessingUpload(null);
-                this.currentUploadId = null;
-                await workerStateService.removeFromUploadQueue(uploadId);
-                await workerStateService.removeActiveUserUpload(status.userId);
+              // If this was the last job in the upload, mark upload complete
+              if (uploadId) {
+                const status = await getJobStatus(jobId);
+                if (status?.userId) {
+                  // Call upload tracking service to handle complete cleanup
+                  await completeUpload(uploadId, jobId);
+                  // Clean up worker state
+                  await workerStateService.setProcessingUpload(null);
+                  this.currentUploadId = null;
+                  await workerStateService.removeFromUploadQueue(uploadId);
+                  await workerStateService.removeActiveUserUpload(status.userId);
+                }
               }
+            } finally {
+              // Acknowledge message once after processing is complete or failed
+              await acknowledgeJob(messageId);
             }
 
           } catch (error) {
-            // Acknowledge message for failed job to prevent reprocessing
-            await acknowledgeJob(messageId);
 
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -324,29 +324,29 @@ class WorkerService {
           });
 
           try {
-            // Process the job
-            await processFile(jobId);
-            
-            // Acknowledge message after successful processing
-            await acknowledgeJob(messageId);
+            try {
+              // Process the job
+              await processFile(jobId);
 
-            // Update job status to completed
-            const status = await getJobStatus(jobId);
-            await setJobStatus(jobId, {
-              ...status,
-              state: 'completed',
-              message: 'File processing completed',
-              completedAt: Date.now()
-            });
+              // Update job status to completed
+              const status = await getJobStatus(jobId);
+              await setJobStatus(jobId, {
+                ...status,
+                state: 'completed',
+                message: 'File processing completed',
+                completedAt: Date.now()
+              });
 
-            // Handle upload completion in dev mode
-            if (status?.uploadId && status?.userId) {
-              await completeUpload(status.uploadId, jobId);
+              // Handle upload completion in dev mode
+              if (status?.uploadId && status?.userId) {
+                await completeUpload(status.uploadId, jobId);
+              }
+            } finally {
+              // Acknowledge message once after processing is complete or failed
+              await acknowledgeJob(messageId);
             }
 
           } catch (error) {
-            // Acknowledge message for failed job to prevent reprocessing
-            await acknowledgeJob(messageId);
 
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
