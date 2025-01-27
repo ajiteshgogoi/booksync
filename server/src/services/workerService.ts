@@ -89,13 +89,17 @@ export class WorkerService {
         pollCount++;
         logger.info(`Starting poll ${pollCount} of max 10`);
         
+        // Enforce poll interval at the start of each iteration
+        if (pollCount > 1) {
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        }
+
         try {
           // Try to get next job from queue
           const nextInQueue = await queueService.moveToActive();
           
           if (!nextInQueue) {
             logger.info(`No jobs found in poll ${pollCount}`);
-            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
             continue;
           }
           
