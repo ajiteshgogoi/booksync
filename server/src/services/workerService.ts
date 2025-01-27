@@ -91,26 +91,21 @@ class WorkerService {
         }
       };
 
-      // Setup recursive worker execution
-      let timeout: NodeJS.Timeout;
-      
-      const scheduleNextRun = () => {
+      // Setup recursive worker execution that runs every 120 seconds after previous cycle stops
+      const scheduleNextRun = async () => {
         if (this.isRunning) {
-          timeout = setTimeout(async () => {
-            await runWorker();
-            scheduleNextRun(); // Schedule next run after current one completes
-          }, 120000);
+          // Wait 120 seconds after previous cycle stops
+          await new Promise(resolve => setTimeout(resolve, 120000));
+          
+          this.isRunning = true; // Reset for new cycle
+          await runWorker();
+          // Schedule next run only after current one completes
+          scheduleNextRun();
         }
       };
 
-      // Add cleanup handler to clear timeout when stopping
-      this.cleanupHandlers.push(async () => {
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-      });
-
       // Run first cycle immediately then schedule next
+      this.isRunning = true;
       await runWorker();
       scheduleNextRun();
       
@@ -292,13 +287,16 @@ class WorkerService {
       logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
     }
     
-    // Clean up Redis connections
+    // Clean up Redis connections and wait for cleanup to complete
     try {
       await RedisService.cleanup();
       logger.info('Successfully cleaned up Redis connections');
     } catch (error) {
       logger.error('Error cleaning up Redis connections', { error });
     }
+
+    // Ensure we wait for any ongoing operations to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   private async runWorkerCycle(): Promise<void> {
@@ -317,6 +315,7 @@ class WorkerService {
             emptyPolls++;
             if (emptyPolls >= MAX_EMPTY_POLLS) {
               logger.info(`No jobs found after ${MAX_EMPTY_POLLS} attempts, exiting cycle`);
+              this.isRunning = false;
               return;
             }
             // No jobs available, wait before checking again
