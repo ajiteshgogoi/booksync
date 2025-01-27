@@ -13,7 +13,7 @@ const UPLOADS_PREFIX = 'uploads/';
 const JOB_STATE_PREFIX = 'jobs/';
 const LOCK_TIMEOUT = 30000; // 30 seconds
 const LOCK_FILE_PREFIX = 'locks/';
-const UPLOAD_EXPIRY = 15 * 60 * 1000; // 15 minutes
+const UPLOAD_EXPIRY = 30 * 60 * 1000; // 30 minutes
 
 interface Lock {
   lockedBy: string;
@@ -124,31 +124,34 @@ export class CleanupService {
     }
 
     try {
-      // List all .txt files in root (these are uploaded files not yet moved to temp storage)
-      const objects = await listObjects('.txt');
+      // List all files in root directory only
+      const objects = await listObjects('/');
       if (!objects) return;
 
       const now = Date.now();
       let removedCount = 0;
 
       for (const obj of objects) {
-        if (!obj.key) continue;
+        if (!obj.key || !obj.key.endsWith('.txt')) continue;
+        
+        // Skip files in subdirectories
+        if (obj.key.includes('/')) continue;
 
         // Get file metadata including lastModified
         const info = await getObjectInfo(obj.key);
         if (!info?.lastModified) continue;
 
-        // Skip if not old enough
+        // Check if file is older than 15 minutes
         if (now - info.lastModified.getTime() < UPLOAD_EXPIRY) continue;
 
         // Extract jobId from filename
         const jobId = obj.key.replace('.txt', '');
 
-        // Check if job exists and is queued
+        // Delete file if job is pending or doesn't exist
         const jobState = await jobStateService.getJobState(jobId);
-        if (!jobState || !['queued', 'processing', 'parsed'].includes(jobState.state)) {
+        if (!jobState || jobState.state === 'pending') {
           await deleteObject(obj.key);
-          logger.info(`Removed stale upload file: ${obj.key}`);
+          logger.info(`Removed stale pending upload file: ${obj.key}`);
           removedCount++;
         }
       }

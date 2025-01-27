@@ -1,6 +1,7 @@
 import { logger } from './utils/logger.js';
 import { jobCleanupService } from './services/jobCleanupService.js';
 import { workerService } from './services/workerService.js';
+import { devWorkerService } from './services/devWorkerService.js';
 import { CleanupService } from './services/cleanupService.js';
 
 let isWorkerRunning = false;
@@ -20,8 +21,12 @@ export async function startWorker(): Promise<void> {
     await CleanupService.cleanup();
     logger.info('Cleanup service completed');
     
-    // Start the worker service
-    await workerService.start();
+    // Use devWorkerService in development mode, workerService in production
+    const service = process.env.NODE_ENV === 'development' ? devWorkerService : workerService;
+    logger.info(`Using ${process.env.NODE_ENV === 'development' ? 'development' : 'production'} worker service`);
+    
+    // Start the appropriate worker service
+    await service.start();
   } catch (error) {
     logger.error('Worker process error', error);
   } finally {
@@ -36,7 +41,8 @@ export async function stopWorker(): Promise<void> {
 
   try {
     logger.info('Stopping worker process');
-    await workerService.stop();
+    const service = process.env.NODE_ENV === 'development' ? devWorkerService : workerService;
+    await service.stop();
   } catch (error) {
     logger.error('Error stopping worker', error);
   } finally {
