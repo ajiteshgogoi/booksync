@@ -72,20 +72,8 @@ class CloudflareKVStore implements KVStore {
   constructor(private kv: KVNamespace) {}
 
   async get(key: string): Promise<string | null> {
-    if (!this.kv || typeof this.kv.get !== 'function') {
-      console.error('[KVStore] KV namespace is invalid:', this.kv);
-      throw new KVStoreError('Invalid KV namespace', 'get', key);
-    }
-
     try {
-      console.log('[KVStore] Getting value for key:', key);
-      const value = await this.kv.get(key);
-      console.log('[KVStore] Retrieved value:', {
-        key,
-        hasValue: value !== null,
-        valueLength: value?.length
-      });
-      return value;
+      return await this.kv.get(key);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[KVStore] Error getting key ${key}:`, message);
@@ -94,15 +82,8 @@ class CloudflareKVStore implements KVStore {
   }
 
   async set(key: string, value: string, options?: KVStoreOptions): Promise<void> {
-    if (!this.kv || typeof this.kv.put !== 'function') {
-      console.error('[KVStore] KV namespace is invalid:', this.kv);
-      throw new KVStoreError('Invalid KV namespace', 'set', key);
-    }
-
     try {
-      console.log('[KVStore] Setting value:', { key, valueLength: value.length });
       await this.kv.put(key, value, options);
-      console.log('[KVStore] Successfully set value for key:', key);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[KVStore] Error setting key ${key}:`, message);
@@ -147,17 +128,5 @@ class CloudflareKVStore implements KVStore {
 
 // Factory function to create appropriate store
 export function createKVStore(kv?: KVNamespace): KVStore {
-  console.log('[KVStore] Creating KV store:', {
-    hasKV: !!kv,
-    type: kv ? 'CloudflareKVStore' : 'MemoryKVStore'
-  });
-
-  if (kv && (!kv.get || !kv.put || !kv.delete)) {
-    console.error('[KVStore] Invalid KV namespace provided:', kv);
-    throw new Error('Invalid KV namespace: missing required methods');
-  }
-
-  const store = kv ? new CloudflareKVStore(kv) : new MemoryKVStore();
-  console.log('[KVStore] Successfully created store');
-  return store;
+  return kv ? new CloudflareKVStore(kv) : new MemoryKVStore();
 }

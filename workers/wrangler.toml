@@ -23,12 +23,9 @@ binding = "HIGHLIGHTS_BUCKET"
 bucket_name = "highlights-bucket"
 
 [vars]
-WORKER_HOST = "localhost:8787"
+NOTION_REDIRECT_URI = "https://booksync-worker.az-ajitesh.workers.dev/oauth/callback"
+WORKER_HOST = "booksync-worker.az-ajitesh.workers.dev"
 CLIENT_URL = "http://localhost:5173"
-NOTION_REDIRECT_URI = "http://localhost:8787/oauth/callback"
-
-[env.production]
-vars = { NOTION_REDIRECT_URI = "https://booksync-worker.az-ajitesh.workers.dev/oauth/callback", WORKER_HOST = "booksync-worker.az-ajitesh.workers.dev" }
 
 # Add your secret variables in .dev.vars or using wrangler secret commands
 # wrangler secret put NOTION_CLIENT_ID

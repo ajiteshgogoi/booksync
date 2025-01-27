@@ -7,10 +7,8 @@ import type { CreateJobParams } from '../types/job';
 export class OAuthCallbackService {
   private jobStore: KVJobStore;
   private notionClient: NotionClient;
-  private env: Environment;
 
   constructor(env: Environment) {
-    this.env = env;
     // Validate KV namespaces
     if (!env.OAUTH_STORE) {
       throw new Error('OAUTH_STORE KV namespace is not bound');
@@ -37,27 +35,10 @@ export class OAuthCallbackService {
     });
 
     try {
-      // Initialize stores in correct order
-      this.jobStore = new KVJobStore(env.JOB_STORE);
-
-      // Create stores for Notion
-      // Create KV store with explicit validation
-      if (!env.OAUTH_STORE) {
-        throw new Error('OAUTH_STORE is undefined');
-      }
-
       const kvStore = createKVStore(env.OAUTH_STORE);
-      if (!kvStore) {
-        throw new Error('Failed to create KV store');
-      }
-
-      // Initialize NotionStore with validated KV store
       const notionStore = new NotionStore(kvStore);
-      if (!notionStore) {
-        throw new Error('Failed to create Notion store');
-      }
-
-      // Initialize Notion client with validated store
+      
+      this.jobStore = new KVJobStore(env.JOB_STORE);
       this.notionClient = new NotionClient({
         store: notionStore,
         clientId: env.NOTION_CLIENT_ID,
@@ -115,7 +96,7 @@ export class OAuthCallbackService {
 
       // Build redirect URL
       console.log('Building redirect URL...');
-      const clientUrl = new URL(this.env.CLIENT_URL || 'http://localhost:5173');
+      const clientUrl = new URL(process.env.CLIENT_URL || 'http://localhost:5173');
       clientUrl.searchParams.set('syncStatus', 'queued');
       clientUrl.searchParams.set('jobId', job.id);
 
