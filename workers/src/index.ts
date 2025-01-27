@@ -9,7 +9,6 @@ import {
   parseClippings
 } from '@booksync/shared';
 import { KVJobStore } from './services/kvJobStore';
-import { OAuthCallbackService } from './services/oauthCallbackService';
 
 // Constants
 const BATCH_SIZE = 10; // Number of highlights to process per batch
@@ -266,31 +265,6 @@ router.post('/sync', async (request, env: Environment) => {
   } catch (error) {
     console.error('Request error:', error);
     return errorResponse('Invalid request');
-  }
-});
-
-// OAuth callback endpoint
-router.get('/oauth/callback', async (request: IRequest, env: Environment) => {
-  const code = Array.isArray(request.query?.code) ? request.query.code[0] : request.query?.code;
-  const state = Array.isArray(request.query?.state) ? request.query.state[0] : request.query?.state;
-
-  if (!code || !state) {
-    return errorResponse('Missing code or state parameter', 400);
-  }
-
-  try {
-    const oauthService = new OAuthCallbackService(env);
-    const { redirectUrl } = await oauthService.handleCallback(code);
-    
-    return new Response(null, {
-      status: 302,
-      headers: {
-        'Location': redirectUrl
-      }
-    });
-  } catch (error) {
-    console.error('OAuth callback error:', error);
-    return errorResponse('OAuth callback failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
 });
 
