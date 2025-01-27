@@ -21,7 +21,7 @@ async function storeOAuthToken(
   }));
 }
 
-async function getOAuthToken(): Promise<string | null> {
+export async function getOAuthToken(): Promise<string | null> {
   try {
     const objects = await listObjects(TOKEN_PREFIX);
     if (!objects || objects.length === 0) return null;

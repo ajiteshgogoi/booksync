@@ -43,15 +43,10 @@ function App() {
     setSyncStatus('validating');
 
     try {
-      const searchParams = new URLSearchParams(window.location.search);
-      const userId = searchParams.get('userId') || localStorage.getItem('userId') || 'anonymous';
       // Validate first before doing any processing
       setSyncStatus('validating');
       const validationResponse = await fetch(`${apiBase}/validate-sync`, {
         method: 'POST',
-        headers: {
-          'x-user-id': userId
-        },
         credentials: 'include'
       });
 
@@ -69,6 +64,16 @@ function App() {
       }
 
       // Only proceed with upload after validation passes
+      // Get userId from server
+      const userResponse = await fetch(`${apiBase}/user/current`, {
+        credentials: 'include'
+      });
+      
+      if (!userResponse.ok) {
+        throw new Error('Failed to get user ID');
+      }
+      
+      const { userId } = await userResponse.json();
       const timestamp = Date.now();
       const fileKey = `clippings-${userId}-${timestamp}.txt`;
       const { count } = await uploadFileToR2(selectedFile, fileKey);

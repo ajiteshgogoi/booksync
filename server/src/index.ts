@@ -90,7 +90,7 @@ import { queueService } from './services/queueService.js';
 import { triggerProcessing } from './services/githubService.js';
 import { streamFile } from './services/r2Service.js';
 import { parseClippings } from './utils/parseClippings.js';
-import { setOAuthToken, getClient, refreshToken, clearAuth } from './services/notionClient.js';
+import { setOAuthToken, getClient, refreshToken, clearAuth, getOAuthToken } from './services/notionClient.js';
 import { rateLimiter } from './services/rateLimiter.js';
 import qs from 'querystring';
 import cookieParser from 'cookie-parser';
@@ -173,7 +173,23 @@ function generateState() {
 // Sync validation endpoint
 app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => {
   try {
-    const userId = req.headers['x-user-id'] as string;
+    const token = await getOAuthToken();
+    if (!token) {
+      return res.status(401).json({
+        valid: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const tokenData = JSON.parse(token);
+    const userId = tokenData.owner?.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        valid: false,
+        error: 'Invalid authentication token'
+      });
+    }
+
     await validateSync(userId);
     res.json({
       valid: true
@@ -183,6 +199,27 @@ app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => 
       valid: false,
       error: error instanceof ValidationError ? error.message : 'Validation failed'
     });
+  }
+});
+
+// Get current user ID endpoint
+app.get(`${apiBasePath}/user/current`, async (req: Request, res: Response) => {
+  try {
+    const token = await getOAuthToken();
+    if (!token) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const tokenData = JSON.parse(token);
+    const userId = tokenData.owner?.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    res.json({ userId });
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    res.status(500).json({ error: 'Failed to get current user' });
   }
 });
 
@@ -321,20 +358,15 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 // Auth check endpoint
 app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
-    const userId = req.cookies.userId;
-    if (!userId) {
+    const token = await getOAuthToken();
+    if (!token) {
       return res.status(401).json({ authenticated: false });
     }
 
-    const { upstashService } = await import('./services/upstashService.js');
-    const userState = await upstashService.getUserState(userId);
-
-    if (userState && userState.oauthToken) {
-      // Also verify Notion client still works
-      const client = await getClient();
-      if (client) {
-        return res.status(200).json({ authenticated: true });
-      }
+    // Verify the Notion client works
+    const client = await getClient();
+    if (client) {
+      return res.status(200).json({ authenticated: true });
     }
 
     res.status(401).json({ authenticated: false });
@@ -439,16 +471,8 @@ await upstashService.saveUserState(userId, {
   databaseId: '' // Will be set later when user selects database
 });
 
-// Set userId cookie and include it in redirect URL
-res.cookie('userId', userId, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  maxAge: 24 * 60 * 60 * 1000 // 24 hours
-});
-
-// Include userId in redirect URL
-res.redirect(`${process.env.CLIENT_URL}?auth=success&userId=${userId}`);
+// Just redirect with success status
+res.redirect(`${process.env.CLIENT_URL}?auth=success`);
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.redirect(`${process.env.CLIENT_URL}?error=Failed to complete OAuth flow`);
@@ -484,18 +508,21 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response)
 
 app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
   try {
-    const userId = req.cookies.userId;
-    if (userId) {
-      // Clear user state from Upstash
-      const { upstashService } = await import('./services/upstashService.js');
-      await upstashService.deleteUserState(userId);
+    // Get user info from token
+    const token = await getOAuthToken();
+    if (token) {
+      const tokenData = JSON.parse(token);
+      const userId = tokenData.owner?.user?.id;
+      
+      if (userId) {
+        // Clear user state from Upstash
+        const { upstashService } = await import('./services/upstashService.js');
+        await upstashService.deleteUserState(userId);
+      }
     }
     
     // Clear Notion auth
     await clearAuth();
-    
-    // Clear cookie
-    res.clearCookie('userId');
     
     res.status(200).json({ success: true });
   } catch (error) {
@@ -536,12 +563,21 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
 
     const fileContent = req.file.buffer.toString('utf-8');
 
-    // Get user ID from the client request
-    const userId = req.cookies.userId;
-    if (!userId) {
+    // Get user ID from Notion token
+    const token = await getOAuthToken();
+    if (!token) {
       return res.status(401).json({
         error: 'Authentication required',
         message: 'Please reconnect to Notion'
+      });
+    }
+
+    const tokenData = JSON.parse(token);
+    const userId = tokenData.owner?.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Invalid authentication token'
       });
     }
 
