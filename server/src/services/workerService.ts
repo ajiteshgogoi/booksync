@@ -135,7 +135,6 @@ class WorkerService {
           if (status.state !== 'parsed') {
             logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
             this.emptyPollCount++;
-            await acknowledgeJob(messageId);
             continue;
           }
 
@@ -315,7 +314,6 @@ class WorkerService {
           if (status.state !== 'parsed') {
             logger.info(`Skipping job ${jobId} - not in parsed state (current state: ${status.state})`);
             emptyPolls++;
-            await acknowledgeJob(messageId);
             continue;
           }
 
