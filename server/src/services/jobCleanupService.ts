@@ -2,16 +2,16 @@ import { logger } from '../utils/logger.js';
 import { JobStatus } from '../types/job.js';
 import { uploadObject, downloadObject, deleteObject, listObjects } from './r2Service.js';
 
-// Processing jobs get 24 hours before considered stuck - they can take a long time due to:
+// Processing jobs get 6 hours before considered stuck - they can take a long time due to:
 // - Large number of highlights to process
 // - Rate limiting and batching
 // - Retries and error handling
-const STUCK_JOB_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours for processing jobs
+const STUCK_JOB_TIMEOUT = 6 * 60 * 60 * 1000; // 6 hours for processing jobs
 
-// Completed/failed jobs only need 1 hour retention since:
+// Completed/failed jobs only need 5 minutes retention since:
 // - Their highlights are already in Notion
 // - Just need enough time to show status to user
-const COMPLETED_JOB_TIMEOUT = 60 * 60 * 1000; // 1 hour for completed jobs
+const COMPLETED_JOB_TIMEOUT = 5 * 60 * 1000; // 5 minutes for completed jobs
 
 // Run cleanup every hour
 const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
