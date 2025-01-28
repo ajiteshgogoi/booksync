@@ -36,7 +36,7 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
   }
 }
 
-export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number }> {
+export async function uploadFileToR2(file: File, fileKey: string): Promise<{ count: number, fileKey: string }> {
   try {
     console.log('Starting file upload:', {
       fileName: file.name,
@@ -112,7 +112,7 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
 
     const data = await parseResponse.json();
     console.log('Parse successful:', data);
-    return data;
+    return { ...data, fileKey }; // Return the fileKey along with count
   } catch (error) {
     console.error('Error in uploadFileToR2:', {
       error: error instanceof Error ? error.stack : error,
@@ -122,5 +122,49 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
       throw error; // Preserve the original error message
     }
     throw new Error('Failed to upload and process file. Please try again later.');
+  }
+}
+
+export async function syncWithFileKey(fileKey: string): Promise<void> {
+  try {
+    console.log('Starting sync with fileKey:', fileKey);
+
+    const response = await fetch('/api/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileKey }),
+    });
+
+    console.log('Sync response:', {
+      status: response.status,
+      statusText: response.statusText
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Sync failed:', {
+        status: response.status,
+        error: errorData
+      });
+
+      if (response.status === 429) {
+        throw new Error(errorData.message);
+      }
+      throw new Error(errorData.message || await response.text());
+    }
+
+    const data = await response.json();
+    console.log('Sync successful:', data);
+  } catch (error) {
+    console.error('Error in syncWithFileKey:', {
+      error: error instanceof Error ? error.stack : error,
+      timestamp: new Date().toISOString()
+    });
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Failed to sync file. Please try again later.');
   }
 }

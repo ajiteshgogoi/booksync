@@ -531,8 +531,8 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
   }
 });
 
-// Sync endpoint for uploading MyClippings.txt with timeout
-app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest, res: Response) => {
+// Sync endpoint using fileKey with timeout
+app.post(`${apiBasePath}/sync`, async (req: Request, res: Response) => {
   const timeout = 30000; // 30 second timeout
   const timeoutHandle = setTimeout(() => {
     if (!res.headersSent) {
@@ -556,12 +556,25 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       return res.status(400).json({ error: 'Could not determine client IP' });
     }
 
-    if (!req.file) {
-      console.log('No file in request');
-      return res.status(400).json({ error: 'No file uploaded' });
+    const { fileKey } = req.body;
+    if (!fileKey) {
+      console.log('No fileKey in request');
+      return res.status(400).json({ error: 'No fileKey provided' });
     }
 
-    const fileContent = req.file.buffer.toString('utf-8');
+    console.log('Streaming file from R2:', fileKey);
+    const fileStream = await streamFile(fileKey);
+    console.log('File stream obtained');
+
+    // Convert stream to buffer to get content
+    const chunks: Buffer[] = [];
+    await new Promise((resolve, reject) => {
+      fileStream.on('data', (chunk: Buffer | string) => chunks.push(Buffer.from(chunk)));
+      fileStream.on('error', reject);
+      fileStream.on('end', resolve);
+    });
+
+    const fileContent = Buffer.concat(chunks).toString('utf-8');
 
     // Get user ID from Notion token
     const token = await getOAuthToken();

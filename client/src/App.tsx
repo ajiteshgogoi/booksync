@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
-import { uploadFileToR2 } from './services/uploadService';
+import { uploadFileToR2, syncWithFileKey } from './services/uploadService';
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'validating';
 
@@ -22,6 +22,7 @@ function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [fileKey, setFileKey] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightCount, setHighlightCount] = useState(0);
@@ -33,6 +34,7 @@ function App() {
     
     if (selectedFile.name !== 'My Clippings.txt') {
       setFile(null);
+      setFileKey(null);
       setErrorMessage("Please upload 'My Clippings.txt' only.");
       setSyncStatus('error');
       return;
@@ -54,6 +56,7 @@ function App() {
         const validationResult = await validationResponse.json();
         setSyncStatus('error');
         setFile(null);
+        setFileKey(null);
         throw new Error(validationResult.error || 'Validation failed');
       }
       const validationResult = await validationResponse.json();
@@ -76,9 +79,10 @@ function App() {
       const { userId } = await userResponse.json();
       const timestamp = Date.now();
       const fileKey = `clippings-${userId}-${timestamp}.txt`;
-      const { count } = await uploadFileToR2(selectedFile, fileKey);
+      const { count, fileKey: uploadedFileKey } = await uploadFileToR2(selectedFile, fileKey);
       
       setHighlightCount(count);
+      setFileKey(uploadedFileKey);
       setSyncStatus('idle');
     } catch (error) {
       setSyncStatus('error');
@@ -89,7 +93,7 @@ function App() {
     }
   };
   const handleSync = async () => {
-    if (!file || highlightCount === 0) return;
+    if (!fileKey || !file || highlightCount === 0) return;
     
     // Check auth status before sync
     const isStillAuthenticated = await checkAuth();
@@ -103,29 +107,9 @@ function App() {
     setErrorMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${apiBase}/sync`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        // Handle validation errors specifically
-        throw new Error(errorData.message || await response.text());
-      }
-
-      const syncResponse = await response.json();
-      if (syncResponse.success) {
-        setSyncStatus(syncResponse.status === 'queued' ? 'queued' : 'starting');
-        setErrorMessage(null);
-      } else {
-        setSyncStatus('idle');
-        setErrorMessage(syncResponse.message || 'Failed to sync highlights');
-      }
+      await syncWithFileKey(fileKey);
+      setSyncStatus('queued');
+      setErrorMessage(null);
     } catch (error) {
       setSyncStatus('error');
       
@@ -139,6 +123,7 @@ function App() {
           (error.message.includes('Validation failed') ||
            error.message.includes('User already has an active file upload'))) {
         setFile(null);
+        setFileKey(null);
         setHighlightCount(0);
       }
     }
