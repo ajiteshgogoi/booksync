@@ -181,21 +181,6 @@ export async function triggerProcessing(
     // Format job ID consistently with the rest of the application
     const jobId = `sync:${userId}:${Date.now()}`;
 
-    // Initialize job state
-    await jobStateService.createJob({
-      jobId,
-      fileName,
-      userId,
-      databaseId
-    });
-
-    // Update initial job state
-    await jobStateService.updateJobState(jobId, {
-      state: 'pending',
-      message: 'Preparing to process file',
-      progress: 0
-    });
-
     // Prepare the payload with jobId and file reference
     const payload = {
       event_type: 'parse_highlights',
