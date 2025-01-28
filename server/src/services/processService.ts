@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js';
 import { parseClippings } from '../utils/parseClippings.js';
-import { queueSyncJob, processSyncJob } from './syncService.js';
+import { processSyncJob } from './syncService.js';
 import { downloadObject, deleteObject } from './r2Service.js';
 import { jobStateService } from './jobStateService.js';
 import { CleanupService } from './cleanupService.js';
@@ -104,14 +104,8 @@ export async function processFile(jobId: string): Promise<void> {
       throw new Error('Job not found');
     }
 
-    // Get the current state and validate transition
+    // Validate job state
     switch (jobState.state) {
-      case 'pending':
-        await jobStateService.updateJobState(jobId, {
-          state: 'queued',
-          message: 'Starting file processing'
-        });
-        break;
       case 'completed':
       case 'failed':
         logger.info(`Job ${jobId} is already in terminal state: ${jobState.state}`);
@@ -120,8 +114,6 @@ export async function processFile(jobId: string): Promise<void> {
         if (jobState.lastCheckpoint && Date.now() - jobState.lastCheckpoint > PROCESSING_TIMEOUT) {
           throw new Error('Processing timeout exceeded');
         }
-        break;
-      default:
         break;
     }
 
