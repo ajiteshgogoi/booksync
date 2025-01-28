@@ -30,17 +30,16 @@ const MAX_HIGHLIGHTS_PER_RUN = isGitHubAction ? 1000 : // Process up to 1000 in 
 export async function queueSyncJob(
   databaseId: string,
   fileContent: string,
-  userId: string,
-  jobId: string  // Add jobId parameter
+  userId: string
 ): Promise<string> {
   try {
-    logger.debug('Starting sync job', { databaseId, jobId });
+    logger.debug('Starting sync job', { databaseId });
     
-    // Create uploadId from the jobId
-    const uploadId = `upload:${userId}:${jobId.split(':')[2]}`; // Extract timestamp from existing jobId
+    const uploadId = `upload:${userId}:${Date.now()}`;
+    const baseJobId = `sync:${userId}:${Date.now()}`;
     
-    // Store initial processing state
-    await tempStorageService.storeProcessingState(jobId, {
+    // Store initial processing state for first job
+    await tempStorageService.storeProcessingState(baseJobId, {
       databaseId,
       userId,
       stage: 'initialization',
@@ -48,7 +47,7 @@ export async function queueSyncJob(
     });
 
     // Update job state to pending when starting
-    await jobStateService.updateJobState(jobId, {
+    await jobStateService.updateJobState(baseJobId, {
       state: 'pending',
       message: 'Starting file processing',
       progress: 0
@@ -61,7 +60,7 @@ export async function queueSyncJob(
     const notionClient = await getClient();
 
     // Get highlights from temp storage
-    const bookHighlights = await tempStorageService.getHighlights(jobId);
+    const bookHighlights = await tempStorageService.getHighlights(baseJobId);
     const bookMap = new Map<string, Highlight[]>();
     
     for (const highlight of bookHighlights) {
@@ -114,7 +113,7 @@ export async function queueSyncJob(
     // Create jobs for each chunk
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const chunkJobId = chunks.length === 1 ? jobId : `${jobId}_${i + 1}`;
+      const chunkJobId = chunks.length === 1 ? baseJobId : `${baseJobId}_${i + 1}`;
       
       // Store chunk highlights in temp storage
       await tempStorageService.storeHighlights(chunkJobId, chunk);
@@ -145,7 +144,7 @@ export async function queueSyncJob(
       });
     }
 
-    return jobId;
+    return baseJobId;
   } catch (error) {
     logger.error('Error queueing sync job:', error);
     throw error;
