@@ -23,10 +23,8 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
         status: response.status,
         error: errorData
       });
-      if (response.status === 429) {
-        throw new Error(errorData.message);
-      }
-      throw new Error(errorData.message || 'Failed to get upload URL');
+      // Pass through the error message directly
+      throw new Error(errorData.message);
     }
 
     const data = await response.json();
@@ -37,7 +35,11 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
       error: error instanceof Error ? error.stack : error,
       timestamp: new Date().toISOString()
     });
-    throw new Error('Failed to generate upload URL. Please try again later.');
+    if (error instanceof Error) {
+      throw error;  // Re-throw the original error to preserve its message
+    }
+    // Only use generic message if error is not an Error instance
+    throw new Error('An unexpected error occurred. Please try again later.');
   }
 }
 
@@ -60,8 +62,14 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
       throw new Error('File size must be less than 10MB');
     }
 
-    const uploadUrl = await getUploadUrl(file.name, fileKey, file.type);
-    console.log('Using upload URL:', uploadUrl);
+    let uploadUrl: string;
+    try {
+      uploadUrl = await getUploadUrl(file.name, fileKey, file.type);
+      console.log('Using upload URL:', uploadUrl);
+    } catch (error) {
+      // Re-throw errors from getUploadUrl to preserve the message
+      throw error;
+    }
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',

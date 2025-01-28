@@ -49,9 +49,15 @@ export const uploadUrlHandler = async (req: Request, res: Response) => {
     const rateLimit = rateLimiter.check(clientIp);
     if (!rateLimit.allowed) {
       const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
+      const errorMessage = `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`;
+      console.log('Rate limit exceeded:', {
+        clientIp,
+        remainingMinutes,
+        message: errorMessage
+      });
       return res.status(429).json({
         error: 'Rate limit exceeded',
-        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
+        message: errorMessage
       });
     }
 
