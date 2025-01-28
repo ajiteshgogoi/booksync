@@ -46,9 +46,9 @@ export async function queueSyncJob(
       progress: 0
     });
 
-    // Update job state to queued when starting processing
+    // Update job state to pending when starting
     await jobStateService.updateJobState(baseJobId, {
-      state: 'queued',
+      state: 'pending',
       message: 'Starting file processing',
       progress: 0
     });
@@ -121,25 +121,27 @@ export async function queueSyncJob(
       // Create job state for chunk
       if (i > 0) { // First chunk already has state created
         await jobStateService.updateJobState(chunkJobId, {
-          state: 'queued',
+          state: 'pending',
           message: 'Starting file processing',
           progress: 0
         });
       }
 
-      // Update job state to parsed
+      // Update job state to pending - will be marked as parsed after GitHub workflow processes
       await jobStateService.updateJobState(chunkJobId, {
-        state: 'parsed',
+        state: 'pending',
         message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
         total: chunk.length,
         progress: 0
       });
 
-      // Re-add to queue once parsed
-      await queueService.addToQueue(chunkJobId, userId);
-
       // Add job to upload tracking
       await addJobToUpload(uploadId, chunkJobId, chunk.length);
+      
+      logger.debug('Job prepared for GitHub processing', {
+        chunkJobId,
+        highlightCount: chunk.length
+      });
     }
 
     return baseJobId;

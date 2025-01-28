@@ -61,10 +61,22 @@ export async function processFileContent(
       total: highlights.length
     });
 
-    // Add to processing queue after parsing is complete
+    // After parsing and storing highlights, update state and add to queue
     if (updatedState?.userId) {
-      await queueService.addToQueue(jobId, updatedState.userId);
-      logger.info('Job added to processing queue', { jobId });
+      // Set state to parsed now that highlights are stored
+      const jobState = await jobStateService.updateJobState(jobId, {
+        state: 'parsed',
+        message: 'Highlights parsed and stored successfully',
+        progress: 0
+      });
+
+      if (jobState) {
+        // Only add to queue after successful parsing and state update
+        await queueService.addToQueue(jobId, updatedState.userId);
+        logger.info('Job added to processing queue', { jobId });
+      } else {
+        logger.error('Failed to update job state to parsed', { jobId });
+      }
     } else {
       logger.error('Could not add job to queue - missing userId', { jobId });
     }
