@@ -115,6 +115,16 @@ export class DevWorkerService {
             throw new Error('Job not found - ensure job is created before processing');
           }
 
+          // Get current job state and verify it's 'parsed' before processing
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState || jobState.state !== 'parsed') {
+            logger.error('Job not ready for processing - must be in parsed state', {
+              uploadId,
+              currentState: jobState?.state
+            });
+            throw new Error('Job not in correct state for processing');
+          }
+
           // Update job state to processing
           const updated = await jobStateService.updateJobState(uploadId, {
             state: 'processing',
