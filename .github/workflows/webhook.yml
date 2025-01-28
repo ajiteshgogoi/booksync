@@ -63,10 +63,11 @@ jobs:
 
       - name: Validate Client Payload
         run: |
-          if [ -z "${{ github.event.client_payload.jobId }}" ] || \
-             [ -z "${{ github.event.client_payload.userId }}" ] || \
-             [ -z "${{ github.event.client_payload.databaseId }}" ] || \
-             [ -z "${{ github.event.client_payload.fileName }}" ]; then
+          jobId="${{ github.event.client_payload.jobId }}"
+          userId="${{ github.event.client_payload.userId }}"
+          databaseId="${{ github.event.client_payload.databaseId }}"
+          fileName="${{ github.event.client_payload.fileName }}"
+          if [ -z "$jobId" ] || [ -z "$userId" ] || [ -z "$databaseId" ] || [ -z "$fileName" ]; then
             echo "Error: Missing required client payload parameters"
             echo "Required: jobId, userId, databaseId, fileName"
             echo "Received payload: ${{ toJSON(github.event.client_payload) }}"
