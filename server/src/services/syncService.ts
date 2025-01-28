@@ -120,10 +120,7 @@ export async function queueSyncJob(
       // Store chunk highlights in temp storage
       await tempStorageService.storeHighlights(chunkJobId, chunk);
 
-     // Store chunk highlights in temp storage
-     await tempStorageService.storeHighlights(chunkJobId, chunk);
-
-     // Add job to queue with queued state
+      // Add job to queue with queued state
      await jobStateService.updateJobState(chunkJobId, {
        state: 'queued',
        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
@@ -146,9 +143,6 @@ export async function queueSyncJob(
        userId: userId,
        uploadId: uploadId
      });
-     await queueService.addToQueue(chunkJobId, userId);
-     logger.debug('Job queued for processing', { chunkJobId });
-
       // Add job to upload tracking
       await addJobToUpload(uploadId, chunkJobId, chunk.length);
       

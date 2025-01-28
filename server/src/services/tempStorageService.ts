@@ -147,6 +147,10 @@ export class TempStorageService {
       const buffer = await downloadObject(`${TEMP_PREFIX}${jobId}_state.json`);
       return JSON.parse(buffer.toString('utf-8'));
     } catch (error) {
+      if ((error as any)?.name === 'NoSuchKey') {
+        logger.debug('No processing state found in R2', { jobId });
+        return null;
+      }
       logger.error('Error reading processing state from R2', { jobId, error });
       throw error;
     }
