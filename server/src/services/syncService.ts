@@ -157,6 +157,10 @@ export async function queueSyncJob(
         total: chunk.length,
         progress: 0,
       });
+      logger.debug('Job state after queuing:', {
+        jobId: chunkJobId,
+        state: (await jobStateService.getJobState(chunkJobId))?.state
+      });
 
       // Add to queue
       const queueAdded = await queueService.addToQueue(chunkJobId, userId);
