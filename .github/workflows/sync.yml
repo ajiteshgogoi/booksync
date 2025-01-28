@@ -1,7 +1,8 @@
 name: Sync Highlights
 
 on:
-  # Process parsed files every 5 minutes
+  # Process parsed files every 5 minutes, but only if jobs exist in queue
+  # This reduces R2 operations by skipping worker runs when queue is empty
   schedule:
     - cron: '*/5 * * * *'
   # Also process immediately after parsing completes
@@ -37,9 +38,55 @@ env:
   NOTION_REDIRECT_URI: ${{ secrets.NOTION_REDIRECT_URI }}
 
 jobs:
-  sync:
-    # Only run in main repository, not in forks
+  check_queue:
     if: github.repository == 'ajiteshgogoi/booksync'
+    runs-on: ubuntu-latest
+    outputs:
+      has_jobs: ${{ steps.check.outputs.has_jobs }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      
+      - name: Install dependencies
+        run: |
+          cd server
+          npm ci --include=dev
+      
+      - name: Build server
+        run: |
+          cd server
+          npm run build
+      
+      - name: Check for jobs
+        id: check
+        run: |
+          cd server
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              const { jobStateService } = await import('./build/src/services/jobStateService.js');
+              const jobs = await jobStateService.listJobsByState('parsed');
+              const hasJobs = jobs.length > 0;
+              console.log('Has jobs:', hasJobs, '(', jobs.length, 'jobs found)');
+              console.log(`has_jobs=${hasJobs}`);
+              console.log('::set-output name=has_jobs::' + hasJobs);
+            } catch (error) {
+              console.error('Error checking jobs:', error);
+              process.exit(1);
+            }
+          })();
+          "
+
+  sync:
+    needs: check_queue
+    if: github.repository == 'ajiteshgogoi/booksync' && needs.check_queue.outputs.has_jobs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 300  # 5 hour timeout
 
