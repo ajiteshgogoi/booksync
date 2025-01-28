@@ -120,9 +120,6 @@ export class WorkerService {
           }
 
           try {
-            // Once we find a job, stop polling and process it
-            pollCount = 5; // This will exit the polling loop
-            
             // Process the file - let it handle state transitions
             await processFile(uploadId);
             logger.info('Job processed successfully');
