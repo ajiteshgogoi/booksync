@@ -47,6 +47,8 @@ export class JobStateService {
     userId: string;
     databaseId: string;
     uploadId?: string;
+    isChunk?: boolean;
+    parentUploadId?: string;
   }): Promise<JobMetadata> {
     const jobState: JobMetadata = {
       ...params,

@@ -136,7 +136,9 @@ export async function queueSyncJob(
         fileName: `${chunkJobId}.json`,
         userId: userId,
         databaseId: databaseId,
-        uploadId: uploadId
+        uploadId: uploadId,
+        isChunk: chunks.length > 1, // Set isChunk true for multi-chunk uploads
+        parentUploadId: chunks.length > 1 ? baseJobId : undefined // Set parent for chunks
       });
 
       // Update to queued state
