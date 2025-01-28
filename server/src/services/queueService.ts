@@ -41,8 +41,10 @@ export class QueueService {
   }
 
   private getBaseJobId(jobId: string): string {
-    // Remove chunk suffix if present
-    return jobId.split('_')[0];
+    // First remove the chunk suffix if present
+    const withoutChunk = jobId.split('_')[0];
+    // Then remove any prefix (sync: or upload:) to get the base ID
+    return withoutChunk.replace(/^(sync:|upload:)/, '');
   }
 
   private static instance: QueueService;
@@ -275,14 +277,23 @@ export class QueueService {
 
         // Check if this is a chunk job
         if (this.isChunkJob(entry.uploadId)) {
-          // If user already has an active chunk, skip this job
-          if (activeState.activeUsers[entry.userId]) {
-            logger.debug('User already has active chunk, skipping', {
-              userId: entry.userId,
-              activeJob: activeState.activeUsers[entry.userId].uploadId,
-              nextJobId: entry.uploadId
-            });
-            continue;
+          const hasActiveChunk = activeState.activeUsers[entry.userId];
+          if (hasActiveChunk) {
+            // Compare base IDs using consistent method
+            const activeBaseId = activeState.activeUsers[entry.userId].uploadId;
+            const incomingBaseId = this.getBaseJobId(entry.uploadId);
+            
+            // Only skip if it's for the same base upload
+            if (activeBaseId === incomingBaseId) {
+              logger.debug('User already has active chunk for this upload, skipping', {
+                userId: entry.userId,
+                activeJob: activeState.activeUsers[entry.userId].uploadId,
+                nextJobId: entry.uploadId,
+                activeBaseId,
+                incomingBaseId
+              });
+              continue;
+            }
           }
         }
 
@@ -362,9 +373,11 @@ export class QueueService {
       const baseUploadId = activeState.activeUsers[userId]?.uploadId;
       if (baseUploadId) {
         // Only remove if no more chunks from this upload are in queue
-        const hasMoreChunks = queueState.queue.some(entry =>
-          this.getBaseJobId(entry.uploadId) === baseUploadId
-        );
+        const hasMoreChunks = queueState.queue.some(entry => {
+          const queuedBaseId = this.getBaseJobId(entry.uploadId);
+          const activeBaseId = this.getBaseJobId(baseUploadId);
+          return queuedBaseId === activeBaseId;
+        });
 
         if (!hasMoreChunks) {
           // No more chunks in queue, safe to remove from active users
@@ -417,7 +430,7 @@ export class QueueService {
       const activeState = await this.getActiveUsersState();
       if (!activeState.activeUsers[userId]) {
         activeState.activeUsers[userId] = {
-          uploadId: uploadId.split('_')[0], // Get base upload ID without chunk number
+          uploadId: this.getBaseJobId(uploadId), // Get base upload ID using consistent method
           startedAt: Date.now()
         };
         await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
