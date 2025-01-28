@@ -155,7 +155,7 @@ export class QueueService {
       // Update queue state
       await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
       
-      // Update queue length in active users state
+      // Update queue length in active users state to match actual queue length
       activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
 
@@ -185,12 +185,12 @@ export class QueueService {
         activeUsers: Object.keys(activeState.activeUsers).length
       });
 
-      const nextEntry = queueState.queue.shift();
-      if (!nextEntry) {
+      if (queueState.queue.length === 0) {
         logger.debug('No jobs in queue');
         return null;
       }
 
+      const nextEntry = queueState.queue[0]; // Look at next job without removing it yet
       logger.debug('Found next job in queue:', {
         jobId: nextEntry.uploadId,
         userId: nextEntry.userId,
@@ -200,13 +200,13 @@ export class QueueService {
       // Only process jobs with sync: prefix - these are ready to be synced
       if (!nextEntry.uploadId.startsWith('sync:')) {
         logger.debug('Skipping non-sync job', { jobId: nextEntry.uploadId });
-        // Put entry back in queue
-        queueState.queue.unshift(nextEntry);
-        await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
         return null;
       }
 
       logger.debug('Moving job to active state:', { jobId: nextEntry.uploadId });
+
+      // Remove the job from queue after validation
+      queueState.queue.shift();
 
       // Update both states since we have a valid job to process
       activeState.activeUsers[nextEntry.userId] = {
@@ -232,6 +232,11 @@ export class QueueService {
     try {
       const activeState = await this.getActiveUsersState();
       delete activeState.activeUsers[userId];
+      
+      // Update queue length from actual queue
+      const queueState = await this.getQueueState();
+      activeState.queueLength = queueState.queue.length;
+      
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
     } finally {
       await this.releaseLock('queue');
@@ -255,8 +260,9 @@ export class QueueService {
   }
 
   async getQueueLength(): Promise<number> {
-    const activeState = await this.getActiveUsersState();
-    return activeState.queueLength;
+    // Get actual queue length instead of cached value
+    const queueState = await this.getQueueState();
+    return queueState.queue.length;
   }
 
   async getActiveUserCount(): Promise<number> {
