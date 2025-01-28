@@ -29,7 +29,7 @@ export async function processFileContent(
 
     // File content is already streamed from root by parseHighlights.js
 
-    // Parse the content and store in temp storage
+    // Parse the content
     const highlights = await parseClippings(fileContent);
     
     logger.debug('Storing highlights in temp storage', {
@@ -38,6 +38,7 @@ export async function processFileContent(
       path: `highlights/${jobId}.json`
     });
 
+    // Store highlights in temp storage
     await tempStorageService.storeHighlights(jobId, highlights);
 
     // Verify highlights were stored
@@ -46,11 +47,12 @@ export async function processFileContent(
       throw new Error('Failed to store highlights in temp storage');
     }
 
-    // Set state to parsed
+    // After successfully storing highlights, update state and add to queue
     const updatedState = await jobStateService.updateJobState(jobId, {
       state: 'parsed',
-      message: 'File parsed successfully',
+      message: 'Highlights parsed and stored successfully',
       total: highlights.length,
+      progress: 0,
       lastCheckpoint: Date.now()
     });
 
@@ -61,14 +63,9 @@ export async function processFileContent(
       total: highlights.length
     });
 
-    // After parsing and storing highlights, update state and add to queue
+    // Add to queue after successful parsing and storing
     if (updatedState?.userId) {
-      // Set state to parsed now that highlights are stored
-      const jobState = await jobStateService.updateJobState(jobId, {
-        state: 'parsed',
-        message: 'Highlights parsed and stored successfully',
-        progress: 0
-      });
+      const jobState = updatedState;
 
       if (jobState) {
         // Only add to queue after successful parsing and state update

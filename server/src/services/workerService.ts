@@ -88,11 +88,32 @@ export class WorkerService {
           }
 
           // Get current job state and verify it's 'parsed' before processing
-          const jobState = await jobStateService.getJobState(uploadId);
-          if (!jobState || jobState.state !== 'parsed') {
-            logger.error('Job not ready for processing - must be in parsed state', {
+          // Add retries to handle potential race conditions with R2 storage
+          let jobState = null;
+          let retryCount = 0;
+          
+          while (retryCount < MAX_RETRIES) {
+            jobState = await jobStateService.getJobState(uploadId);
+            
+            if (jobState?.state === 'parsed') {
+              break;
+            }
+            
+            logger.debug('Job not in parsed state, retrying...', {
               uploadId,
-              currentState: jobState?.state
+              currentState: jobState?.state,
+              retry: retryCount + 1
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            retryCount++;
+          }
+
+          if (!jobState || jobState.state !== 'parsed') {
+            logger.error('Job not ready for processing after retries - must be in parsed state', {
+              uploadId,
+              currentState: jobState?.state,
+              attempts: retryCount
             });
             throw new Error('Job not in correct state for processing');
           }
