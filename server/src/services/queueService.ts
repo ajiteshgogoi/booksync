@@ -35,6 +35,16 @@ interface ActiveUsersState {
 }
 
 export class QueueService {
+  private isChunkJob(jobId: string): boolean {
+    // Check if job ID has chunk suffix (_N)
+    return jobId.includes('_');
+  }
+
+  private getBaseJobId(jobId: string): string {
+    // Remove chunk suffix if present
+    return jobId.split('_')[0];
+  }
+
   private static instance: QueueService;
   private workerId: string;
 
@@ -128,19 +138,39 @@ export class QueueService {
       const queueState = await this.getQueueState();
       const activeState = await this.getActiveUsersState();
 
-      // Check if user already has an active upload
-      if (activeState.activeUsers[userId]) {
-        return false;
-      }
+      // For chunk jobs, only allow if they belong to an existing upload
+      if (this.isChunkJob(uploadId)) {
+        const baseJobId = this.getBaseJobId(uploadId);
+        const hasParentJob = activeState.activeUsers[userId]?.uploadId === baseJobId ||
+                           queueState.queue.some(entry => entry.uploadId === baseJobId);
+        
+        if (!hasParentJob) {
+          logger.debug('Chunk job rejected - no parent job found', {
+            userId,
+            jobId: uploadId,
+            baseJobId
+          });
+          return false;
+        }
+      } else {
+        // For new uploads, block if user has ANY active upload or queued job
+        if (activeState.activeUsers[userId]) {
+          logger.debug('User already has active upload', {
+            userId,
+            activeUpload: activeState.activeUsers[userId].uploadId
+          });
+          return false;
+        }
 
-      // Check if user is already in queue
-      if (queueState.queue.some(entry => entry.userId === userId)) {
-        return false;
+        if (queueState.queue.some(entry => entry.userId === userId)) {
+          logger.debug('User already has upload in queue', { userId });
+          return false;
+        }
       }
 
       // Add to queue
       const entry = {
-        uploadId,  // This is actually the sync:userId:timestamp job ID
+        uploadId,
         userId,
         queuedAt: Date.now()
       };
@@ -148,6 +178,7 @@ export class QueueService {
 
       logger.debug('Adding job to queue:', {
         jobId: uploadId,
+        isChunk: this.isChunkJob(uploadId),
         userId,
         queueLength: queueState.queue.length
       });
@@ -155,7 +186,7 @@ export class QueueService {
       // Update queue state
       await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
       
-      // Update queue length in active users state to match actual queue length
+      // Update queue length in active users state
       activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
 
@@ -231,12 +262,25 @@ export class QueueService {
 
     try {
       const activeState = await this.getActiveUsersState();
-      delete activeState.activeUsers[userId];
-      
-      // Update queue length from actual queue
       const queueState = await this.getQueueState();
+
+      // Only remove if this was the last chunk job for the upload
+      if (activeState.activeUsers[userId]) {
+        const activeJobId = activeState.activeUsers[userId].uploadId;
+        const baseJobId = this.getBaseJobId(activeJobId);
+        
+        // Check if any other chunks from this upload are in queue
+        const hasMoreChunks = queueState.queue.some(entry =>
+          this.getBaseJobId(entry.uploadId) === baseJobId
+        );
+
+        if (!hasMoreChunks) {
+          delete activeState.activeUsers[userId];
+        }
+      }
+
+      // Update queue length
       activeState.queueLength = queueState.queue.length;
-      
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
     } finally {
       await this.releaseLock('queue');
