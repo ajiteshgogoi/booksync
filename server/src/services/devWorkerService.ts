@@ -117,32 +117,18 @@ export class DevWorkerService {
             throw new Error('Job not found - ensure job is created before processing');
           }
 
-          // Get current job state and verify it's 'parsed' before processing
-          // Add retries to handle potential race conditions with R2 storage
-          let jobState = null;
-          let retryCount = 0;
-          
-          while (retryCount < MAX_RETRIES) {
-            jobState = await jobStateService.getJobState(uploadId);
-            
-            if (jobState?.state === 'parsed') {
-              break;
-            }
-            
-            logger.debug('Job not in parsed state, retrying...', {
-              uploadId,
-              currentState: jobState?.state,
-              retry: retryCount + 1
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            retryCount++;
+          // Get current job state after job is active
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState) {
+            logger.error('Job not found in job state service', { uploadId });
+            throw new Error('Job not found');
           }
 
-          if (!jobState || jobState.state !== 'parsed') {
-            logger.debug('Job not in parsed state, will try again next poll', {
+          // If job isn't parsed yet, skip processing but keep in active state
+          if (jobState.state !== 'parsed') {
+            logger.debug('Job not in parsed state yet, will try again next poll', {
               uploadId,
-              currentState: jobState?.state
+              currentState: jobState.state
             });
             continue;
           }
@@ -169,14 +155,7 @@ export class DevWorkerService {
               completedAt: Date.now()
             });
 
-            // Handle upload completion
-            await completeUpload(uploadId, this.currentJobId);
-            
-            // Remove from active users
-            await queueService.removeFromActive(userId);
-            
-            logger.info('Job processed successfully, stopping cycle');
-            break;
+            logger.info('Job processed successfully');
 
           } catch (error: any) {
             // Handle job processing error
@@ -186,14 +165,22 @@ export class DevWorkerService {
               message: `File processing failed: ${errorMessage}`,
               errorDetails: errorMessage
             });
-
-            // Handle upload failure cleanup
-            await completeUpload(uploadId, this.currentJobId);
-            
-            // Remove from active users on failure
-            await queueService.removeFromActive(userId);
             
             logger.error('Job processing failed', { uploadId, error });
+            throw error;
+
+          } finally {
+            try {
+              // Always attempt to remove from active users after processing
+              await queueService.removeFromActive(userId);
+              logger.debug('Removed job from active queue', { userId, uploadId });
+            } catch (cleanupError) {
+              logger.error('Error removing job from active queue', {
+                userId,
+                uploadId,
+                error: cleanupError
+              });
+            }
             break;
           }
 
@@ -206,12 +193,9 @@ export class DevWorkerService {
       logger.error('Error in worker cycle', error);
       throw error;
     } finally {
-      // Mark cycle as completed and cleanup
-      logger.info('Local worker cycle completed');
+      logger.info('Worker cycle completed');
       this.currentJobId = null;
       this.isRunning = false;
-      
-      logger.info('Local worker cycle completed - waiting for next scheduled run');
     }
   }
 }
