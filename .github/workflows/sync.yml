@@ -120,7 +120,7 @@ jobs:
               const { queueService } = await import('./build/src/services/queueService.js');
               const { workerService } = await import('./build/src/services/workerService.js');
               const { jobStateService } = await import('./build/src/services/jobStateService.js');
-              const { storageCleanupService } = await import('./build/src/services/storageCleanupService.js');
+              const { CleanupService } = await import('./build/src/services/cleanupService.js');
               
               console.log('Looking for jobs in parsed state...');
               const jobs = await jobStateService.listJobsByState('parsed');
@@ -153,8 +153,8 @@ jobs:
               }
               
               // Run cleanup service
-              console.log('Running storage cleanup...');
-              await storageCleanupService.runCleanupCycle();
+              console.log('Running cleanup...');
+              await CleanupService.cleanup();
               console.log('Cleanup completed');
               
               process.exit(0);
