@@ -597,8 +597,9 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
       databaseId: ''  // Will be set later in the process
     });
 
-    // Update with initial progress
+    // Set initial state to pending
     await jobStateService.updateJobState(jobId, {
+      state: 'pending',
       progress: 0,
       message: 'Uploading highlights for processing',
       total: 0
