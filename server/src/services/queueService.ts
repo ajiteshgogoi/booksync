@@ -157,13 +157,17 @@ export class QueueService {
         if (activeState.activeUsers[userId]) {
           logger.debug('User already has active upload', {
             userId,
-            activeUpload: activeState.activeUsers[userId].uploadId
+            activeUpload: activeState.activeUsers[userId].uploadId,
+            activeState
           });
           return false;
         }
-
+  
         if (queueState.queue.some(entry => entry.userId === userId)) {
-          logger.debug('User already has upload in queue', { userId });
+          logger.debug('User already has upload in queue', {
+            userId,
+            queueState
+          });
           return false;
         }
       }
@@ -180,11 +184,17 @@ export class QueueService {
         jobId: uploadId,
         isChunk: this.isChunkJob(uploadId),
         userId,
-        queueLength: queueState.queue.length
+        queueLength: queueState.queue.length,
+        queueState
       });
 
       // Update queue state
       await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
+      logger.debug('Queue state updated', {
+        queueFile: QUEUE_FILE,
+        queueLength: queueState.queue.length,
+        jobs: queueState.queue.map(e => e.uploadId)
+      });
       
       // Update queue length in active users state
       activeState.queueLength = queueState.queue.length;

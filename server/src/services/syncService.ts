@@ -137,7 +137,11 @@ export async function queueSyncJob(
       });
 
       // Add to queue
-      await queueService.addToQueue(chunkJobId, userId);
+      const queueAdded = await queueService.addToQueue(chunkJobId, userId);
+      if (!queueAdded) {
+        logger.error('Failed to add job to queue', { chunkJobId });
+        throw new Error(`Failed to add job ${chunkJobId} to queue`);
+      }
       logger.debug('Job queued for processing', { chunkJobId });
 
       // Update to parsed state after successful queue addition
