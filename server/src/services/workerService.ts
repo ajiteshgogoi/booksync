@@ -49,16 +49,16 @@ export class WorkerService {
     try {
       logger.info('Starting worker cycle');
       
-      // Poll for available jobs from the queue
+      // Poll for available jobs from the queue (reduced from 10 to 5 to optimize R2 operations)
       let pollCount = 0;
-      while (pollCount < 10) {
+      while (pollCount < 5) {
         if (!this.isRunning) {
           logger.info('Worker cycle stopped before completion');
           return;
         }
 
         pollCount++;
-        logger.info(`Starting poll ${pollCount} of max 10`);
+        logger.info(`Starting poll ${pollCount} of max 5`);
         
         // Enforce poll interval at the start of each iteration
         if (pollCount > 1) {

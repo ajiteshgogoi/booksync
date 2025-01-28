@@ -77,18 +77,18 @@ export class DevWorkerService {
 
   private async runWorkerCycle(): Promise<void> {
     try {
-      logger.info('Starting local worker cycle - will poll until job found or max 10 times');
+      logger.info('Starting local worker cycle - will poll until job found or max 5 times');
       
-      // Poll up to 10 times or until a job is processed
+      // Poll up to 5 times or until a job is processed (reduced from 10 to optimize R2 operations)
       let pollCount = 0;
-      while (pollCount < 10) {
+      while (pollCount < 5) {
         if (!this.isRunning) {
           logger.info('Worker cycle stopped before completion');
           return;
         }
 
         pollCount++;
-        logger.info(`Starting poll ${pollCount} of max 10`);
+        logger.info(`Starting poll ${pollCount} of max 5`);
         
         // Enforce poll interval at the start of each iteration
         if (pollCount > 1) {
