@@ -77,9 +77,9 @@ export class DevWorkerService {
 
   private async runWorkerCycle(): Promise<void> {
     try {
-      logger.info('Starting local worker cycle - will poll until job found or max 5 times');
+      logger.info('Starting worker cycle');
       
-      // Poll up to 5 times or until a job is processed (reduced from 10 to optimize R2 operations)
+      // Poll for available jobs from the queue (reduced from 10 to 5 to optimize R2 operations)
       let pollCount = 0;
       while (pollCount < 5) {
         if (!this.isRunning) {
@@ -117,7 +117,7 @@ export class DevWorkerService {
             throw new Error('Job not found - ensure job is created before processing');
           }
 
-          // For chunk jobs, handle parent upload tracking
+          // For chunk jobs, verify parent upload still exists
           if (jobState.isChunk && jobState.parentUploadId) {
             const parentStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
             if (parentStatus.isComplete) {
@@ -127,13 +127,6 @@ export class DevWorkerService {
               });
               continue;
             }
-
-            // Mark user as active with parent upload ID for first chunk
-            await queueService.addToActiveUsers(userId, jobState.parentUploadId);
-            logger.debug('Marked user active for chunked upload', {
-              userId,
-              parentUploadId: jobState.parentUploadId
-            });
           }
 
           // Remove failed jobs from queue only
