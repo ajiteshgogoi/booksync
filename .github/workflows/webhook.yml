@@ -66,9 +66,9 @@ jobs:
           if [ -z "${{ github.event.client_payload.jobId }}" ] || \
              [ -z "${{ github.event.client_payload.userId }}" ] || \
              [ -z "${{ github.event.client_payload.databaseId }}" ] || \
-             [ -z "${{ github.event.client_payload.fileKey }}" ]; then
+             [ -z "${{ github.event.client_payload.fileName }}" ]; then
             echo "Error: Missing required client payload parameters"
-            echo "Required: jobId, userId, databaseId, fileKey"
+            echo "Required: jobId, userId, databaseId, fileName"
             echo "Received payload: ${{ toJSON(github.event.client_payload) }}"
             exit 1
           fi
@@ -80,7 +80,7 @@ jobs:
           JOB_ID: ${{ github.event.client_payload.jobId }}
           DATABASE_ID: ${{ github.event.client_payload.databaseId }}
           USER_ID: ${{ github.event.client_payload.userId }}
-          R2_FILE_NAME: ${{ github.event.client_payload.fileKey }}
+          R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
           DEBUG: 'true'
         run: |
           echo "Environment Check:"
