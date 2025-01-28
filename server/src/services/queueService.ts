@@ -234,7 +234,22 @@ export class QueueService {
         return null;
       }
 
-      logger.debug('Moving job to active state:', { jobId: nextEntry.uploadId });
+      // Verify job exists in job state service before moving to active
+      const jobState = await jobStateService.getJobState(nextEntry.uploadId);
+      if (!jobState) {
+        logger.error('Job not found in job state service', {
+          jobId: nextEntry.uploadId
+        });
+        // Remove invalid job from queue
+        queueState.queue.shift();
+        await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
+        return null;
+      }
+
+      logger.debug('Moving job to active state:', {
+        jobId: nextEntry.uploadId,
+        jobState: jobState.state
+      });
 
       // Remove the job from queue after validation
       queueState.queue.shift();
@@ -264,18 +279,27 @@ export class QueueService {
       const activeState = await this.getActiveUsersState();
       const queueState = await this.getQueueState();
 
-      // Only remove if this was the last chunk job for the upload
-      if (activeState.activeUsers[userId]) {
-        const activeJobId = activeState.activeUsers[userId].uploadId;
-        const baseJobId = this.getBaseJobId(activeJobId);
+      // For failed jobs or jobs not found in state service, always remove from active
+      const failedJobId = activeState.activeUsers[userId]?.uploadId;
+      if (failedJobId) {
+        // Get job state to check if it failed or doesn't exist
+        const jobState = await jobStateService.getJobState(failedJobId);
         
-        // Check if any other chunks from this upload are in queue
-        const hasMoreChunks = queueState.queue.some(entry =>
-          this.getBaseJobId(entry.uploadId) === baseJobId
-        );
-
-        if (!hasMoreChunks) {
+        // If job failed or doesn't exist, always remove from active
+        if (!jobState || jobState.state === 'failed') {
           delete activeState.activeUsers[userId];
+        } else {
+          // Only remove if this was the last chunk job for the upload
+          const baseJobId = this.getBaseJobId(failedJobId);
+          
+          // Check if any other chunks from this upload are in queue
+          const hasMoreChunks = queueState.queue.some(entry =>
+            this.getBaseJobId(entry.uploadId) === baseJobId
+          );
+
+          if (!hasMoreChunks) {
+            delete activeState.activeUsers[userId];
+          }
         }
       }
 

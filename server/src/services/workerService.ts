@@ -80,11 +80,23 @@ export class WorkerService {
           this.currentJobId = uploadId;
           logger.info('Processing job from queue', { jobId: uploadId, userId });
 
+          // Verify job exists before processing
+          const jobExists = await jobStateService.getJobState(uploadId);
+          if (!jobExists) {
+            logger.error('Job not found in job state service', { uploadId });
+            throw new Error('Job not found - ensure job is created before processing');
+          }
+
           // Update job state to processing
-          await jobStateService.updateJobState(uploadId, {
+          const updated = await jobStateService.updateJobState(uploadId, {
             state: 'processing',
             message: 'Starting file processing'
           });
+
+          if (!updated) {
+            logger.error('Failed to update job state', { uploadId });
+            throw new Error('Failed to update job state');
+          }
 
           try {
             // Process the file
