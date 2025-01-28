@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   parse-highlights:
-    if: github.event.action == 'parse_highlights'
+    # Only run in main repository, not in forks
+    if: github.event.action == 'parse_highlights' && github.repository == 'ajiteshgogoi/booksync'
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 1 hour timeout for file parsing
     
@@ -104,7 +105,8 @@ jobs:
           node parseHighlights.js
 
   test-webhook:
-    if: github.event.action == 'parse_highlights_test'
+    # Only run in main repository, not in forks
+    if: github.event.action == 'parse_highlights_test' && github.repository == 'ajiteshgogoi/booksync'
     runs-on: ubuntu-latest
     steps:
       - name: Log Test Event

@@ -38,6 +38,8 @@ env:
 
 jobs:
   sync:
+    # Only run in main repository, not in forks
+    if: github.repository == 'ajiteshgogoi/booksync'
     runs-on: ubuntu-latest
     timeout-minutes: 300  # 5 hour timeout
 
