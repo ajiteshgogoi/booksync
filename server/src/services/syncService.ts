@@ -4,6 +4,7 @@ import { jobStateService } from './jobStateService.js';
 import { getBookHighlightHashes, truncateHash } from '../utils/notionUtils.js';
 import { tempStorageService } from './tempStorageService.js';
 import { startUpload, addJobToUpload, completeJob } from './uploadTrackingService.js';
+import { queueService } from './queueService.js';
 
 // Configuration based on environment
 const isProd = process.env.NODE_ENV === 'production';
@@ -133,6 +134,9 @@ export async function queueSyncJob(
         total: chunk.length,
         progress: 0
       });
+
+      // Re-add to queue once parsed
+      await queueService.addToQueue(chunkJobId, userId);
 
       // Add job to upload tracking
       await addJobToUpload(uploadId, chunkJobId, chunk.length);
