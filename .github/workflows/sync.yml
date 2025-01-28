@@ -1,4 +1,4 @@
-name: Kindle Highlights Sync
+name: Sync Highlights
 
 on:
   # Process parsed files every 5 minutes
