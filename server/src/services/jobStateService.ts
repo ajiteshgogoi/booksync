@@ -96,6 +96,11 @@ export class JobStateService {
   }
 
   private validateStateTransition(fromState: JobStatus['state'], toState: JobStatus['state']): boolean {
+    // Allow transitions to the same state
+    if (fromState === toState) {
+      return true;
+    }
+
     const validTransitions: Record<JobStatus['state'], JobStatus['state'][]> = {
       'pending': ['queued'],
       'queued': ['parsed', 'failed'],
