@@ -31,7 +31,20 @@ export async function processFileContent(
 
     // Parse the content and store in temp storage
     const highlights = await parseClippings(fileContent);
+    
+    logger.debug('Storing highlights in temp storage', {
+      jobId,
+      highlightCount: highlights.length,
+      path: `highlights/${jobId}.json`
+    });
+
     await tempStorageService.storeHighlights(jobId, highlights);
+
+    // Verify highlights were stored
+    const stored = await tempStorageService.exists(jobId, 'highlights');
+    if (!stored) {
+      throw new Error('Failed to store highlights in temp storage');
+    }
 
     // Set state to parsed
     const updatedState = await jobStateService.updateJobState(jobId, {
@@ -39,6 +52,13 @@ export async function processFileContent(
       message: 'File parsed successfully',
       total: highlights.length,
       lastCheckpoint: Date.now()
+    });
+
+    logger.debug('Highlights stored and state updated', {
+      jobId,
+      stored,
+      state: 'parsed',
+      total: highlights.length
     });
 
     // Add to processing queue after parsing is complete
@@ -102,36 +122,11 @@ export async function processFile(jobId: string): Promise<void> {
         break;
     }
 
-    // Process highlights with timeout checks
-    if (!await tempStorageService.exists(jobId, 'highlights')) {
-      checkTimeout();
-      
-      if (!await tempStorageService.exists(jobId, 'content')) {
-        // During parsing stage, get content from original upload location in root
-        const fileContent = await downloadObject(`${jobId}.txt`);
-        await tempStorageService.storeFileContent(jobId, fileContent.toString('utf-8'));
-      }
-
-      checkTimeout();
-      const fileContent = await tempStorageService.getFileContent(jobId);
-      const highlights = await parseClippings(fileContent);
-      
-      checkTimeout();
-      await tempStorageService.storeHighlights(jobId, highlights);
-
-      const updatedJobState = await jobStateService.updateJobState(jobId, {
-        state: 'parsed',
-        message: 'File parsed successfully',
-        total: highlights.length,
-        lastCheckpoint: Date.now()
-      });
-
-      // Add to processing queue only after parsing is complete
-      if (updatedJobState?.userId) {
-        await queueService.addToQueue(jobId, updatedJobState.userId);
-      } else {
-        logger.error('Could not add job to queue - missing userId', { jobId });
-      }
+    // Check if highlights exist in temp storage
+    const highlightsExist = await tempStorageService.exists(jobId, 'highlights');
+    if (!highlightsExist) {
+      logger.warn('Upload not found', { jobId });
+      throw new Error('Upload not found - highlights missing from temp storage');
     }
 
     // Don't proceed with processing if job isn't in 'parsed' state

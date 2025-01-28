@@ -58,10 +58,48 @@ export class TempStorageService {
 
   async getHighlights(jobId: string): Promise<Highlight[]> {
     try {
-      const buffer = await downloadObject(this.getHighlightPath(jobId));
-      return JSON.parse(buffer.toString('utf-8'));
+      const path = this.getHighlightPath(jobId);
+      logger.debug('Attempting to get highlights from R2', {
+        jobId,
+        path
+      });
+
+      const buffer = await downloadObject(path);
+      if (!buffer) {
+        logger.error('No data returned from R2', { jobId, path });
+        throw new Error('No data returned from R2');
+      }
+
+      const content = buffer.toString('utf-8');
+      if (!content) {
+        logger.error('Empty content from R2', { jobId, path });
+        throw new Error('Empty content from R2');
+      }
+
+      try {
+        const highlights = JSON.parse(content);
+        logger.debug('Successfully parsed highlights', {
+          jobId,
+          highlightCount: highlights.length
+        });
+        return highlights;
+      } catch (parseError) {
+        logger.error('Failed to parse highlights JSON', {
+          jobId,
+          path,
+          content: content.substring(0, 100) + '...',
+          error: parseError
+        });
+        throw parseError;
+      }
     } catch (error) {
-      logger.error('Error reading highlights from R2', { jobId, error });
+      const e = error as Error;
+      logger.error('Error reading highlights from R2', {
+        jobId,
+        path: this.getHighlightPath(jobId),
+        error: e.message,
+        stack: e.stack
+      });
       throw error;
     }
   }
