@@ -2,6 +2,8 @@
 
 BookSync is a streamlined tool that automatically syncs your Kindle highlights to Notion. It provides an efficient and user-friendly way to maintain a personal library of your favorite book passages.
 
+📚 **[Try BookSync Now](https://booksync.vercel.app/)**
+
 ## Key Features
 
 - **One-Click Integration**: Connect to Notion and copy a template to get started
