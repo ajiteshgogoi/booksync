@@ -190,26 +190,56 @@ export class CleanupService {
 
           if (!parentJob) {
             // Parent missing and no queued chunks, clean up all chunks
-            for (const chunk of chunkJobs) {
-              await deleteObject(`uploads/${chunk.jobId}.txt`);
-              removedCount++;
-            }
+            await Promise.all(chunkJobs.map(async (chunk) => {
+              try {
+                await Promise.all([
+                  deleteObject(`uploads/${chunk.jobId}.txt`),
+                  deleteObject(`highlights/${chunk.jobId}.json`),
+                  deleteObject(`temp/${chunk.jobId}_state.json`)
+                ]);
+                removedCount += 3;
+              } catch (error) {
+                logger.warn('Error cleaning up chunk files', { chunkId: chunk.jobId, error });
+              }
+            }));
             processedIds.add(jobState.parentUploadId);
           } else if (parentJob.state === 'pending' || this.isJobStale(parentJob)) {
             // Parent is stale or pending and no queued chunks, clean up all chunks
-            for (const chunk of chunkJobs) {
-              await deleteObject(`uploads/${chunk.jobId}.txt`);
-              removedCount++;
-            }
-            await deleteObject(`uploads/${parentJob.jobId}.txt`);
-            removedCount++;
+            await Promise.all(chunkJobs.map(async (chunk) => {
+              try {
+                await Promise.all([
+                  deleteObject(`uploads/${chunk.jobId}.txt`),
+                  deleteObject(`highlights/${chunk.jobId}.json`),
+                  deleteObject(`temp/${chunk.jobId}_state.json`)
+                ]);
+                removedCount += 3;
+              } catch (error) {
+                logger.warn('Error cleaning up chunk files', { chunkId: chunk.jobId, error });
+              }
+            }));
+            
+            // Clean up parent job files
+            await Promise.all([
+              deleteObject(`uploads/${parentJob.jobId}.txt`),
+              deleteObject(`highlights/${parentJob.jobId}.json`),
+              deleteObject(`temp/${parentJob.jobId}_state.json`)
+            ]).catch(error => {
+              logger.warn('Error cleaning up parent job files', { parentId: parentJob.jobId, error });
+            });
+            removedCount += 3;
             processedIds.add(jobState.parentUploadId);
           }
         } else if (jobState.state === 'pending' || this.isJobStale(jobState)) {
           // For non-chunk jobs, clean up if pending or stale
-          await deleteObject(obj.key);
-          logger.info(`Removed stale upload file: ${obj.key}`);
-          removedCount++;
+          await Promise.all([
+            deleteObject(obj.key),
+            deleteObject(`highlights/${jobId}.json`),
+            deleteObject(`temp/${jobId}_state.json`)
+          ]).catch(error => {
+            logger.warn('Error cleaning up job files', { jobId, error });
+          });
+          logger.info(`Removed stale upload files for job: ${jobId}`);
+          removedCount += 3;
         }
       }
 
@@ -281,9 +311,24 @@ export class CleanupService {
         }
       }
 
+      // Clean up all resources for each job
+      await Promise.all(userJobs.map(async (job) => {
+        try {
+          await Promise.all([
+            deleteObject(`uploads/${job.jobId}.txt`),
+            deleteObject(`highlights/${job.jobId}.json`),
+            deleteObject(`temp/${job.jobId}_state.json`)
+          ]);
+          logger.debug(`Cleaned up resources for job ${job.jobId}`);
+        } catch (error) {
+          logger.warn('Error cleaning up job resources', { jobId: job.jobId, error });
+        }
+      }));
+
+      // Finally delete the user's upload key
       const uploadKey = `${UPLOADS_PREFIX}${userId}.json`;
       await deleteObject(uploadKey);
-      logger.info(`Cleaned up upload for user ${userId}`);
+      logger.info(`Cleaned up all resources for user ${userId}`);
     } catch (error) {
       logger.error(`Error cleaning up uploads for user ${userId}:`, error);
     } finally {
@@ -315,18 +360,34 @@ export class CleanupService {
 
   private static async cleanupJobResources(job: JobMetadata): Promise<void> {
     try {
-      // Clean up job temp files
-      await deleteObject(`temp-highlights/${job.jobId}.json`);
-      await deleteObject(`uploads/${job.jobId}.txt`);
+      // Clean up all job resources
+      await Promise.all([
+        deleteObject(`highlights/${job.jobId}.json`),
+        deleteObject(`uploads/${job.jobId}.txt`),
+        deleteObject(`temp/${job.jobId}_state.json`)
+      ]).catch(error => {
+        logger.warn('Error cleaning up job files', { jobId: job.jobId, error });
+      });
       
       // For parent jobs, also clean up all chunk resources
       if (!job.isChunk && job.jobId) {
         const chunkJobs = await jobStateService.getChunkJobs(job.jobId);
-        for (const chunk of chunkJobs) {
-          await deleteObject(`temp-highlights/${chunk.jobId}.json`);
-          await deleteObject(`uploads/${chunk.jobId}.txt`);
-          await jobStateService.deleteJob(chunk.jobId);
-        }
+        await Promise.all(chunkJobs.map(async (chunk) => {
+          try {
+            await Promise.all([
+              deleteObject(`highlights/${chunk.jobId}.json`),
+              deleteObject(`uploads/${chunk.jobId}.txt`),
+              deleteObject(`temp/${chunk.jobId}_state.json`),
+              jobStateService.deleteJob(chunk.jobId)
+            ]);
+          } catch (error) {
+            logger.warn('Error cleaning up chunk resources', {
+              chunkId: chunk.jobId,
+              parentId: job.jobId,
+              error
+            });
+          }
+        }));
       }
 
       // Clean up job state last

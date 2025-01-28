@@ -106,7 +106,8 @@ export async function processFile(jobId: string): Promise<void> {
       await Promise.all([
         deleteObject(`${jobId}.txt`),
         tempStorageService.cleanupJob(jobId),
-        deleteObject(`temp/${jobId}_state.json`),
+        deleteObject(`temp/${jobId}_state.json`), // Delete processing state
+        deleteObject(`highlights/${jobId}.json`), // Delete stored highlights
         // Don't delete job state yet - worker service needs it
         queueService.removeFromActive(currentState.userId)
       ]).catch(error => {
@@ -148,7 +149,8 @@ export async function processFile(jobId: string): Promise<void> {
         await Promise.all([
           deleteObject(`${jobId}.txt`),
           tempStorageService.cleanupJob(jobId),
-          deleteObject(`temp/${jobId}_state.json`),
+          deleteObject(`temp/${jobId}_state.json`), // Delete processing state
+          deleteObject(`highlights/${jobId}.json`), // Delete stored highlights
           // Don't delete job state yet - worker service needs it
           queueService.removeFromActive(currentState.userId)
         ]).catch(error => {

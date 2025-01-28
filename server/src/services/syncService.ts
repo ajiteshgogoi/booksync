@@ -127,8 +127,17 @@ export async function queueSyncJob(
       const chunk = chunks[i];
       const chunkJobId = chunks.length === 1 ? baseJobId : `${baseJobId}_${i + 1}`;
       
-      // Store chunk highlights in temp storage
-      await tempStorageService.storeHighlights(chunkJobId, chunk);
+      // Store both highlights and processing state for chunk
+      await Promise.all([
+        tempStorageService.storeHighlights(chunkJobId, chunk),
+        tempStorageService.storeProcessingState(chunkJobId, {
+          databaseId,
+          userId,
+          uploadId,
+          stage: 'initialization',
+          progress: 0
+        })
+      ]);
 
       // Create job for this chunk - use jobId as filename
       await jobStateService.createJob({
