@@ -1,14 +1,15 @@
 name: Kindle Highlights Sync
 
 on:
+  # Process parsed files every 5 minutes
   schedule:
-    - cron: '*/30 * * * *'  # Run every 30 minutes
+    - cron: '*/5 * * * *'
+  # Also process immediately after parsing completes
+  workflow_run:
+    workflows: ["Parse Highlights"]
+    types:
+      - completed
   workflow_dispatch:  # Allow manual trigger
-
-# Cancel in-progress runs on new trigger
-concurrency:
-  group: 'kindle-sync'
-  cancel-in-progress: true
 
 permissions:
   actions: write
