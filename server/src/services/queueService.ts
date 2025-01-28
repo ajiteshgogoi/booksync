@@ -148,14 +148,20 @@ export class QueueService {
       // For chunk jobs, only allow if they belong to an existing upload
       if (jobState.isChunk && jobState.parentUploadId) {
         const baseJobId = jobState.parentUploadId;
-        const hasParentJob = activeState.activeUsers[userId]?.uploadId === baseJobId ||
-                           queueState.queue.some(entry => entry.uploadId === baseJobId);
-        
-        if (!hasParentJob) {
-          logger.debug('Chunk job rejected - no parent job found', {
+        // Check if parent job exists in active users, queue, or job state
+        const hasParentJobActive = activeState.activeUsers[userId]?.uploadId === baseJobId;
+        const hasParentJobQueued = queueState.queue.some(entry => entry.uploadId === baseJobId);
+        const parentJobState = await jobStateService.getJobState(baseJobId);
+        const hasParentJobState = parentJobState !== null;
+
+        if (!hasParentJobActive && !hasParentJobQueued && !hasParentJobState) {
+          logger.debug('Chunk job rejected - no parent job found in any state', {
             userId,
             jobId: uploadId,
-            parentUploadId: baseJobId
+            parentUploadId: baseJobId,
+            hasParentJobActive,
+            hasParentJobQueued,
+            hasParentJobState
           });
           return false;
         }
