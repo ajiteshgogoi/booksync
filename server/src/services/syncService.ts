@@ -101,6 +101,17 @@ export async function queueSyncJob(
 
     logger.debug('Total unique highlights to queue', { count: uniqueHighlights.length });
 
+    // If no unique highlights, clean up and return
+    if (uniqueHighlights.length === 0) {
+      await jobStateService.updateJobState(baseJobId, {
+        state: 'completed',
+        message: 'No new highlights to process'
+      });
+      // Clear upload tracking since there's nothing to process
+      await completeJob(uploadId, baseJobId);
+      return baseJobId;
+    }
+
     // Update upload with total highlight count
     await startUpload(userId, uploadId, uniqueHighlights.length);
 
