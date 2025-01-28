@@ -1,155 +1,49 @@
 # BookSync
 
-[![Live Website](https://img.shields.io/badge/demo-live-brightgreen)](https://booksync.vercel.app/)
-
-A modern web application to sync Kindle highlights to Notion, using Redis streams and GitHub Actions backend processing.
+BookSync is a streamlined tool that automatically syncs your Kindle highlights to Notion. It provides an efficient and user-friendly way to maintain a personal library of your favorite book passages.
 
 ## Key Features
 
-- **Stream-based Processing**
-  - Redis streams for reliable job queuing
-  - Consumer groups for parallel processing
-  - At-least-once delivery semantics
-  - Automatic job retries and dead-letter handling
+- **One-Click Integration**: Connect to Notion and copy a template to get started
+- **Smart Deduplication**: Handles duplicate highlights intelligently to keep your library clean
+- **Fast Processing**: Efficiently processes and syncs highlights in the background
+- **Book Cover Integration**: Automatically fetches book covers from OpenLibrary or Google Books
+- **Robust Error Handling**: Reliable processing with retry mechanisms and validation
+- **Rate Limiting**: Prevents API abuse and ensures stable operation
 
-- **Smart Deduplication**
-  - SHA-256 based content hashing
-  - Location-aware duplicate detection
-  - Automatic handling of edited highlights
-  - Redis-backed hash storage with TTL
+## How It Works
 
-- **Client-side File Handling**
-  - Secure file upload with progress tracking
-  - Client-side parsing and validation
-  - Chunked uploads for large files
-  - Automatic retries on network failures
+1. **Setup**: 
+   - Copy the Kindle Highlights template to your Notion workspace
+   - Connect BookSync to your Notion account
+   - Upload the 'My Clippings.txt' file from your Kindle
 
-- **GitHub Actions Backend**
-  - Scheduled processing every 30 minutes
-  - Fair usage limits per user
-  - Automatic scaling based on queue size
-  - Detailed processing metrics
-  - Dynamic batch processing with:
-    - Base batch size of 50 highlights
-    - Automatic adjustment based on API response times
-    - Exponential backoff for rate limits
-    - Real-time batch size optimization
+2. **Processing**:
+   - Your highlights are parsed and validated
+   - Book information is extracted and organized
+   - Duplicates are identified and filtered
+   - Highlights are queued for background processing
 
-## Architecture
+3. **Syncing**:
+   - Highlights are synced to your Notion database
+   - Book covers are automatically fetched
+   - Background processing. Just click sync and close the page.
 
-### 1. Client Layer
-- React frontend with Vite
-- File upload and parsing
-- Progress tracking and status updates
-- OAuth integration with Notion
+## Technical Stack
 
-### 2. Queue Layer
-- Redis streams for job management
-- Consumer groups for parallel processing
-- Automatic retry mechanism
-- Dead-letter queue for failed jobs
+- Frontend: React, TypeScript, Tailwind CSS
+- Backend: Node.js, TypeScript
+- Storage: Cloudflare R2
+- Processing: GitHub Actions for background jobs
+- API Integration: Notion API
 
-### 3. Processing Layer
-- GitHub Actions backend
-- Scheduled processing every 30 minutes
-- Batch processing of highlights
-- Rate-limited Notion API calls
-- Automatic retries with exponential backoff
+## Rate Limits
 
-### 4. Storage Layer
-- Redis for job queues and caching
-- R2 storage for temporary file storage
-- Notion as primary data store
+- Maximum 2 'My Clippings.txt' uploads per hour
+- Configurable batch processing to prevent API overload
 
-## Setup & Deployment
+## Support
 
-### Prerequisites
-- Node.js v18+
-- Redis v6+ with streams support
-- GitHub repository with Actions enabled
-- Notion integration credentials
+For bugs or feedback, please contact ajiteshgogoi@gmail.com.
 
-### Environment Variables
-
-```bash
-# Redis Configuration
-REDIS_URL=redis://localhost:6379
-REDIS_STREAM_NAME=booksync-jobs
-REDIS_CONSUMER_GROUP=booksync-workers
-
-# GitHub Actions
-GITHUB_ACCESS_TOKEN=your_token
-GITHUB_WORKFLOW_FILE=.github/workflows/process.yml
-
-# Notion Integration
-NOTION_OAUTH_CLIENT_ID=your_client_id
-NOTION_OAUTH_CLIENT_SECRET=your_client_secret
-NOTION_REDIRECT_URI=http://localhost:3001/auth/notion/callback
-```
-
-### Deployment Steps
-
-1. Set up Redis with streams support
-2. Configure GitHub Actions workflow
-3. Set up Notion integration
-4. Deploy frontend and backend
-5. Configure environment variables
-
-## Usage
-
-1. Connect your Notion account
-2. Upload My Clippings.txt
-3. Highlights are queued for processing
-4. View progress and status
-5. Access synced highlights in Notion
-
-## Development
-
-### Client Structure
-
-```
-client/
-├── src/
-│   ├── components/      # UI components
-│   ├── services/        # API clients
-│   ├── utils/           # Utility functions
-│   ├── App.tsx          # Main application
-│   └── main.tsx         # Entry point
-```
-
-### Server Structure
-
-```
-server/
-├── src/
-│   ├── services/
-│   │   ├── redisJobService.ts    # Redis stream management
-│   │   ├── notionClient.ts       # Notion API integration
-│   │   └── githubService.ts      # GitHub Actions integration
-│   ├── worker.ts                 # Background processor
-│   └── index.ts                  # API server
-```
-
-## Troubleshooting
-
-### Common Issues
-
-- **Redis Connection Issues**
-  - Verify Redis streams support
-  - Check consumer group configuration
-
-- **GitHub Actions Failures**
-  - Verify workflow permissions
-  - Check rate limits
-
-- **Notion API Errors**
-  - Verify integration permissions
-  - Check rate limits
-
-## Contributing
-
-Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
-
-## License
-
-[MIT](LICENSE)
+[![Buy Me A Coffee](https://storage.ko-fi.com/cdn/kofi2.png?v=3)](https://ko-fi.com/gogoi)
