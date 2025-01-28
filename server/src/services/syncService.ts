@@ -126,6 +126,15 @@ export async function queueSyncJob(
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkJobId = chunks.length === 1 ? baseJobId : `${baseJobId}_${i + 1}`;
+      const isBaseJob = chunkJobId === baseJobId;
+      
+      logger.debug('Creating job:', {
+        jobId: chunkJobId,
+        isBaseJob,
+        isChunk: chunks.length > 1,
+        chunkIndex: i + 1,
+        totalChunks: chunks.length
+      });
       
       // Store both highlights and processing state for chunk
       await Promise.all([
@@ -170,20 +179,30 @@ export async function queueSyncJob(
       }
       logger.debug('Job queued for processing', { chunkJobId });
 
+      // Get current state before updating
+      const currentState = await jobStateService.getJobState(chunkJobId);
+      
       // Update to parsed state after successful queue addition
-      await jobStateService.updateJobState(chunkJobId, {
+      const updatedState = await jobStateService.updateJobState(chunkJobId, {
         state: 'parsed',
         message: `Ready to process ${chunk.length} highlights`,
         total: chunk.length,
         progress: 0,
       });
-      // Add job to upload tracking
-      await addJobToUpload(uploadId, chunkJobId, chunk.length);
-      
-      logger.debug('Job prepared for GitHub processing', {
-        chunkJobId,
+
+      logger.debug('Job state updated:', {
+        jobId: chunkJobId,
+        isBaseJob: chunkJobId === baseJobId,
+        previousState: currentState?.state,
+        currentState: updatedState?.state,
+        isChunk: chunks.length > 1,
+        chunkIndex: i + 1,
+        totalChunks: chunks.length,
         highlightCount: chunk.length
       });
+
+      // Add job to upload tracking
+      await addJobToUpload(uploadId, chunkJobId, chunk.length);
     }
 
     // Mark user as active after all jobs are queued

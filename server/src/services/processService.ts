@@ -27,7 +27,13 @@ export async function processFile(jobId: string): Promise<void> {
 
     // Verify job is in 'parsed' state before proceeding
     if (jobState.state !== 'parsed') {
-      logger.info(`Job ${jobId} is not in parsed state: ${jobState.state}`);
+      logger.info(`Job ${jobId} is not in parsed state:`, {
+        jobId,
+        currentState: jobState.state,
+        isChunk: jobState.isChunk,
+        parentUploadId: jobState.parentUploadId,
+        statePath: `jobs/${jobId}.json`
+      });
       return;
     }
 

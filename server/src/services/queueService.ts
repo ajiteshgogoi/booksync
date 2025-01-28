@@ -302,7 +302,10 @@ export class QueueService {
         if (jobState.state !== 'parsed') {
           logger.debug('Skipping job not in parsed state', {
             jobId: entry.uploadId,
-            state: jobState.state
+            state: jobState.state,
+            isChunk: jobState.isChunk,
+            parentUploadId: jobState.parentUploadId,
+            queuedAt: new Date(entry.queuedAt).toISOString()
           });
           continue;
         }
