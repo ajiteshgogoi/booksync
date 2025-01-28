@@ -168,10 +168,10 @@ export class QueueService {
         return null;
       }
 
-      // Check job state - only activate if parsed
-      const jobState = await jobStateService.getJobState(nextEntry.uploadId);
-      if (!jobState || jobState.state !== 'parsed') {
-        // Put entry back in queue if not ready
+      // Only process jobs with sync: prefix - these are ready to be synced
+      if (!nextEntry.uploadId.startsWith('sync:')) {
+        logger.debug('Skipping non-sync job', { jobId: nextEntry.uploadId });
+        // Put entry back in queue
         queueState.queue.unshift(nextEntry);
         await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
         return null;
