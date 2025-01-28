@@ -56,9 +56,8 @@ export async function queueSyncJob(
       uploadId: uploadId
     });
 
-    // Initialize upload tracking and mark user as active
+    // Initialize upload tracking
     await startUpload(userId, uploadId, 0); // we'll update total count after parsing
-    await queueService.addToActiveUsers(userId, uploadId); // Track the upload, not individual jobs
 
     // Get Notion client to check for existing highlights
     const notionClient = await getClient();
@@ -151,6 +150,9 @@ export async function queueSyncJob(
         highlightCount: chunk.length
       });
     }
+
+    // Mark user as active after all jobs are queued
+    await queueService.addToActiveUsers(userId, uploadId); // Track the upload, not individual jobs
 
     return baseJobId;
   } catch (error) {
