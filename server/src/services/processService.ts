@@ -21,11 +21,19 @@ export async function processFileContent(
       contentLength: fileContent.length
     });
 
-    // Set state to queued
-    await jobStateService.updateJobState(jobId, {
+    // Set state to queued and move to active queue
+    const jobState = await jobStateService.updateJobState(jobId, {
       state: 'queued',
       message: 'Starting file processing'
     });
+    
+    if (!jobState?.userId) {
+      throw new Error('Missing userId in job state');
+    }
+
+    // Add to active queue when queued
+    await queueService.addToQueue(jobId, jobState.userId);
+    logger.info('Job added to queue and set active', { jobId });
 
     // File content is already streamed from root by parseHighlights.js
 

@@ -125,11 +125,7 @@ export class WorkerService {
               completedAt: Date.now()
             });
 
-            // Remove from active users
-            await queueService.removeFromActive(userId);
-            
-            logger.info('Job processed successfully, stopping cycle');
-            break;
+            logger.info('Job processed successfully');
 
           } catch (error: any) {
             // Handle job processing error
@@ -139,11 +135,22 @@ export class WorkerService {
               message: `File processing failed: ${errorMessage}`,
               errorDetails: errorMessage
             });
-
-            // Remove from active users on failure
-            await queueService.removeFromActive(userId);
             
             logger.error('Job processing failed', { uploadId, error });
+            throw error;
+
+          } finally {
+            try {
+              // Always attempt to remove from active users after processing
+              await queueService.removeFromActive(userId);
+              logger.debug('Removed job from active queue', { userId, uploadId });
+            } catch (cleanupError) {
+              logger.error('Error removing job from active queue', {
+                userId,
+                uploadId,
+                error: cleanupError
+              });
+            }
             break;
           }
 
