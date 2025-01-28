@@ -297,6 +297,12 @@ export class QueueService {
           }
         }
 
+        // Skip failed jobs
+        if (jobState.state === 'failed') {
+          logger.debug('Skipping failed job', { jobId: entry.uploadId });
+          continue;
+        }
+
         // Found an eligible job
         eligibleJob = entry;
         break;
