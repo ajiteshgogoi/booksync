@@ -156,7 +156,7 @@ export async function queueSyncJob(
         databaseId: databaseId,
         uploadId: uploadId,
         isChunk: true,
-        parentUploadId: i === 0 ? undefined : `${baseJobId}_1`, // First chunk is self-parented, others refer to chunk 1
+        parentUploadId: baseJobId, // All chunks reference the base job
         chunkIndex: i + 1,
         totalChunks: chunks.length
       });
