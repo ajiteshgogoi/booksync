@@ -198,7 +198,7 @@ export async function triggerProcessing(
 
     // Prepare the payload with jobId and file reference
     const payload = {
-      event_type: 'process_highlights',
+      event_type: 'parse_highlights',
       client_payload: {
         jobId,  // Required by webhook.yml
         fileName,

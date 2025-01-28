@@ -1,10 +1,10 @@
-name: Process Highlights
+name: Parse Highlights
 
 on:
   repository_dispatch:
     types: 
-      - process_highlights
-      - process_highlights_test
+      - parse_highlights
+      - parse_highlights_test
 
 permissions:
   contents: read
@@ -12,9 +12,9 @@ permissions:
 
 jobs:
   process-highlights:
-    if: github.event.action == 'process_highlights'
+    if: github.event.action == 'parse_highlights'
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 1 hour timeout for file processing
+    timeout-minutes: 60  # 1 hour timeout for file parsing
 
     env:
       NODE_ENV: production
@@ -81,29 +81,7 @@ jobs:
           echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
           
           echo "Starting file parsing..."
-          node --experimental-vm-modules -e "
-          (async () => {
-            try {
-              const { processFile } = await import('./build/src/services/processService.js');
-              const { jobStateService } = await import('./build/src/services/jobStateService.js');
-              
-              // Process will update state: pending -> queued -> parsed
-              await processFile(process.env.JOB_ID);
-              
-              // Verify state is now 'parsed'
-              const jobState = await jobStateService.getJobState(process.env.JOB_ID);
-              if (jobState?.state !== 'parsed') {
-                throw new Error('Job failed to reach parsed state');
-              }
-              
-              console.log('File parsing completed successfully');
-              process.exit(0);
-            } catch (error) {
-              console.error('Error:', error);
-              process.exit(1);
-            }
-          })();
-          "
+          DATABASE_ID="${DATABASE_ID}" FILE_NAME="${JOB_ID}.txt" R2_FILE_NAME="${{ github.event.client_payload.fileKey }}" USER_ID="${USER_ID}" node parseHighlights.js
 
   test-webhook:
     if: github.event.action == 'process_highlights_test'

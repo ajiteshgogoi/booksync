@@ -10,39 +10,39 @@ import { tempStorageService } from './tempStorageService.js';
 export async function processFileContent(
   userId: string,
   fileContent: string,
-  databaseId: string
+  databaseId: string,
+  jobId: string
 ): Promise<string> {
   try {
     logger.info('Processing file content', {
       userId,
       databaseId,
+      jobId,
       contentLength: fileContent.length
     });
 
-    // Create job ID
-    const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Create job metadata with initial 'pending' state
-    await jobStateService.createJob({
-      jobId,
-      fileName: 'uploaded-content.txt',
-      userId,
-      databaseId
+    // Set state to queued
+    await jobStateService.updateJobState(jobId, {
+      state: 'queued',
+      message: 'Starting file processing'
     });
 
-    // Store content in R2 temp storage
-    await tempStorageService.storeFileContent(jobId, fileContent);
+    // File content is already streamed from root by parseHighlights.js
 
-    // Parse the content and store highlights
+    // Parse the content and store in temp storage
     const highlights = await parseClippings(fileContent);
     await tempStorageService.storeHighlights(jobId, highlights);
 
-    // Queue the job for processing
-    // Note: queueSyncJob will update the state to 'queued' and then 'parsed'
-    const jobIdFromQueue = await queueSyncJob(databaseId, fileContent, userId);
+    // Set state to parsed
+    await jobStateService.updateJobState(jobId, {
+      state: 'parsed',
+      message: 'File parsed successfully',
+      total: highlights.length,
+      lastCheckpoint: Date.now()
+    });
 
-    logger.info('Sync job queued successfully', { jobId: jobIdFromQueue });
-    return jobIdFromQueue;
+    logger.info('File parsed successfully', { jobId });
+    return jobId;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Error processing file content', {
