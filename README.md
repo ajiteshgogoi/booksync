@@ -48,7 +48,7 @@ BookSync is a streamlined tool that automatically syncs your Kindle highlights t
 
 For bugs or feedback, please contact ajiteshgogoi@gmail.com.
 
-<p align="center">
+<p align="left">
   <a href="https://ko-fi.com/gogoi">
     <img src="https://img.shields.io/badge/Buy_Me_A_Coffee-Support_Development-FFDD00?style=for-the-badge&logo=ko-fi&logoColor=black" alt="Buy Me A Coffee" />
   </a>
