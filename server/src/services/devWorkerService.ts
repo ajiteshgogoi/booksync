@@ -129,9 +129,20 @@ export class DevWorkerService {
             }
           }
 
-          // If job isn't parsed yet, skip processing but keep in active state
+          // Remove failed jobs from queue only
+          if (jobState.state === 'failed') {
+            logger.debug('Removing failed job from queue, keeping upload intact', {
+              uploadId,
+              currentState: jobState.state
+            });
+            await queueService.removeFromQueue(uploadId);
+            // Don't call removeFromActive here - keep the upload active
+            continue;
+          }
+
+          // Only process jobs in parsed state
           if (jobState.state !== 'parsed') {
-            logger.debug('Job not in parsed state yet, will try again next poll', {
+            logger.debug('Job not ready for processing yet', {
               uploadId,
               currentState: jobState.state
             });
