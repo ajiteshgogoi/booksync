@@ -42,6 +42,7 @@ export async function queueSyncJob(
     await tempStorageService.storeProcessingState(baseJobId, {
       databaseId,
       userId,
+      uploadId,
       stage: 'initialization',
       progress: 0
     });
@@ -51,7 +52,8 @@ export async function queueSyncJob(
       state: 'pending',
       message: 'Starting file processing',
       progress: 0,
-      userId: userId
+      userId: userId,
+      uploadId: uploadId
     });
 
     // Initialize upload tracking and mark user as active
@@ -127,7 +129,8 @@ export async function queueSyncJob(
        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
        total: chunk.length,
        progress: 0,
-       userId: userId
+       userId: userId,
+       uploadId: uploadId
      });
 
      // Add job to queue
