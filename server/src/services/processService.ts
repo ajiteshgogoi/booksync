@@ -31,9 +31,10 @@ export async function processFileContent(
       throw new Error('Missing userId in job state');
     }
 
-    // Add to active queue when queued
+    // Add job to queue and track upload in active users
     await queueService.addToQueue(jobId, jobState.userId);
-    logger.info('Job added to queue and set active', { jobId });
+    await queueService.addToActiveUsers(jobState.userId, jobId);
+    logger.info('Job queued and upload tracked in active users', { jobId });
 
     // File content is already streamed from root by parseHighlights.js
 
@@ -71,20 +72,7 @@ export async function processFileContent(
       total: highlights.length
     });
 
-    // Add to queue after successful parsing and storing
-    if (updatedState?.userId) {
-      const jobState = updatedState;
-
-      if (jobState) {
-        // Only add to queue after successful parsing and state update
-        await queueService.addToQueue(jobId, updatedState.userId);
-        logger.info('Job added to processing queue', { jobId });
-      } else {
-        logger.error('Failed to update job state to parsed', { jobId });
-      }
-    } else {
-      logger.error('Could not add job to queue - missing userId', { jobId });
-    }
+    logger.debug('Job already in queue, state updated to parsed', { jobId });
 
     logger.info('File parsed successfully', { jobId });
     return jobId;

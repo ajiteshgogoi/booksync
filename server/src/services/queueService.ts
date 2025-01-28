@@ -251,20 +251,17 @@ export class QueueService {
         jobState: jobState.state
       });
 
-      // Remove the job from queue after validation
-      queueState.queue.shift();
-
-      // Update both states since we have a valid job to process
-      activeState.activeUsers[nextEntry.userId] = {
-        uploadId: nextEntry.uploadId,
-        startedAt: Date.now()
-      };
-      activeState.queueLength = queueState.queue.length;
+      // Get next job without modifying active users - that's handled separately by upload tracking
+      const nextJob = queueState.queue.shift();
       
+      // Update queue state
       await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
+      
+      // Update queue length in active state
+      activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
 
-      return nextEntry;
+      return nextJob || null;
     } finally {
       await this.releaseLock('queue');
     }
@@ -325,6 +322,25 @@ export class QueueService {
     const hasQueuedJobs = queueState.queue.some(entry => entry.userId === userId);
     
     return !!activeState.activeUsers[userId] || hasQueuedJobs;
+  }
+
+  async addToActiveUsers(userId: string, uploadId: string): Promise<void> {
+    if (!await this.acquireLock('queue')) {
+      throw new Error('Could not acquire queue lock');
+    }
+
+    try {
+      const activeState = await this.getActiveUsersState();
+      if (!activeState.activeUsers[userId]) {
+        activeState.activeUsers[userId] = {
+          uploadId: uploadId.split('_')[0], // Get base upload ID without chunk number
+          startedAt: Date.now()
+        };
+        await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
+      }
+    } finally {
+      await this.releaseLock('queue');
+    }
   }
 
   async getQueueLength(): Promise<number> {
