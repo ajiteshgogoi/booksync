@@ -123,9 +123,9 @@ export async function queueSyncJob(
      // Store chunk highlights in temp storage
      await tempStorageService.storeHighlights(chunkJobId, chunk);
 
-     // Update job state to parsed after storing highlights
+     // Add job to queue with queued state
      await jobStateService.updateJobState(chunkJobId, {
-       state: 'parsed',
+       state: 'queued',
        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
        total: chunk.length,
        progress: 0,
@@ -133,7 +133,19 @@ export async function queueSyncJob(
        uploadId: uploadId
      });
 
-     // Add job to queue
+     // Add to queue
+     await queueService.addToQueue(chunkJobId, userId);
+     logger.debug('Job queued for processing', { chunkJobId });
+
+     // Update to parsed state after successful queue addition
+     await jobStateService.updateJobState(chunkJobId, {
+       state: 'parsed',
+       message: `Ready to process ${chunk.length} highlights`,
+       total: chunk.length,
+       progress: 0,
+       userId: userId,
+       uploadId: uploadId
+     });
      await queueService.addToQueue(chunkJobId, userId);
      logger.debug('Job queued for processing', { chunkJobId });
 
