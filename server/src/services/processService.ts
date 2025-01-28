@@ -34,12 +34,20 @@ export async function processFileContent(
     await tempStorageService.storeHighlights(jobId, highlights);
 
     // Set state to parsed
-    await jobStateService.updateJobState(jobId, {
+    const updatedState = await jobStateService.updateJobState(jobId, {
       state: 'parsed',
       message: 'File parsed successfully',
       total: highlights.length,
       lastCheckpoint: Date.now()
     });
+
+    // Add to processing queue after parsing is complete
+    if (updatedState?.userId) {
+      await queueService.addToQueue(jobId, updatedState.userId);
+      logger.info('Job added to processing queue', { jobId });
+    } else {
+      logger.error('Could not add job to queue - missing userId', { jobId });
+    }
 
     logger.info('File parsed successfully', { jobId });
     return jobId;
