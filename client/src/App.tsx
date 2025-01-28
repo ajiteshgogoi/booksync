@@ -120,12 +120,7 @@ function App() {
 
       const syncResponse = await response.json();
       if (syncResponse.success) {
-        // Keep as 'starting' unless job is queued
-        if (syncResponse.status === 'queued') {
-          setSyncStatus('queued');
-        } else {
-          setSyncStatus('starting');
-        }
+        setSyncStatus(syncResponse.status === 'queued' ? 'queued' : 'starting');
         setErrorMessage(null);
       } else {
         setSyncStatus('idle');

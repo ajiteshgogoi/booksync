@@ -634,19 +634,12 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           userId,
           fileSize: fileContent.length
         });
-        
-        // Update job state after successful trigger
-        await jobStateService.updateJobState(jobId, {
-          state: 'queued',
-          message: 'File uploaded and queued for processing',
-          progress: 0,
-          result: { fileName: result }
-        });
-  
-        // Send response only after successful processing
+          
+        // Send response with queued status after successful trigger
         res.json({
           success: true,
           jobId,
+          status: 'queued',
           message: 'Upload received and processing started.',
           info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
         });
