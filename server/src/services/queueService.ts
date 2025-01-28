@@ -132,126 +132,131 @@ export class QueueService {
   }
 
   async addToQueue(uploadId: string, userId: string): Promise<boolean> {
-    if (!await this.acquireLock('queue')) {
-      throw new Error('Could not acquire queue lock');
+    // Validate job state before attempting to acquire lock
+    const jobState = await jobStateService.getJobState(uploadId);
+    if (!jobState) {
+      logger.error('Job state not found when adding to queue', { uploadId });
+      return false;
+    }
+
+    // Multiple attempts to acquire lock
+    let acquired = false;
+    for (let i = 0; i < 3; i++) {
+      try {
+        acquired = await this.acquireLock('queue');
+        if (acquired) break;
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i))); // Exponential backoff
+      } catch (error) {
+        logger.error('Error acquiring queue lock (attempt ' + (i + 1) + '):', error);
+      }
+    }
+
+    if (!acquired) {
+      throw new Error('Could not acquire queue lock after multiple attempts');
     }
 
     try {
       const queueState = await this.getQueueState();
       const activeState = await this.getActiveUsersState();
 
-      // Get job state to check chunk metadata
-      const jobState = await jobStateService.getJobState(uploadId);
-      if (!jobState) {
-        logger.error('Job state not found when adding to queue', { uploadId });
-        return false;
-      }
+      // Initialize queue and active users if they don't exist
+      if (!queueState.queue) queueState.queue = [];
+      if (!activeState.activeUsers) activeState.activeUsers = {};
 
-      // For chunk jobs, only allow if they belong to an existing upload
+      let canAdd = true;
+
+      // For chunk jobs
       if (jobState.isChunk && jobState.parentUploadId) {
-        const baseJobId = jobState.parentUploadId;
-        // Check if parent job exists in active users, queue, or job state
-        const hasParentJobActive = activeState.activeUsers[userId]?.uploadId === this.getBaseJobId(baseJobId);
-        const hasParentJobQueued = queueState.queue.some(entry => this.getBaseJobId(entry.uploadId) === this.getBaseJobId(baseJobId));
-        const parentJobState = await jobStateService.getJobState(baseJobId);
-        const hasParentJobState = parentJobState !== null;
+        const baseUploadId = this.getBaseJobId(jobState.parentUploadId);
+        const activeBaseId = activeState.activeUsers[userId]?.uploadId;
+        const uploadStatus = await jobStateService.getChunkedUploadStatus(baseUploadId);
 
-        if (!hasParentJobActive && !hasParentJobQueued && !hasParentJobState) {
-          logger.debug('Chunk job rejected - no parent job found in any state', {
-            userId,
-            jobId: uploadId,
-            parentUploadId: baseJobId,
-            hasParentJobActive,
-            hasParentJobQueued,
-            hasParentJobState
-          });
-          return false;
-        }
-
-        // Check if this chunk belongs to a completed upload
-        const uploadStatus = await jobStateService.getChunkedUploadStatus(baseJobId);
+        // Only block if upload is complete or user has different active upload
         if (uploadStatus.isComplete) {
           logger.debug('Chunk rejected - parent upload already complete', {
             jobId: uploadId,
-            parentUploadId: baseJobId
+            parentUploadId: baseUploadId
           });
-          return false;
+          canAdd = false;
+        } else if (activeBaseId && this.getBaseJobId(activeBaseId) !== baseUploadId) {
+          logger.debug('Chunk rejected - user has different active upload', {
+            userId,
+            activeUpload: activeBaseId,
+            requestedUpload: baseUploadId
+          });
+          canAdd = false;
         }
       } else {
-        // For chunks, allow if they belong to an active upload
-        if (jobState.isChunk && jobState.parentUploadId) {
-          const baseUploadId = this.getBaseJobId(jobState.parentUploadId);
-          const activeBaseId = activeState.activeUsers[userId]?.uploadId;
-          
-          // Allow if chunk belongs to active upload
-          if (activeBaseId && this.getBaseJobId(activeBaseId) === baseUploadId) {
-            logger.debug('Allowing chunk for active upload', {
-              userId,
-              chunkId: uploadId,
-              parentUploadId: baseUploadId
-            });
-          } else {
-            logger.debug('Rejecting chunk - no matching active upload', {
-              userId,
-              chunkId: uploadId,
-              parentUploadId: baseUploadId,
-              activeUploadId: activeBaseId
-            });
-            return false;
-          }
-        } else {
-          // For new uploads, block if user has ANY active upload
-          if (activeState.activeUsers[userId]) {
-            logger.debug('User already has active upload', {
-              userId,
-              activeUpload: activeState.activeUsers[userId].uploadId,
-              activeState
-            });
-            return false;
-          }
-
-          // Only check queue for non-chunk uploads
-          const hasExistingUpload = queueState.queue.some(e => e.userId === userId);
-          if (hasExistingUpload) {
-            logger.debug('User already has upload in queue', {
-              userId,
-              queueLength: queueState.queue.length
-            });
-            return false;
-          }
+        // For new uploads
+        const hasExistingUpload = activeState.activeUsers[userId] ||
+                                queueState.queue.some(e => e.userId === userId && !this.isChunkJob(e.uploadId));
+        if (hasExistingUpload) {
+          logger.debug('New upload rejected - user has existing upload', {
+            userId,
+            activeUpload: activeState.activeUsers[userId]?.uploadId
+          });
+          canAdd = false;
         }
       }
 
-      // Add to queue
+      if (!canAdd) {
+        return false;
+      }
+
+      // Prepare queue entry
       const entry = {
         uploadId,
         userId,
         queuedAt: Date.now()
       };
-      queueState.queue.push(entry);
 
-      logger.debug('Adding job to queue:', {
-        jobId: uploadId,
-        isChunk: this.isChunkJob(uploadId),
-        userId,
-        queueLength: queueState.queue.length,
-        queueState
-      });
+      // Try to update queue state with retries
+      let success = false;
+      let attempts = 0;
+      const maxAttempts = 3;
 
-      // Update queue state
-      await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
-      logger.debug('Queue state updated', {
-        queueFile: QUEUE_FILE,
-        queueLength: queueState.queue.length,
-        jobs: queueState.queue.map(e => e.uploadId)
-      });
-      
-      // Update queue length in active users state
-      activeState.queueLength = queueState.queue.length;
-      await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
+      while (!success && attempts < maxAttempts) {
+        try {
+          // Add to queue
+          queueState.queue.push(entry);
+          
+          logger.debug('Attempting to update queue state (attempt ' + (attempts + 1) + '):', {
+            jobId: uploadId,
+            isChunk: this.isChunkJob(uploadId),
+            userId,
+            queueLength: queueState.queue.length
+          });
 
-      logger.debug('Successfully added job to queue');
-      return true;
+          // Update both states atomically
+          await Promise.all([
+            uploadObject(QUEUE_FILE, JSON.stringify(queueState)),
+            uploadObject(ACTIVE_USERS_FILE, JSON.stringify({
+              ...activeState,
+              queueLength: queueState.queue.length
+            }))
+          ]);
+
+          success = true;
+          logger.debug('Successfully updated queue state', {
+            jobId: uploadId,
+            queueLength: queueState.queue.length
+          });
+        } catch (error) {
+          attempts++;
+          logger.error('Failed to update queue state (attempt ' + attempts + ')', {
+            error,
+            jobId: uploadId
+          });
+          
+          if (attempts < maxAttempts) {
+            // Remove failed entry and retry
+            queueState.queue = queueState.queue.filter(e => e.uploadId !== uploadId);
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts)));
+          }
+        }
+      }
+
+      return success;
     } finally {
       await this.releaseLock('queue');
     }
@@ -430,6 +435,7 @@ export class QueueService {
       activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
     } finally {
+      await this.releaseLock('queue');
     }
   }
 
