@@ -257,38 +257,67 @@ export class QueueService {
         return null;
       }
 
-      const nextEntry = queueState.queue[0]; // Look at next job without removing it yet
-      logger.debug('Found next job in queue:', {
-        jobId: nextEntry.uploadId,
-        userId: nextEntry.userId,
-        queuedAt: new Date(nextEntry.queuedAt).toISOString()
-      });
+      // Find next eligible job - one that meets all criteria
+      let eligibleJob = null;
+      for (const entry of queueState.queue) {
+        // Only process jobs with sync: prefix
+        if (!entry.uploadId.startsWith('sync:')) {
+          logger.debug('Skipping non-sync job', { jobId: entry.uploadId });
+          continue;
+        }
 
-      // Only process jobs with sync: prefix - these are ready to be synced
-      if (!nextEntry.uploadId.startsWith('sync:')) {
-        logger.debug('Skipping non-sync job', { jobId: nextEntry.uploadId });
+        // Verify job exists in job state service
+        const jobState = await jobStateService.getJobState(entry.uploadId);
+        if (!jobState) {
+          logger.error('Job not found in job state service', { jobId: entry.uploadId });
+          continue;
+        }
+
+        // Check if this is a chunk job
+        if (this.isChunkJob(entry.uploadId)) {
+          // If user already has an active chunk, skip this job
+          if (activeState.activeUsers[entry.userId]) {
+            logger.debug('User already has active chunk, skipping', {
+              userId: entry.userId,
+              activeJob: activeState.activeUsers[entry.userId].uploadId,
+              nextJobId: entry.uploadId
+            });
+            continue;
+          }
+        }
+
+        // Found an eligible job
+        eligibleJob = entry;
+        break;
+      }
+
+      if (!eligibleJob) {
+        logger.debug('No eligible jobs found in queue');
         return null;
       }
 
-      // Verify job exists in job state service before moving to active
-      const jobState = await jobStateService.getJobState(nextEntry.uploadId);
+      logger.debug('Found next eligible job in queue:', {
+        jobId: eligibleJob.uploadId,
+        userId: eligibleJob.userId,
+        queuedAt: new Date(eligibleJob.queuedAt).toISOString()
+      });
+
+      const jobState = await jobStateService.getJobState(eligibleJob.uploadId);
+
       if (!jobState) {
-        logger.error('Job not found in job state service', {
-          jobId: nextEntry.uploadId
+        logger.error('Job state unexpectedly null for eligible job', {
+          jobId: eligibleJob.uploadId
         });
-        // Remove invalid job from queue
-        queueState.queue.shift();
-        await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
         return null;
       }
 
       logger.debug('Found valid job in queue:', {
-        jobId: nextEntry.uploadId,
+        jobId: eligibleJob.uploadId,
         state: jobState.state
       });
 
-      // Return the next job without removing it from queue
-      return queueState.queue[0] || null;
+      // Return the eligible job without removing it from queue
+      return eligibleJob;
     } finally {
       await this.releaseLock('queue');
     }
