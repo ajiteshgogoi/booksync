@@ -62,12 +62,28 @@ jobs:
           echo "Build complete"
 
       - name: Validate Client Payload
+        shell: bash
         run: |
-          jobId="${{ github.event.client_payload.jobId }}"
-          userId="${{ github.event.client_payload.userId }}"
-          databaseId="${{ github.event.client_payload.databaseId }}"
-          fileName="${{ github.event.client_payload.fileName }}"
-          if [ -z "$jobId" ] || [ -z "$userId" ] || [ -z "$databaseId" ] || [ -z "$fileName" ]; then
+          echo "Validating client payload..."
+          # Store values in variables with proper quoting
+          jobId='${{ github.event.client_payload.jobId }}'
+          userId='${{ github.event.client_payload.userId }}'
+          databaseId='${{ github.event.client_payload.databaseId }}'
+          fileName='${{ github.event.client_payload.fileName }}'
+          # Parse JSON values
+          jobId=$(echo "${{ toJSON(github.event.client_payload.jobId) }}" | jq -r '.')
+          userId=$(echo "${{ toJSON(github.event.client_payload.userId) }}" | jq -r '.')
+          databaseId=$(echo "${{ toJSON(github.event.client_payload.databaseId) }}" | jq -r '.')
+          fileName=$(echo "${{ toJSON(github.event.client_payload.fileName) }}" | jq -r '.')
+          
+          echo "Checking values:"
+          echo "jobId: ${jobId}"
+          echo "userId: ${userId}"
+          echo "databaseId: ${databaseId}"
+          echo "fileName: ${fileName}"
+          
+          if [[ -z "${jobId}" ]] || [[ -z "${userId}" ]] || [[ -z "${databaseId}" ]] || [[ -z "${fileName}" ]]; then
+          if [[ -z "$jobId" ]] || [[ -z "$userId" ]] || [[ -z "$databaseId" ]] || [[ -z "$fileName" ]]; then
             echo "Error: Missing required client payload parameters"
             echo "Required: jobId, userId, databaseId, fileName"
             echo "Received payload: ${{ toJSON(github.event.client_payload) }}"
@@ -77,18 +93,19 @@ jobs:
       - name: Parse File
         if: success()
         working-directory: server
+        shell: bash
         env:
-          JOB_ID: ${{ github.event.client_payload.jobId }}
-          DATABASE_ID: ${{ github.event.client_payload.databaseId }}
-          USER_ID: ${{ github.event.client_payload.userId }}
-          R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
+          JOB_ID: "${{ toJSON(github.event.client_payload.jobId) }}"
+          DATABASE_ID: "${{ toJSON(github.event.client_payload.databaseId) }}"
+          USER_ID: "${{ toJSON(github.event.client_payload.userId) }}"
+          R2_FILE_NAME: "${{ toJSON(github.event.client_payload.fileName) }}"
           DEBUG: 'true'
         run: |
           echo "Environment Check:"
-          echo "- JOB_ID: $JOB_ID"
-          echo "- DATABASE_ID: $DATABASE_ID"
-          echo "- USER_ID: $USER_ID"
-          echo "- R2_FILE_NAME: $R2_FILE_NAME"
+          echo "- JOB_ID: ${JOB_ID}"
+          echo "- DATABASE_ID: ${DATABASE_ID}"
+          echo "- USER_ID: ${USER_ID}"
+          echo "- R2_FILE_NAME: ${R2_FILE_NAME}"
           echo "- R2 Config Status:"
           echo "  - ENDPOINT: ${R2_ENDPOINT:+configured}"
           echo "  - ACCESS_KEY: ${R2_ACCESS_KEY_ID:+configured}"
