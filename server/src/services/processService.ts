@@ -56,7 +56,7 @@ export async function processFileContent(
       throw new Error('Failed to store highlights in temp storage');
     }
 
-    // After successfully storing highlights, update state and add to queue
+    // After successfully storing highlights, update state
     const updatedState = await jobStateService.updateJobState(jobId, {
       state: 'parsed',
       message: 'Highlights parsed and stored successfully',
@@ -71,8 +71,6 @@ export async function processFileContent(
       state: 'parsed',
       total: highlights.length
     });
-
-    logger.debug('Job already in queue, state updated to parsed', { jobId });
 
     logger.info('File parsed successfully', { jobId });
     return jobId;
