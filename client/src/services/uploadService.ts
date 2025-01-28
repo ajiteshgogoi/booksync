@@ -5,6 +5,7 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
     const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
     const response = await fetch(`${apiBase}/upload-url`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -88,6 +89,7 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
     const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
     const parseResponse = await fetch(`${apiBase}/parse-r2`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -134,6 +136,7 @@ export async function syncWithFileKey(fileKey: string): Promise<void> {
     const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
     const response = await fetch(`${apiBase}/sync`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
