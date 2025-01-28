@@ -21,10 +21,13 @@ export async function processFileContent(
       contentLength: fileContent.length
     });
 
-    // Set state to queued and move to active queue
+    // Queue sync job first - this handles chunking and initial state management
+    await queueSyncJob(databaseId, fileContent, userId);
+
+    // Update state to queued
     const jobState = await jobStateService.updateJobState(jobId, {
       state: 'queued',
-      message: 'Starting file processing'
+      message: 'Moving to queue for processing'
     });
     
     if (!jobState?.userId) {
@@ -36,43 +39,6 @@ export async function processFileContent(
     await queueService.addToActiveUsers(jobState.userId, jobId);
     logger.info('Job queued and upload tracked in active users', { jobId });
 
-    // File content is already streamed from root by parseHighlights.js
-
-    // Parse the content
-    const highlights = await parseClippings(fileContent);
-    
-    logger.debug('Storing highlights in temp storage', {
-      jobId,
-      highlightCount: highlights.length,
-      path: `highlights/${jobId}.json`
-    });
-
-    // Store highlights in temp storage
-    await tempStorageService.storeHighlights(jobId, highlights);
-
-    // Verify highlights were stored
-    const stored = await tempStorageService.exists(jobId, 'highlights');
-    if (!stored) {
-      throw new Error('Failed to store highlights in temp storage');
-    }
-
-    // After successfully storing highlights, update state
-    const updatedState = await jobStateService.updateJobState(jobId, {
-      state: 'parsed',
-      message: 'Highlights parsed and stored successfully',
-      total: highlights.length,
-      progress: 0,
-      lastCheckpoint: Date.now()
-    });
-
-    logger.debug('Highlights stored and state updated', {
-      jobId,
-      stored,
-      state: 'parsed',
-      total: highlights.length
-    });
-
-    logger.info('File parsed successfully', { jobId });
     return jobId;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

@@ -585,51 +585,26 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
     rateLimiter.increment(clientIp);
     console.log('Processing for user:', userId);
     
-    // Start by creating a job ID
-    const jobId = `sync:${userId}:${Date.now()}`;
-    console.log('Created job ID:', jobId);
-    
-    // Create initial job and set state
-    await jobStateService.createJob({
-      jobId,
-      fileName: 'MyClippings.txt',
-      userId,
-      databaseId: ''  // Will be set later in the process
-    });
-
-    // Update with initial progress
-    await jobStateService.updateJobState(jobId, {
-      progress: 0,
-      message: 'Uploading highlights for processing',
-      total: 0
-    });
-    console.log('Initial job state created');
-
     console.log('\n=== Upload Processing Start ===');
     console.log('File content length:', fileContent.length);
     console.log('Preview:', fileContent.slice(0, 200));
     
     try {
-
       console.log('=== Starting File Processing ===');
       console.log('Trigger Details:', {
         fileContentLength: fileContent.length,
         userId,
-        jobId,
         githubTokenPresent: !!process.env.GITHUB_ACCESS_TOKEN,
         clientIp
       });
+
       
       console.log('Starting job processing...');
       try {
-        // Add job to queue
-        await queueService.addToQueue(jobId, userId);
-        console.log('Job added to queue');
 
         // Trigger GitHub processing
         const result = await triggerProcessing(fileContent, userId, clientIp);
         console.log('\n✅ Successfully triggered GitHub processing:', {
-          jobId,
           fileName: result,
           userId,
           fileSize: fileContent.length
@@ -638,7 +613,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         // Send response with queued status after successful trigger
         res.json({
           success: true,
-          jobId,
           status: 'queued',
           message: 'Upload received and processing started.',
           info: 'Your highlights will be processed in GitHub Actions. You can safely close this page - progress is automatically saved.'
@@ -649,11 +623,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
           error.message :
           'Unknown error occurred while triggering processing';
 
-        await jobStateService.updateJobState(jobId, {
-          state: 'failed',
-          message: errorMessage,
-          progress: 0
-        });
         throw error;
       }
     } catch (error: any) {
@@ -661,11 +630,6 @@ app.post(`${apiBasePath}/sync`, upload.single('file'), async (req: CustomRequest
         error: error.message,
         response: error.response?.data,
         status: error.response?.status
-      });
-      await jobStateService.updateJobState(jobId, {
-        state: 'failed',
-        message: 'Failed to start processing. Please try again.',
-        progress: 0
       });
     }
   } catch (error) {
