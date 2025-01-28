@@ -298,9 +298,12 @@ export class QueueService {
           }
         }
 
-        // Skip failed jobs
-        if (jobState.state === 'failed') {
-          logger.debug('Skipping failed job', { jobId: entry.uploadId });
+        // Only process jobs in parsed state, skip others
+        if (jobState.state !== 'parsed') {
+          logger.debug('Skipping job not in parsed state', {
+            jobId: entry.uploadId,
+            state: jobState.state
+          });
           continue;
         }
 
