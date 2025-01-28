@@ -197,7 +197,7 @@ export class QueueService {
     }
   }
 
-  async moveToActive(): Promise<QueueEntry | null> {
+  async getNextJob(): Promise<QueueEntry | null> {
     if (!await this.acquireLock('queue')) {
       throw new Error('Could not acquire queue lock');
     }
@@ -246,22 +246,39 @@ export class QueueService {
         return null;
       }
 
-      logger.debug('Moving job to active state:', {
+      logger.debug('Found valid job in queue:', {
         jobId: nextEntry.uploadId,
-        jobState: jobState.state
+        state: jobState.state
       });
 
-      // Get next job without modifying active users - that's handled separately by upload tracking
-      const nextJob = queueState.queue.shift();
-      
-      // Update queue state
-      await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
-      
-      // Update queue length in active state
-      activeState.queueLength = queueState.queue.length;
-      await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
+      // Return the next job without removing it from queue
+      return queueState.queue[0] || null;
+    } finally {
+      await this.releaseLock('queue');
+    }
+  }
 
-      return nextJob || null;
+  async removeFromQueue(jobId: string): Promise<void> {
+    if (!await this.acquireLock('queue')) {
+      throw new Error('Could not acquire queue lock');
+    }
+
+    try {
+      const queueState = await this.getQueueState();
+      const activeState = await this.getActiveUsersState();
+
+      // Remove the job from queue
+      const index = queueState.queue.findIndex(entry => entry.uploadId === jobId);
+      if (index !== -1) {
+        queueState.queue.splice(index, 1);
+        await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
+        
+        // Update queue length
+        activeState.queueLength = queueState.queue.length;
+        await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
+        
+        logger.debug('Removed job from queue', { jobId });
+      }
     } finally {
       await this.releaseLock('queue');
     }
@@ -276,27 +293,29 @@ export class QueueService {
       const activeState = await this.getActiveUsersState();
       const queueState = await this.getQueueState();
 
-      // For failed jobs or jobs not found in state service, always remove from active
-      const failedJobId = activeState.activeUsers[userId]?.uploadId;
-      if (failedJobId) {
-        // Get job state to check if it failed or doesn't exist
-        const jobState = await jobStateService.getJobState(failedJobId);
-        
-        // If job failed or doesn't exist, always remove from active
-        if (!jobState || jobState.state === 'failed') {
-          delete activeState.activeUsers[userId];
-        } else {
-          // Only remove if this was the last chunk job for the upload
-          const baseJobId = this.getBaseJobId(failedJobId);
-          
-          // Check if any other chunks from this upload are in queue
-          const hasMoreChunks = queueState.queue.some(entry =>
-            this.getBaseJobId(entry.uploadId) === baseJobId
-          );
+      // Get the base upload ID for this user
+      const baseUploadId = activeState.activeUsers[userId]?.uploadId;
+      if (baseUploadId) {
+        // Only remove if no more chunks from this upload are in queue
+        const hasMoreChunks = queueState.queue.some(entry =>
+          this.getBaseJobId(entry.uploadId) === baseUploadId
+        );
 
-          if (!hasMoreChunks) {
-            delete activeState.activeUsers[userId];
-          }
+        if (!hasMoreChunks) {
+          // No more chunks in queue, safe to remove from active users
+          delete activeState.activeUsers[userId];
+          logger.debug('Removed user from active users - no more chunks in queue', {
+            userId,
+            baseUploadId
+          });
+        } else {
+          logger.debug('Keeping user in active users - more chunks in queue', {
+            userId,
+            baseUploadId,
+            queuedChunks: queueState.queue.filter(entry =>
+              this.getBaseJobId(entry.uploadId) === baseUploadId
+            ).length
+          });
         }
       }
 

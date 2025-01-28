@@ -96,8 +96,8 @@ export class DevWorkerService {
         }
 
         try {
-          // Try to get next job from queue
-          const nextInQueue = await queueService.moveToActive();
+          // Check next job in queue
+          const nextInQueue = await queueService.getNextJob();
           
           if (!nextInQueue) {
             logger.info(`No jobs found in poll ${pollCount}`);
@@ -171,9 +171,10 @@ export class DevWorkerService {
 
           } finally {
             try {
-              // Always attempt to remove from active users after processing
+              // Remove job from queue and check if we should remove from active users
+              await queueService.removeFromQueue(uploadId);
               await queueService.removeFromActive(userId);
-              logger.debug('Removed job from active queue', { userId, uploadId });
+              logger.debug('Cleaned up job after processing', { userId, uploadId });
             } catch (cleanupError) {
               logger.error('Error removing job from active queue', {
                 userId,
