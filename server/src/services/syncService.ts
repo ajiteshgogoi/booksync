@@ -47,12 +47,12 @@ export async function queueSyncJob(
       progress: 0
     });
 
-    // Update job state to pending when starting
-    await jobStateService.updateJobState(baseJobId, {
-      state: 'pending',
-      message: 'Starting file processing',
-      progress: 0,
+    // Create job with initial state - use jobId as filename to match chunk naming
+    await jobStateService.createJob({
+      jobId: baseJobId,
+      fileName: `${baseJobId}.json`,
       userId: userId,
+      databaseId: databaseId,
       uploadId: uploadId
     });
 
@@ -119,29 +119,34 @@ export async function queueSyncJob(
       // Store chunk highlights in temp storage
       await tempStorageService.storeHighlights(chunkJobId, chunk);
 
-      // Add job to queue with queued state
-     await jobStateService.updateJobState(chunkJobId, {
-       state: 'queued',
-       message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
-       total: chunk.length,
-       progress: 0,
-       userId: userId,
-       uploadId: uploadId
-     });
+      // Create job for this chunk - use jobId as filename
+      await jobStateService.createJob({
+        jobId: chunkJobId,
+        fileName: `${chunkJobId}.json`,
+        userId: userId,
+        databaseId: databaseId,
+        uploadId: uploadId
+      });
 
-     // Add to queue
-     await queueService.addToQueue(chunkJobId, userId);
-     logger.debug('Job queued for processing', { chunkJobId });
+      // Update to queued state
+      await jobStateService.updateJobState(chunkJobId, {
+        state: 'queued',
+        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
+        total: chunk.length,
+        progress: 0,
+      });
 
-     // Update to parsed state after successful queue addition
-     await jobStateService.updateJobState(chunkJobId, {
-       state: 'parsed',
-       message: `Ready to process ${chunk.length} highlights`,
-       total: chunk.length,
-       progress: 0,
-       userId: userId,
-       uploadId: uploadId
-     });
+      // Add to queue
+      await queueService.addToQueue(chunkJobId, userId);
+      logger.debug('Job queued for processing', { chunkJobId });
+
+      // Update to parsed state after successful queue addition
+      await jobStateService.updateJobState(chunkJobId, {
+        state: 'parsed',
+        message: `Ready to process ${chunk.length} highlights`,
+        total: chunk.length,
+        progress: 0,
+      });
       // Add job to upload tracking
       await addJobToUpload(uploadId, chunkJobId, chunk.length);
       
