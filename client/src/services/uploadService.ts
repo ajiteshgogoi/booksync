@@ -2,7 +2,8 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
   try {
     console.log('Requesting upload URL for:', { fileName, fileKey, fileType });
     
-    const response = await fetch('/api/upload-url', {
+    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+    const response = await fetch(`${apiBase}/upload-url`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,7 +85,8 @@ export async function uploadFileToR2(file: File, fileKey: string): Promise<{ cou
     }
 
     console.log('Parsing uploaded file...');
-    const parseResponse = await fetch('/api/parse-r2', {
+    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+    const parseResponse = await fetch(`${apiBase}/parse-r2`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -129,7 +131,8 @@ export async function syncWithFileKey(fileKey: string): Promise<void> {
   try {
     console.log('Starting sync with fileKey:', fileKey);
 
-    const response = await fetch('/api/sync', {
+    const apiBase = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_URL;
+    const response = await fetch(`${apiBase}/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
