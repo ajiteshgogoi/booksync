@@ -3,7 +3,11 @@ import { Request, Response } from 'express';
 
 // Handle CORS preflight requests
 export const corsHandler = (req: Request, res: Response) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://booksync.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin',
+    process.env.NODE_ENV === 'production'
+      ? 'https://booksync.vercel.app'
+      : 'http://localhost:5173'
+  );
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
