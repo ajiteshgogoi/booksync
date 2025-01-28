@@ -133,30 +133,10 @@ export class DevWorkerService {
             continue;
           }
 
-          // Update job state to processing
-          const updated = await jobStateService.updateJobState(uploadId, {
-            state: 'processing',
-            message: 'Starting file processing'
-          });
-
-          if (!updated) {
-            logger.error('Failed to update job state', { uploadId });
-            throw new Error('Failed to update job state');
-          }
-
           try {
-            // Process the file
+            // Process the file - let it handle state transitions
             await processFile(uploadId);
-
-            // Update job state to completed
-            await jobStateService.updateJobState(uploadId, {
-              state: 'completed',
-              message: 'File processing completed',
-              completedAt: Date.now()
-            });
-
             logger.info('Job processed successfully');
-
           } catch (error: any) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';

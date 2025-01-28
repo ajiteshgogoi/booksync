@@ -25,25 +25,10 @@ export async function processFile(jobId: string): Promise<void> {
       throw new Error('Job not found');
     }
 
-    // Get the current state and validate transition
-    switch (jobState.state) {
-      case 'pending':
-        await jobStateService.updateJobState(jobId, {
-          state: 'queued',
-          message: 'Starting file processing'
-        });
-        break;
-      case 'completed':
-      case 'failed':
-        logger.info(`Job ${jobId} is already in terminal state: ${jobState.state}`);
-        return;
-      case 'processing':
-        if (jobState.lastCheckpoint && Date.now() - jobState.lastCheckpoint > PROCESSING_TIMEOUT) {
-          throw new Error('Processing timeout exceeded');
-        }
-        break;
-      default:
-        break;
+    // Verify job is in 'parsed' state before proceeding
+    if (jobState.state !== 'parsed') {
+      logger.info(`Job ${jobId} is not in parsed state: ${jobState.state}`);
+      return;
     }
 
     // Check if highlights exist in temp storage
@@ -53,12 +38,12 @@ export async function processFile(jobId: string): Promise<void> {
       throw new Error('Upload not found - highlights missing from temp storage');
     }
 
-    // Don't proceed with processing if job isn't in 'parsed' state
-    const updatedState = await jobStateService.getJobState(jobId);
-    if (updatedState?.state !== 'parsed') {
-      logger.info(`Job ${jobId} not ready for processing, current state: ${updatedState?.state}`);
-      return;
-    }
+    // Update state to processing before starting work
+    await jobStateService.updateJobState(jobId, {
+      state: 'processing',
+      message: 'Starting file processing',
+      lastCheckpoint: Date.now()
+    });
 
     checkTimeout();
 
