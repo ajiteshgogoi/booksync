@@ -11,7 +11,7 @@ permissions:
   actions: write
 
 jobs:
-  process-highlights:
+  parse-highlights:
     if: github.event.action == 'parse_highlights'
     runs-on: ubuntu-latest
     timeout-minutes: 60  # 1 hour timeout for file parsing
@@ -61,6 +61,18 @@ jobs:
           npm run build
           echo "Build complete"
 
+      - name: Validate Client Payload
+        run: |
+          if [ -z "${{ github.event.client_payload.jobId }}" ] || \
+             [ -z "${{ github.event.client_payload.userId }}" ] || \
+             [ -z "${{ github.event.client_payload.databaseId }}" ] || \
+             [ -z "${{ github.event.client_payload.fileKey }}" ]; then
+            echo "Error: Missing required client payload parameters"
+            echo "Required: jobId, userId, databaseId, fileKey"
+            echo "Received payload: ${{ toJSON(github.event.client_payload) }}"
+            exit 1
+          fi
+
       - name: Parse File
         if: success()
         working-directory: server
@@ -68,12 +80,14 @@ jobs:
           JOB_ID: ${{ github.event.client_payload.jobId }}
           DATABASE_ID: ${{ github.event.client_payload.databaseId }}
           USER_ID: ${{ github.event.client_payload.userId }}
+          R2_FILE_NAME: ${{ github.event.client_payload.fileKey }}
           DEBUG: 'true'
         run: |
           echo "Environment Check:"
           echo "- JOB_ID: $JOB_ID"
           echo "- DATABASE_ID: $DATABASE_ID"
           echo "- USER_ID: $USER_ID"
+          echo "- R2_FILE_NAME: $R2_FILE_NAME"
           echo "- R2 Config Status:"
           echo "  - ENDPOINT: ${R2_ENDPOINT:+configured}"
           echo "  - ACCESS_KEY: ${R2_ACCESS_KEY_ID:+configured}"
@@ -81,10 +95,10 @@ jobs:
           echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
           
           echo "Starting file parsing..."
-          DATABASE_ID="${DATABASE_ID}" FILE_NAME="${JOB_ID}.txt" R2_FILE_NAME="${{ github.event.client_payload.fileKey }}" USER_ID="${USER_ID}" node parseHighlights.js
+          node parseHighlights.js
 
   test-webhook:
-    if: github.event.action == 'process_highlights_test'
+    if: github.event.action == 'parse_highlights_test'
     runs-on: ubuntu-latest
     steps:
       - name: Log Test Event
