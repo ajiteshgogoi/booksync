@@ -23,12 +23,18 @@ export async function startUpload(userId: string, uploadId: string, totalHighlig
   try {
     // Check if user has an active upload
     const activeUpload = await getUserActiveUpload(userId);
-    if (activeUpload) {
+    
+    if (activeUpload && activeUpload.uploadId !== uploadId) {
+      // Only throw if there's a different active upload
       throw new Error('User already has an active file upload');
     }
 
-    // Create new upload tracking
-    const tracking: UploadTracking = {
+    // Create new upload tracking or update existing one
+    const tracking: UploadTracking = activeUpload ? {
+      ...activeUpload,
+      totalHighlights,
+      updatedAt: Date.now()
+    } : {
       userId,
       uploadId,
       jobs: [],
