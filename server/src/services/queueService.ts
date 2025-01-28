@@ -428,9 +428,8 @@ export class QueueService {
     
     // Check if user has any jobs in parsed state
     const queueState = await this.getQueueState();
-    const hasQueuedJobs = queueState.queue.some(entry => entry.userId === userId);
-    
-    return !!activeState.activeUsers[userId] || hasQueuedJobs;
+    // Only check activeUsers since chunks from same user should be allowed in queue
+    return !!activeState.activeUsers[userId];
   }
 
   async addToActiveUsers(userId: string, uploadId: string): Promise<void> {
