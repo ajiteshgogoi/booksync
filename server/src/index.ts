@@ -617,7 +617,7 @@ app.post(`${apiBasePath}/sync`, async (req: Request, res: Response) => {
       try {
 
         // Trigger GitHub processing
-        const result = await triggerProcessing(fileContent, userId, clientIp);
+        const result = await triggerProcessing(fileKey, userId, clientIp);
         console.log('\n✅ Successfully triggered GitHub processing:', {
           fileName: result,
           userId,
