@@ -1,5 +1,6 @@
 import { getUploadUrl } from '../services/r2Service.js';
 import { Request, Response } from 'express';
+import { rateLimiter } from '../services/rateLimiter.js';
 
 // Handle CORS preflight requests
 export const corsHandler = (req: Request, res: Response) => {
@@ -34,6 +35,26 @@ export const uploadUrlHandler = async (req: Request, res: Response) => {
   }
 
   try {
+    // Get client IP address
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const clientIp = Array.isArray(xForwardedFor) 
+      ? xForwardedFor[0] 
+      : (xForwardedFor || req.socket.remoteAddress);
+
+    if (!clientIp || typeof clientIp !== 'string') {
+      return res.status(400).json({ error: 'Could not determine client IP' });
+    }
+
+    // Check rate limit (but don't increment)
+    const rateLimit = rateLimiter.check(clientIp);
+    if (!rateLimit.allowed) {
+      const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
+      });
+    }
+
     const { fileName, fileKey, fileType } = req.body;
     console.log('Request body:', req.body);
     

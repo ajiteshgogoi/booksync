@@ -326,16 +326,6 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
       return res.status(400).json({ error: 'Could not determine client IP' });
     }
 
-    // Check rate limit (but don't increment for parse)
-    const rateLimit = rateLimiter.check(clientIp);
-    if (!rateLimit.allowed) {
-      const remainingMinutes = Math.ceil(rateLimit.remainingTime / 60);
-      return res.status(429).json({
-        error: 'Rate limit exceeded',
-        message: `You have exceeded the upload limit of 2 uploads per hour. Please try again in ${remainingMinutes} minutes.`
-      });
-    }
-
     if (!req.file) {
       console.log('No file in request');
       return res.status(400).json({ error: 'No file uploaded' });
@@ -595,8 +585,6 @@ app.post(`${apiBasePath}/sync`, async (req: Request, res: Response) => {
       });
     }
 
-    // Increment rate limit counter after validation passes
-    rateLimiter.increment(clientIp);
     console.log('Processing for user:', userId);
     
     console.log('\n=== Upload Processing Start ===');
@@ -612,12 +600,14 @@ app.post(`${apiBasePath}/sync`, async (req: Request, res: Response) => {
         clientIp
       });
 
-      
       console.log('Starting job processing...');
       try {
-
         // Trigger GitHub processing
         const result = await triggerProcessing(fileKey, userId, clientIp);
+        
+        // Increment rate limit counter only after successful GitHub trigger
+        rateLimiter.increment(clientIp);
+        
         console.log('\n✅ Successfully triggered GitHub processing:', {
           fileName: result,
           userId,
