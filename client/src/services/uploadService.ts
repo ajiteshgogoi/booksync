@@ -18,12 +18,15 @@ export async function getUploadUrl(fileName: string, fileKey: string, fileType: 
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
+      const errorData = await response.json();
       console.error('Upload URL request failed:', {
         status: response.status,
-        error: errorBody
+        error: errorData
       });
-      throw new Error(`Failed to get upload URL: ${response.statusText}`);
+      if (response.status === 429) {
+        throw new Error(errorData.message);
+      }
+      throw new Error(errorData.message || 'Failed to get upload URL');
     }
 
     const data = await response.json();
