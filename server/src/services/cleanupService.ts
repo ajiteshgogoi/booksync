@@ -178,7 +178,7 @@ export class CleanupService {
           // Check if any chunks are queued
           const queueState = await queueService.getQueueState();
           const hasQueuedChunks = queueState.queue.some(entry =>
-            chunkJobs.some(chunk => chunk.jobId === entry.uploadId)
+            chunkJobs.some(chunk => queueService.getBaseJobId(chunk.jobId) === queueService.getBaseJobId(entry.uploadId))
           );
 
           if (hasQueuedChunks) {

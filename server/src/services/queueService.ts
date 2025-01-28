@@ -40,11 +40,11 @@ export class QueueService {
     return jobId.includes('_');
   }
 
-  private getBaseJobId(jobId: string): string {
-    // First remove the chunk suffix if present
-    const withoutChunk = jobId.split('_')[0];
-    // Then remove any prefix (sync: or upload:) to get the base ID
-    return withoutChunk.replace(/^(sync:|upload:)/, '');
+  public getBaseJobId(jobId: string): string {
+    // First remove any prefix (sync: or upload:)
+    const withoutPrefix = jobId.replace(/^(sync:|upload:)/, '');
+    // Then remove the chunk suffix if present
+    return withoutPrefix.split('_')[0];
   }
 
   private static instance: QueueService;
@@ -151,8 +151,8 @@ export class QueueService {
       if (jobState.isChunk && jobState.parentUploadId) {
         const baseJobId = jobState.parentUploadId;
         // Check if parent job exists in active users, queue, or job state
-        const hasParentJobActive = activeState.activeUsers[userId]?.uploadId === baseJobId;
-        const hasParentJobQueued = queueState.queue.some(entry => entry.uploadId === baseJobId);
+        const hasParentJobActive = activeState.activeUsers[userId]?.uploadId === this.getBaseJobId(baseJobId);
+        const hasParentJobQueued = queueState.queue.some(entry => this.getBaseJobId(entry.uploadId) === this.getBaseJobId(baseJobId));
         const parentJobState = await jobStateService.getJobState(baseJobId);
         const hasParentJobState = parentJobState !== null;
 
@@ -277,15 +277,16 @@ export class QueueService {
 
         // Check if this is a chunk job
         if (this.isChunkJob(entry.uploadId)) {
+          // First check if user has any active jobs
           const hasActiveChunk = activeState.activeUsers[entry.userId];
           if (hasActiveChunk) {
-            // Compare base IDs using consistent method
-            const activeBaseId = activeState.activeUsers[entry.userId].uploadId;
+            // Ensure both IDs have sync: prefix when getting base ID
+            const activeBaseId = this.getBaseJobId(`sync:${activeState.activeUsers[entry.userId].uploadId}`);
             const incomingBaseId = this.getBaseJobId(entry.uploadId);
             
             // Only skip if it's for the same base upload
             if (activeBaseId === incomingBaseId) {
-              logger.debug('User already has active chunk for this upload, skipping', {
+              logger.debug('User already has active chunk for this upload, skipping chunk job', {
                 userId: entry.userId,
                 activeJob: activeState.activeUsers[entry.userId].uploadId,
                 nextJobId: entry.uploadId,
@@ -407,7 +408,6 @@ export class QueueService {
       activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
     } finally {
-      await this.releaseLock('queue');
     }
   }
 
@@ -435,8 +435,9 @@ export class QueueService {
     try {
       const activeState = await this.getActiveUsersState();
       if (!activeState.activeUsers[userId]) {
+        // Always add with sync: prefix to match incoming job IDs
         activeState.activeUsers[userId] = {
-          uploadId: this.getBaseJobId(uploadId), // Get base upload ID using consistent method
+          uploadId: `sync:${this.getBaseJobId(uploadId)}`,
           startedAt: Date.now()
         };
         await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
