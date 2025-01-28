@@ -66,33 +66,53 @@ export async function processFile(jobId: string): Promise<void> {
       progress: 100
     });
 
-    // Clean up all associated files and state
-    // Get job metadata to get userId for queue cleanup
+    // Get current job state for cleanup
     const currentState = await jobStateService.getJobState(jobId);
-    
-    // Extract uploadId from jobId format (sync:userId:timestamp or sync:userId:timestamp_chunkNum)
-    const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0];
-    
-    // Check if all jobs for this upload are complete
-    const uploadJobs = await jobStateService.getJobsByUploadId(uploadId);
-    const allJobsComplete = uploadJobs.every(job =>
-      job.state === 'completed' || job.state === 'failed'
-    );
+    if (!currentState || !currentState.userId) {
+      throw new Error('Job state or userId not found during cleanup');
+    }
 
-    // Clean up current job resources
-    await Promise.all([
-      deleteObject(`${jobId}.txt`),
-      tempStorageService.cleanupJob(jobId),
-      deleteObject(`temp/${jobId}_state.json`),
-      jobStateService.deleteJob(jobId),
-
-      // Only remove from active users if this was the last job for this upload
-      (allJobsComplete && currentState?.userId)
-        ? queueService.removeFromActive(currentState.userId)
-        : Promise.resolve()
-    ]).catch(error => {
-      logger.error('Error cleaning up after successful job', { jobId, error });
-    });
+    // For chunk jobs, we need special handling
+    if (currentState.isChunk && currentState.parentUploadId) {
+      // Check parent upload status
+      const uploadStatus = await jobStateService.getChunkedUploadStatus(currentState.parentUploadId);
+      
+      // Only clean up if all chunks are complete
+      if (uploadStatus.isComplete) {
+        logger.info('All chunks complete, cleaning up resources', {
+          jobId,
+          parentUploadId: currentState.parentUploadId
+        });
+        
+        // Clean up chunk resources
+        await Promise.all([
+          deleteObject(`${jobId}.txt`),
+          tempStorageService.cleanupJob(jobId),
+          deleteObject(`temp/${jobId}_state.json`),
+          // Don't delete job state yet - worker service needs it
+          queueService.removeFromActive(currentState.userId)
+        ]).catch(error => {
+          logger.error('Error cleaning up after successful chunk', { jobId, error });
+        });
+      } else {
+        logger.info('Chunk complete but waiting for other chunks', {
+          jobId,
+          parentUploadId: currentState.parentUploadId,
+          status: uploadStatus
+        });
+      }
+    } else {
+      // Non-chunk job cleanup
+      await Promise.all([
+        deleteObject(`${jobId}.txt`),
+        tempStorageService.cleanupJob(jobId),
+        deleteObject(`temp/${jobId}_state.json`),
+        // Don't delete job state yet - worker service needs it
+        queueService.removeFromActive(currentState.userId)
+      ]).catch(error => {
+        logger.error('Error cleaning up after successful job', { jobId, error });
+      });
+    }
 
     logger.info('File processing and cleanup completed successfully', { jobId });
 
@@ -107,32 +127,54 @@ export async function processFile(jobId: string): Promise<void> {
       completedAt: Date.now()
     });
 
-    // Get job metadata for cleanup even in failure case
+    // Get current job state for cleanup in error case
     const currentState = await jobStateService.getJobState(jobId);
-    if (!currentState?.userId) {
-      throw new Error('Missing userId in job state during cleanup');
+    if (!currentState || !currentState.userId) {
+      throw new Error('Job state or userId not found during error cleanup');
     }
 
-    // Extract uploadId and check if all jobs are complete
-    const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0];
-    const uploadJobs = await jobStateService.getJobsByUploadId(uploadId);
-    const allJobsComplete = uploadJobs.every(job =>
-      job.state === 'completed' || job.state === 'failed'
-    );
-
-    // Clean up job-specific resources
-    await Promise.all([
-      deleteObject(`${jobId}.txt`),
-      tempStorageService.cleanupJob(jobId),
-      deleteObject(`temp/${jobId}_state.json`),
-      jobStateService.deleteJob(jobId),
+    // For chunk jobs, handle differently
+    if (currentState.isChunk && currentState.parentUploadId) {
+      const uploadStatus = await jobStateService.getChunkedUploadStatus(currentState.parentUploadId);
       
-      // Only remove from active users if this was the last job for this upload
-      allJobsComplete ? queueService.removeFromActive(currentState.userId) : Promise.resolve()
-    ]).catch(error => {
-      logger.error('Error cleaning up after failed job', { jobId, error });
-    });
+      // Only clean up resources if all chunks are complete (success or failure)
+      if (uploadStatus.isComplete) {
+        logger.info('All chunks processed (with failures), cleaning up resources', {
+          jobId,
+          parentUploadId: currentState.parentUploadId,
+          status: uploadStatus
+        });
+        
+        await Promise.all([
+          deleteObject(`${jobId}.txt`),
+          tempStorageService.cleanupJob(jobId),
+          deleteObject(`temp/${jobId}_state.json`),
+          // Don't delete job state yet - worker service needs it
+          queueService.removeFromActive(currentState.userId)
+        ]).catch(error => {
+          logger.error('Error cleaning up after failed chunk', { jobId, error });
+        });
+      } else {
+        logger.info('Chunk failed but others still processing', {
+          jobId,
+          parentUploadId: currentState.parentUploadId,
+          status: uploadStatus
+        });
+      }
+    } else {
+      // Non-chunk job cleanup
+      await Promise.all([
+        deleteObject(`${jobId}.txt`),
+        tempStorageService.cleanupJob(jobId),
+        deleteObject(`temp/${jobId}_state.json`),
+        // Don't delete job state yet - worker service needs it
+        queueService.removeFromActive(currentState.userId)
+      ]).catch(error => {
+        logger.error('Error cleaning up after failed job', { jobId, error });
+      });
+    }
 
+    // Re-throw the original error
     throw error;
   }
 }

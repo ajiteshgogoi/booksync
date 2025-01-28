@@ -170,26 +170,45 @@ export class WorkerService {
 
           } finally {
             try {
-              // Remove job from queue and check if we should remove from active users
+              // First remove job from queue
               await queueService.removeFromQueue(uploadId);
               
-              // For chunk jobs, only remove from active users if all chunks are done
+              // Get final job state before cleanup
               const jobState = await jobStateService.getJobState(uploadId);
-              if (jobState?.isChunk && jobState.parentUploadId) {
+              if (!jobState) {
+                logger.warn('Job state not found during final cleanup', { uploadId });
+                break;
+              }
+
+              // For chunk jobs, handle differently
+              if (jobState.isChunk && jobState.parentUploadId) {
                 const uploadStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
+                
+                // Now we can safely delete the job state since we're done with it
+                await jobStateService.deleteJob(uploadId);
+                
                 if (uploadStatus.isComplete) {
                   await queueService.removeFromActive(userId);
-                  logger.debug('Removed user from active after all chunks complete', {
+                  logger.debug('All chunks complete - removed user from active', {
                     userId,
-                    parentUploadId: jobState.parentUploadId
+                    parentUploadId: jobState.parentUploadId,
+                    uploadStatus
+                  });
+                } else {
+                  logger.debug('Chunk processed - waiting for other chunks', {
+                    userId,
+                    parentUploadId: jobState.parentUploadId,
+                    uploadStatus
                   });
                 }
               } else {
+                // Regular job - clean up everything
+                await jobStateService.deleteJob(uploadId);
                 await queueService.removeFromActive(userId);
-                logger.debug('Cleaned up job after processing', { userId, uploadId });
+                logger.debug('Cleaned up standalone job completely', { userId, uploadId });
               }
             } catch (cleanupError) {
-              logger.error('Error removing job from active queue', {
+              logger.error('Error in final job cleanup', {
                 userId,
                 uploadId,
                 error: cleanupError
