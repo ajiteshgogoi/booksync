@@ -16,7 +16,11 @@ export const corsHandler = (req: Request, res: Response) => {
 
 export const uploadUrlHandler = async (req: Request, res: Response) => {
   // Set CORS headers for all requests
-  res.setHeader('Access-Control-Allow-Origin', 'https://booksync.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin',
+    process.env.NODE_ENV === 'production'
+      ? 'https://booksync.vercel.app'
+      : 'http://localhost:5173'
+  );
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   console.log('Upload URL request received:', {
     method: req.method,
