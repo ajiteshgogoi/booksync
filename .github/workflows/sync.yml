@@ -124,13 +124,13 @@ jobs:
               
               console.log('Looking for jobs in parsed state...');
               const jobs = await jobStateService.listJobsByState('parsed');
-              console.log(`Found ${jobs.length} jobs in parsed state`);
+              console.log(\`Found \${jobs.length} jobs in parsed state\`);
               
               // Add parsed jobs to queue if not already queued
               for (const job of jobs) {
                 if (!(await queueService.isUserActive(job.userId))) {
                   await queueService.addToQueue(job.jobId, job.userId);
-                  console.log(`Added job ${job.jobId} to queue`);
+                  console.log(\`Added job \${job.jobId} to queue\`);
                 }
               }
               
@@ -142,9 +142,9 @@ jobs:
                 for (const job of jobs) {
                   const finalState = await jobStateService.getJobState(job.jobId);
                   if (!finalState || (finalState.state !== 'completed' && finalState.state !== 'failed')) {
-                    throw new Error(`Job ${job.jobId} did not reach final state. Current state: ${finalState?.state}`);
+                    throw new Error(\`Job \${job.jobId} did not reach final state. Current state: \${finalState?.state}\`);
                   }
-                  console.log(`Job ${job.jobId} reached final state: ${finalState.state}`);
+                  console.log(\`Job \${job.jobId} reached final state: \${finalState.state}\`);
                 }
                 
                 console.log('Worker completed successfully');
