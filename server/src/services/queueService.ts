@@ -180,12 +180,15 @@ export class QueueService {
           return false;
         }
   
-        if (queueState.queue.some(entry => entry.userId === userId)) {
-          logger.debug('User already has upload in queue', {
-            userId,
-            queueState
-          });
-          return false;
+        // Only check for existing uploads if this is not a chunk
+        if (!jobState.isChunk) {
+          if (queueState.queue.some(entry => entry.userId === userId)) {
+            logger.debug('User already has upload in queue', {
+              userId,
+              queueState
+            });
+            return false;
+          }
         }
       }
 
