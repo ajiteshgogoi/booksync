@@ -1,55 +1,10 @@
 import { logger } from '../utils/logger.js';
-import { parseClippings } from '../utils/parseClippings.js';
-import { queueSyncJob, processSyncJob } from './syncService.js';
-import { downloadObject, deleteObject } from './r2Service.js';
-import { jobStateService } from './jobStateService.js';
+import { processSyncJob } from './syncService.js';
+import { deleteObject } from './r2Service.js';
+import { jobStateService, JobMetadata } from './jobStateService.js';
 import { CleanupService } from './cleanupService.js';
 import { queueService } from './queueService.js';
 import { tempStorageService } from './tempStorageService.js';
-
-export async function processFileContent(
-  userId: string,
-  fileContent: string,
-  databaseId: string,
-  jobId: string
-): Promise<string> {
-  try {
-    logger.info('Processing file content', {
-      userId,
-      databaseId,
-      jobId,
-      contentLength: fileContent.length
-    });
-
-    // Queue sync job first - this handles chunking and initial state management
-    await queueSyncJob(databaseId, fileContent, userId);
-
-    // Update state to queued
-    const jobState = await jobStateService.updateJobState(jobId, {
-      state: 'queued',
-      message: 'Moving to queue for processing'
-    });
-    
-    if (!jobState?.userId) {
-      throw new Error('Missing userId in job state');
-    }
-
-    // Add job to queue and track upload in active users
-    await queueService.addToQueue(jobId, jobState.userId);
-    await queueService.addToActiveUsers(jobState.userId, jobId);
-    logger.info('Job queued and upload tracked in active users', { jobId });
-
-    return jobId;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Error processing file content', {
-      userId,
-      databaseId,
-      error: errorMessage
-    });
-    throw error;
-  }
-}
 
 export async function processFile(jobId: string): Promise<void> {
   // Define processing timeout
@@ -130,16 +85,26 @@ export async function processFile(jobId: string): Promise<void> {
     // Get job metadata to get userId for queue cleanup
     const currentState = await jobStateService.getJobState(jobId);
     
+    // Extract uploadId from jobId format (sync:userId:timestamp or sync:userId:timestamp_chunkNum)
+    const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0];
+    
+    // Check if all jobs for this upload are complete
+    const uploadJobs = await jobStateService.getJobsByUploadId(uploadId);
+    const allJobsComplete = uploadJobs.every(job =>
+      job.state === 'completed' || job.state === 'failed'
+    );
+
+    // Clean up current job resources
     await Promise.all([
-      // Clean up original upload
       deleteObject(`${jobId}.txt`),
-      // Clean up temp files, highlights, and processing state
       tempStorageService.cleanupJob(jobId),
       deleteObject(`temp/${jobId}_state.json`),
-      // Delete job state
       jobStateService.deleteJob(jobId),
-      // Remove from queue if present
-      currentState?.userId ? queueService.removeFromActive(currentState.userId) : Promise.resolve()
+
+      // Only remove from active users if this was the last job for this upload
+      (allJobsComplete && currentState?.userId)
+        ? queueService.removeFromActive(currentState.userId)
+        : Promise.resolve()
     ]).catch(error => {
       logger.error('Error cleaning up after successful job', { jobId, error });
     });
@@ -159,26 +124,29 @@ export async function processFile(jobId: string): Promise<void> {
 
     // Get job metadata for cleanup even in failure case
     const currentState = await jobStateService.getJobState(jobId);
-    const userId = currentState?.userId;
-
-    if (userId) {
-      // Clean up on failure too
-      await Promise.all([
-        deleteObject(`${jobId}.txt`),
-        tempStorageService.cleanupJob(jobId),
-        deleteObject(`temp/${jobId}_state.json`),
-        jobStateService.deleteJob(jobId),
-        // Remove from queue if present
-        queueService.removeFromActive(userId),
-        // Update active users state - this checks other jobs/uploads and removes from active if none remain
-        CleanupService.updateUserActiveStatus(userId, {
-          hasActiveUploads: false,
-          hasActiveJobs: false
-        })
-      ]).catch(error => {
-        logger.error('Error cleaning up after failed job', { jobId, error });
-      });
+    if (!currentState?.userId) {
+      throw new Error('Missing userId in job state during cleanup');
     }
+
+    // Extract uploadId and check if all jobs are complete
+    const uploadId = jobId.replace(/^sync:/, 'upload:').split('_')[0];
+    const uploadJobs = await jobStateService.getJobsByUploadId(uploadId);
+    const allJobsComplete = uploadJobs.every(job =>
+      job.state === 'completed' || job.state === 'failed'
+    );
+
+    // Clean up job-specific resources
+    await Promise.all([
+      deleteObject(`${jobId}.txt`),
+      tempStorageService.cleanupJob(jobId),
+      deleteObject(`temp/${jobId}_state.json`),
+      jobStateService.deleteJob(jobId),
+      
+      // Only remove from active users if this was the last job for this upload
+      allJobsComplete ? queueService.removeFromActive(currentState.userId) : Promise.resolve()
+    ]).catch(error => {
+      logger.error('Error cleaning up after failed job', { jobId, error });
+    });
 
     throw error;
   }

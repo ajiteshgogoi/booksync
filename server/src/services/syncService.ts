@@ -29,8 +29,8 @@ const MAX_HIGHLIGHTS_PER_RUN = isGitHubAction ? 1000 : // Process up to 1000 in 
 
 export async function queueSyncJob(
   databaseId: string,
-  fileContent: string,
-  userId: string
+  userId: string,
+  highlights: Highlight[]
 ): Promise<string> {
   try {
     logger.debug('Starting sync job', { databaseId });
@@ -50,20 +50,20 @@ export async function queueSyncJob(
     await jobStateService.updateJobState(baseJobId, {
       state: 'pending',
       message: 'Starting file processing',
-      progress: 0
+      progress: 0,
+      userId: userId
     });
 
-    // Initialize upload tracking
+    // Initialize upload tracking and mark user as active
     await startUpload(userId, uploadId, 0); // we'll update total count after parsing
+    await queueService.addToActiveUsers(userId, uploadId); // Track the upload, not individual jobs
 
     // Get Notion client to check for existing highlights
     const notionClient = await getClient();
 
-    // Get highlights from temp storage
-    const bookHighlights = await tempStorageService.getHighlights(baseJobId);
+    // Group highlights by book title
     const bookMap = new Map<string, Highlight[]>();
-    
-    for (const highlight of bookHighlights) {
+    for (const highlight of highlights) {
       if (!bookMap.has(highlight.bookTitle)) {
         bookMap.set(highlight.bookTitle, []);
       }
@@ -118,22 +118,21 @@ export async function queueSyncJob(
       // Store chunk highlights in temp storage
       await tempStorageService.storeHighlights(chunkJobId, chunk);
 
-      // Create job state for chunk
-      if (i > 0) { // First chunk already has state created
-        await jobStateService.updateJobState(chunkJobId, {
-          state: 'pending',
-          message: 'Starting file processing',
-          progress: 0
-        });
-      }
+     // Store chunk highlights in temp storage
+     await tempStorageService.storeHighlights(chunkJobId, chunk);
 
-      // Update job state to pending - will be marked as parsed after GitHub workflow processes
-      await jobStateService.updateJobState(chunkJobId, {
-        state: 'pending',
-        message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
-        total: chunk.length,
-        progress: 0
-      });
+     // Update job state to parsed after storing highlights
+     await jobStateService.updateJobState(chunkJobId, {
+       state: 'parsed',
+       message: `Chunk ${i + 1}/${chunks.length}: Found ${chunk.length} highlights to process`,
+       total: chunk.length,
+       progress: 0,
+       userId: userId
+     });
+
+     // Add job to queue
+     await queueService.addToQueue(chunkJobId, userId);
+     logger.debug('Job queued for processing', { chunkJobId });
 
       // Add job to upload tracking
       await addJobToUpload(uploadId, chunkJobId, chunk.length);

@@ -152,6 +152,19 @@ export class JobStateService {
     }
   }
 
+  async getJobsByUploadId(uploadId: string): Promise<JobMetadata[]> {
+    try {
+      const jobs = await this.listAllJobs();
+      // Job ID format is 'sync:userId:timestamp' or 'sync:userId:timestamp_chunkNum'
+      // Upload ID format is 'upload:userId:timestamp'
+      const jobPrefix = uploadId.replace(/^upload:/, 'sync:');
+      return jobs.filter(job => job.jobId.startsWith(jobPrefix));
+    } catch (error) {
+      logger.error('Error listing jobs by upload:', { uploadId, error });
+      return [];
+    }
+  }
+
   async listAllJobs(): Promise<JobMetadata[]> {
     try {
       const command = new ListObjectsV2Command({

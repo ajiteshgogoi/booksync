@@ -1,26 +1,22 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
-import { processFileContent } from './build/src/services/processService.js';
 import { streamFile } from './build/src/services/r2Service.js';
+import { queueSyncJob } from './build/src/services/syncService.js';
+import { parseClippings } from './build/src/utils/parseClippings.js';
+import { logger } from './build/src/utils/logger.js';
 
 dotenv.config();
 
-// Debug helper with timestamp
-const debug = (...args) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[Debug ${timestamp}]`, ...args);
-};
-
 async function main() {
   try {
-    debug('Starting main process...');
+    logger.debug('Starting main process...');
     const { JOB_ID, USER_ID, DATABASE_ID, R2_FILE_NAME } = process.env;
     
     if (!JOB_ID || !USER_ID || !DATABASE_ID || !R2_FILE_NAME) {
       throw new Error('Missing required environment variables: JOB_ID, USER_ID, DATABASE_ID, R2_FILE_NAME');
     }
 
-    debug('Environment variables validated:', { 
+    logger.debug('Environment variables validated:', {
       JOB_ID,
       USER_ID,
       DATABASE_ID,
@@ -28,24 +24,28 @@ async function main() {
     });
 
     // Stream file from R2
-    debug('Streaming file from R2...');
+    logger.debug('Streaming file from R2...');
     const fileStream = await streamFile(R2_FILE_NAME);
     let fileContent = '';
     
     // Convert stream to string
-    debug('Converting stream to string...');
+    logger.debug('Converting stream to string...');
     for await (const chunk of fileStream) {
       fileContent += chunk.toString();
     }
 
-    debug('File loaded from R2:', {
+    logger.debug('File loaded from R2:', {
       R2_FILE_NAME,
       contentLength: fileContent.length
     });
 
-    debug('Starting highlights processing...');
-    await processFileContent(USER_ID, fileContent, DATABASE_ID, JOB_ID);
-    debug('File processing completed successfully');
+    // Parse the file content into highlights
+    logger.debug('Parsing highlights from file content...');
+    const highlights = await parseClippings(fileContent);
+    
+    logger.debug('Starting sync job with parsed highlights...');
+    await queueSyncJob(DATABASE_ID, USER_ID, highlights);
+    logger.debug('File processing completed successfully');
     process.exit(0);
   } catch (error) {
     debug('Error occurred during processing:', {
