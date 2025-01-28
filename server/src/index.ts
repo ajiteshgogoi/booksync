@@ -118,10 +118,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Upload URL endpoint
-app.post('/api/upload-url', uploadUrlHandler);
+app.post(`${apiBasePath}/upload-url`, uploadUrlHandler);
 
 // R2 parse endpoint
-app.post('/api/parse-r2', async (req: Request, res: Response) => {
+app.post(`${apiBasePath}/parse-r2`, async (req: Request, res: Response) => {
   console.log('Parse R2 request received:', {
     method: req.method,
     url: req.url,
