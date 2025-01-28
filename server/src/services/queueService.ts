@@ -228,9 +228,13 @@ export class QueueService {
         queuedAt: new Date(nextEntry.queuedAt).toISOString()
       });
 
-      // Only process jobs with sync: prefix - these are ready to be synced
-      if (!nextEntry.uploadId.startsWith('sync:')) {
-        logger.debug('Skipping non-sync job', { jobId: nextEntry.uploadId });
+      // Check if job is ready for processing
+      const jobState = await jobStateService.getJobState(nextEntry.uploadId);
+      if (!jobState || jobState.state !== 'parsed') {
+        logger.debug('Job not ready for processing', {
+          jobId: nextEntry.uploadId,
+          state: jobState?.state || 'unknown'
+        });
         return null;
       }
 
