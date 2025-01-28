@@ -1,5 +1,4 @@
 import { logger } from './utils/logger.js';
-import { jobCleanupService } from './services/jobCleanupService.js';
 import { workerService } from './services/workerService.js';
 import { devWorkerService } from './services/devWorkerService.js';
 import { CleanupService } from './services/cleanupService.js';

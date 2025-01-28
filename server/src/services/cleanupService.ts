@@ -33,6 +33,15 @@ export interface UserState {
 export class CleanupService {
   private static readonly ACTIVE_STATES = ['pending', 'processing', 'queued'];
   private static workerId: string = `worker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Processing jobs get 6 hours before considered stuck
+  private static readonly STUCK_JOB_TIMEOUT = 6 * 60 * 60 * 1000; // 6 hours
+  
+  // Completed/failed jobs only need 5 minutes retention
+  private static readonly COMPLETED_JOB_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  
+  // Files older than 30 minutes are considered stale
+  private static readonly UPLOAD_EXPIRY = 30 * 60 * 1000; // 30 minutes
 
   private static async acquireLock(resource: string): Promise<boolean> {
     const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
@@ -124,34 +133,67 @@ export class CleanupService {
     }
 
     try {
-      // List all files in root directory only
-      const objects = await listObjects('/');
+      // List all upload files (including in subdirectories)
+      const objects = await listObjects('uploads/');
       if (!objects) return;
 
       const now = Date.now();
       let removedCount = 0;
+      const processedIds = new Set<string>();
 
       for (const obj of objects) {
         if (!obj.key || !obj.key.endsWith('.txt')) continue;
-        
-        // Skip files in subdirectories
-        if (obj.key.includes('/')) continue;
 
         // Get file metadata including lastModified
         const info = await getObjectInfo(obj.key);
         if (!info?.lastModified) continue;
 
-        // Check if file is older than 15 minutes
-        if (now - info.lastModified.getTime() < UPLOAD_EXPIRY) continue;
+        // Check if file is older than timeout
+        if (now - info.lastModified.getTime() < this.UPLOAD_EXPIRY) continue;
 
-        // Extract jobId from filename
-        const jobId = obj.key.replace('.txt', '');
-
-        // Delete file if job is pending or doesn't exist
+        // Extract jobId from filename (handles both chunks and regular uploads)
+        const jobId = obj.key.replace('uploads/', '').replace('.txt', '');
+        
+        // Get job state
         const jobState = await jobStateService.getJobState(jobId);
-        if (!jobState || jobState.state === 'pending') {
+        
+        if (!jobState) {
+          // If no job state exists, safe to remove
           await deleteObject(obj.key);
-          logger.info(`Removed stale pending upload file: ${obj.key}`);
+          logger.info(`Removed orphaned upload file: ${obj.key}`);
+          removedCount++;
+          continue;
+        }
+
+        // For chunk jobs, only clean up if parent is processed or stale
+        if (jobState.isChunk && jobState.parentUploadId) {
+          // Skip if we've already processed this parent
+          if (processedIds.has(jobState.parentUploadId)) continue;
+          
+          const parentJob = await jobStateService.getJobState(jobState.parentUploadId);
+          if (!parentJob) {
+            // Parent missing, clean up all chunks
+            const chunkJobs = await jobStateService.getChunkJobs(jobState.parentUploadId);
+            for (const chunk of chunkJobs) {
+              await deleteObject(`uploads/${chunk.jobId}.txt`);
+              removedCount++;
+            }
+            processedIds.add(jobState.parentUploadId);
+          } else if (parentJob.state === 'pending' || this.isJobStale(parentJob)) {
+            // Parent is stale or pending, clean up all chunks
+            const chunkJobs = await jobStateService.getChunkJobs(jobState.parentUploadId);
+            for (const chunk of chunkJobs) {
+              await deleteObject(`uploads/${chunk.jobId}.txt`);
+              removedCount++;
+            }
+            await deleteObject(`uploads/${parentJob.jobId}.txt`);
+            removedCount++;
+            processedIds.add(jobState.parentUploadId);
+          }
+        } else if (jobState.state === 'pending' || this.isJobStale(jobState)) {
+          // For non-chunk jobs, clean up if pending or stale
+          await deleteObject(obj.key);
+          logger.info(`Removed stale upload file: ${obj.key}`);
           removedCount++;
         }
       }
@@ -237,6 +279,59 @@ export class CleanupService {
   /**
    * Clean up expired job statuses using jobStateService
    */
+  private static isJobStale(job: JobMetadata): boolean {
+    const now = Date.now();
+    
+    // For chunk jobs, check parent status first
+    if (job.isChunk && job.parentUploadId) {
+      return false; // Will be handled when parent is cleaned up
+    }
+
+    if (job.state === 'completed' || job.state === 'failed') {
+      return now - job.updatedAt > this.COMPLETED_JOB_TIMEOUT;
+    }
+
+    if (job.state === 'processing') {
+      return now - job.updatedAt > this.STUCK_JOB_TIMEOUT;
+    }
+
+    return false;
+  }
+
+  private static async cleanupJobResources(job: JobMetadata): Promise<void> {
+    try {
+      // Clean up job temp files
+      await deleteObject(`temp-highlights/${job.jobId}.json`);
+      await deleteObject(`uploads/${job.jobId}.txt`);
+      
+      // For parent jobs, also clean up all chunk resources
+      if (!job.isChunk && job.jobId) {
+        const chunkJobs = await jobStateService.getChunkJobs(job.jobId);
+        for (const chunk of chunkJobs) {
+          await deleteObject(`temp-highlights/${chunk.jobId}.json`);
+          await deleteObject(`uploads/${chunk.jobId}.txt`);
+          await jobStateService.deleteJob(chunk.jobId);
+        }
+      }
+
+      // Clean up job state last
+      await jobStateService.deleteJob(job.jobId);
+      
+      logger.info('Cleaned up stale job resources', {
+        jobId: job.jobId,
+        state: job.state,
+        isChunk: job.isChunk,
+        parentUploadId: job.parentUploadId,
+        age: Date.now() - job.updatedAt
+      });
+    } catch (error) {
+      logger.error('Error cleaning up job resources', {
+        jobId: job.jobId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
   private static async cleanupStaleJobs(): Promise<void> {
     if (!await this.acquireLock('jobs')) {
       throw new Error('Could not acquire jobs lock');
@@ -244,15 +339,32 @@ export class CleanupService {
 
     try {
       const allJobs = await jobStateService.listAllJobs();
-      const now = Date.now();
-      const expiredJobs = allJobs.filter((job: JobMetadata) => {
-        return jobStateService.isTerminalState(job.state) &&
-               now - job.updatedAt > 86400000; // 24 hours
-      });
+      let cleanedCount = 0;
 
-      for (const job of expiredJobs) {
-        await jobStateService.deleteJob(job.jobId);
-        logger.debug(`Removed expired job: ${job.jobId}`);
+      // First pass: Clean up completed/failed jobs and stuck processing jobs
+      for (const job of allJobs) {
+        if (!this.isJobStale(job)) continue;
+        
+        if (!job.isChunk) {
+          // For parent jobs or standalone jobs
+          await this.cleanupJobResources(job);
+          cleanedCount++;
+        }
+      }
+
+      // Second pass: Clean up stale chunks
+      for (const job of allJobs) {
+        if (!job.isChunk || !job.parentUploadId) continue;
+
+        const parent = allJobs.find(j => j.jobId === job.parentUploadId);
+        if (!parent || this.isJobStale(parent)) {
+          await this.cleanupJobResources(job);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info(`Cleaned up ${cleanedCount} stale jobs`);
       }
     } catch (error) {
       logger.error('Error cleaning up stale jobs:', error);
