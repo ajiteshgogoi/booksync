@@ -13,7 +13,6 @@ const UPLOADS_PREFIX = 'uploads/';
 const JOB_STATE_PREFIX = 'jobs/';
 const LOCK_TIMEOUT = 30000; // 30 seconds
 const LOCK_FILE_PREFIX = 'locks/';
-const UPLOAD_EXPIRY = 30 * 60 * 1000; // 30 minutes
 
 interface Lock {
   lockedBy: string;
@@ -40,8 +39,8 @@ export class CleanupService {
   // Completed/failed jobs only need 5 minutes retention
   private static readonly COMPLETED_JOB_TIMEOUT = 5 * 60 * 1000; // 5 minutes
   
-  // Files older than 30 minutes are considered stale
-  private static readonly UPLOAD_EXPIRY = 30 * 60 * 1000; // 30 minutes
+  // Files older than 24 hours are considered stale
+  private static readonly UPLOAD_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
   private static async acquireLock(resource: string): Promise<boolean> {
     const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
