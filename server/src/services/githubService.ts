@@ -39,7 +39,7 @@ async function getTokenData(userId: string): Promise<{ userId: string; databaseI
 }
 
 export async function triggerProcessing(
-  fileContent: string,
+  fileKey: string,
   _userId: string, // Kept for compatibility but we use stored token
   clientIp: string
 ): Promise<string> {
@@ -49,26 +49,10 @@ export async function triggerProcessing(
   const userId = _userId;
   console.log('Retrieved userId and databaseId from R2:', { userId, databaseId });
   
-  // Generate unique file name with real user ID from token
-  const fileName = `clippings-${userId}-${Date.now()}.txt`;
-  
   try {
-    // Get pre-signed upload URL
-    const uploadUrl = await getUploadUrl(fileName, 'text/plain');
-    
-    // Upload file directly to R2
-    await axios.put(uploadUrl, fileContent, {
-      headers: {
-        'Content-Type': 'text/plain'
-      },
-      maxContentLength: Infinity, // Allow large file uploads
-      maxBodyLength: Infinity // Allow large file uploads
-    });
-    
     console.log('\n=== GitHub Processing Trigger Start ===');
-    console.log('File uploaded to R2:', {
-      fileName,
-      size: fileContent.length
+    console.log('Using existing file from R2:', {
+      fileKey
     });
     
     // Get GitHub token - check both local and Vercel env vars
@@ -186,19 +170,18 @@ export async function triggerProcessing(
       event_type: 'parse_highlights',
       client_payload: {
         jobId,  // Required by webhook.yml
-        fileName,
+        fileKey,
         userId,
         databaseId,
         timestamp: new Date().toISOString(),
-        clientIp,
-        fileSize: fileContent.length
+        clientIp
       }
     };
 
     console.log('\nPreparing GitHub dispatch:', {
       url: 'https://api.github.com/repos/ajiteshgogoi/booksync/dispatches',
       payloadSize: JSON.stringify(payload).length,
-      fileName,
+      fileKey,
       userId,
       databaseId
     });
@@ -230,7 +213,7 @@ export async function triggerProcessing(
 
       if (response.status === 204) {
         console.log('\n✅ Successfully triggered GitHub workflow');
-        return fileName;
+        return fileKey;
       } else {
         throw new Error(`Unexpected response status: ${response.status}`);
       }
