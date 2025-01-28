@@ -171,6 +171,7 @@ export async function triggerProcessing(
       client_payload: {
         jobId,  // Required by webhook.yml
         fileKey,
+        fileName: fileKey, // webhook.yml still expects fileName
         userId,
         databaseId,
         timestamp: new Date().toISOString(),
