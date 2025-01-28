@@ -102,7 +102,7 @@ export class QueueService {
     }
   }
 
-  private async getQueueState(): Promise<QueueState> {
+  async getQueueState(): Promise<QueueState> {
     try {
       const data = await downloadObject(QUEUE_FILE);
       const state = JSON.parse(data.toString()) as QueueState;

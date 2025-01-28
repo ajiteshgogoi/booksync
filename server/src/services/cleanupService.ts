@@ -1,4 +1,5 @@
 import { jobStateService, type JobMetadata } from './jobStateService.js';
+import { queueService } from './queueService.js';
 import { logger } from '../utils/logger.js';
 import {
   uploadObject,
@@ -168,19 +169,34 @@ export class CleanupService {
         if (jobState.isChunk && jobState.parentUploadId) {
           // Skip if we've already processed this parent
           if (processedIds.has(jobState.parentUploadId)) continue;
-          
+
           const parentJob = await jobStateService.getJobState(jobState.parentUploadId);
+          
+          // Get all jobs associated with this upload
+          const chunkJobs = await jobStateService.getChunkJobs(jobState.parentUploadId);
+          
+          // Check if any chunks are queued
+          const queueState = await queueService.getQueueState();
+          const hasQueuedChunks = queueState.queue.some(entry =>
+            chunkJobs.some(chunk => chunk.jobId === entry.uploadId)
+          );
+
+          if (hasQueuedChunks) {
+            logger.debug('Skipping cleanup - chunks still in queue', {
+              parentUploadId: jobState.parentUploadId
+            });
+            continue;
+          }
+
           if (!parentJob) {
-            // Parent missing, clean up all chunks
-            const chunkJobs = await jobStateService.getChunkJobs(jobState.parentUploadId);
+            // Parent missing and no queued chunks, clean up all chunks
             for (const chunk of chunkJobs) {
               await deleteObject(`uploads/${chunk.jobId}.txt`);
               removedCount++;
             }
             processedIds.add(jobState.parentUploadId);
           } else if (parentJob.state === 'pending' || this.isJobStale(parentJob)) {
-            // Parent is stale or pending, clean up all chunks
-            const chunkJobs = await jobStateService.getChunkJobs(jobState.parentUploadId);
+            // Parent is stale or pending and no queued chunks, clean up all chunks
             for (const chunk of chunkJobs) {
               await deleteObject(`uploads/${chunk.jobId}.txt`);
               removedCount++;

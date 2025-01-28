@@ -162,8 +162,12 @@ export class JobStateService {
       const jobs = await this.listAllJobs();
       // Job ID format is 'sync:userId:timestamp' or 'sync:userId:timestamp_chunkNum'
       // Upload ID format is 'upload:userId:timestamp'
-      const jobPrefix = uploadId.replace(/^upload:/, 'sync:');
-      return jobs.filter(job => job.jobId.startsWith(jobPrefix));
+      const [prefix, userId, timestamp] = uploadId.split(':');
+      const jobPrefix = `sync:${userId}:${timestamp}`;
+      return jobs.filter(job =>
+        job.jobId.startsWith(jobPrefix) ||
+        job.parentUploadId === uploadId
+      );
     } catch (error) {
       logger.error('Error listing jobs by upload:', { uploadId, error });
       return [];
