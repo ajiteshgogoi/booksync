@@ -125,13 +125,13 @@ export async function queueSyncJob(
     // Create jobs for each chunk
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const chunkJobId = chunks.length === 1 ? baseJobId : `${baseJobId}_${i + 1}`;
-      const isBaseJob = chunkJobId === baseJobId;
+      const chunkJobId = `${baseJobId}_${i + 1}`;
+      const isFirstChunk = i === 0;
       
       logger.debug('Creating job:', {
         jobId: chunkJobId,
-        isBaseJob,
-        isChunk: chunks.length > 1,
+        isFirstChunk,
+        isChunk: true,
         chunkIndex: i + 1,
         totalChunks: chunks.length
       });
@@ -148,15 +148,17 @@ export async function queueSyncJob(
         })
       ]);
 
-      // Create job for this chunk - use jobId as filename
+      // Create job for this chunk
       await jobStateService.createJob({
         jobId: chunkJobId,
         fileName: `${chunkJobId}.json`,
         userId: userId,
         databaseId: databaseId,
         uploadId: uploadId,
-        isChunk: chunks.length > 1, // Set isChunk true for multi-chunk uploads
-        parentUploadId: chunks.length > 1 ? baseJobId : undefined // Set parent for chunks
+        isChunk: true,
+        parentUploadId: i === 0 ? undefined : `${baseJobId}_1`, // First chunk is self-parented, others refer to chunk 1
+        chunkIndex: i + 1,
+        totalChunks: chunks.length
       });
 
       // Update to queued state

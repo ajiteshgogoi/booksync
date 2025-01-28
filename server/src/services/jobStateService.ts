@@ -23,6 +23,7 @@ export interface JobMetadata extends JobStatus {
   isChunk?: boolean;
   parentUploadId?: string;
   totalChunks?: number;
+  chunkIndex?: number;
 }
 
 export class JobStateService {
@@ -49,6 +50,8 @@ export class JobStateService {
     uploadId?: string;
     isChunk?: boolean;
     parentUploadId?: string;
+    chunkIndex?: number;
+    totalChunks?: number;
   }): Promise<JobMetadata> {
     const jobState: JobMetadata = {
       ...params,
