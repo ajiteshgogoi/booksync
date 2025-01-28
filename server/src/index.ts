@@ -107,11 +107,12 @@ import { uploadUrlHandler } from './api/upload-url.js';
 import { validateSync, ValidationError } from './services/syncValidationService.js';
 
 // Middlewares
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? ['https://booksync.vercel.app']
+  : ['http://localhost:5173'];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://booksync.vercel.app'
-  ],
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json());
