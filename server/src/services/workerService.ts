@@ -76,19 +76,9 @@ export class WorkerService {
           
           const { uploadId, userId } = nextInQueue;
 
-          // Get job metadata
-          const jobState = await jobStateService.getJobState(uploadId);
-          if (!jobState) {
-            throw new Error('Job metadata not found');
-          }
-
-          // Only process jobs in 'parsed' state
-          if (jobState.state !== 'parsed') {
-            logger.info(`Skipping job ${uploadId} - not in parsed state (current state: ${jobState.state})`);
-            continue;
-          }
-
+          // sync: prefix means job is ready to process
           this.currentJobId = uploadId;
+          logger.info('Processing job from queue', { jobId: uploadId, userId });
 
           // Update job state to processing
           await jobStateService.updateJobState(uploadId, {

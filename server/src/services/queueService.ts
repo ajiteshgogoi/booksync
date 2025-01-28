@@ -15,7 +15,7 @@ interface Lock {
 }
 
 interface QueueEntry {
-  uploadId: string;
+  uploadId: string;  // Correctly represents job ID with sync: prefix
   userId: string;
   queuedAt: number;
 }
@@ -93,9 +93,18 @@ export class QueueService {
   private async getQueueState(): Promise<QueueState> {
     try {
       const data = await downloadObject(QUEUE_FILE);
-      return JSON.parse(data.toString());
+      const state = JSON.parse(data.toString()) as QueueState;
+      logger.debug('Got queue state:', {
+        queueLength: state.queue.length,
+        jobs: state.queue.map((entry: QueueEntry) => ({
+          jobId: entry.uploadId,
+          userId: entry.userId,
+          queuedAt: new Date(entry.queuedAt).toISOString()
+        }))
+      });
+      return state;
     } catch (error) {
-      // If file doesn't exist, return empty queue
+      logger.debug('Queue file not found, returning empty queue');
       return { queue: [] };
     }
   }
@@ -130,10 +139,17 @@ export class QueueService {
       }
 
       // Add to queue
-      queueState.queue.push({
-        uploadId,
+      const entry = {
+        uploadId,  // This is actually the sync:userId:timestamp job ID
         userId,
         queuedAt: Date.now()
+      };
+      queueState.queue.push(entry);
+
+      logger.debug('Adding job to queue:', {
+        jobId: uploadId,
+        userId,
+        queueLength: queueState.queue.length
       });
 
       // Update queue state
@@ -143,6 +159,7 @@ export class QueueService {
       activeState.queueLength = queueState.queue.length;
       await uploadObject(ACTIVE_USERS_FILE, JSON.stringify(activeState));
 
+      logger.debug('Successfully added job to queue');
       return true;
     } finally {
       await this.releaseLock('queue');
@@ -163,10 +180,22 @@ export class QueueService {
 
       // Only get queue state if we have room for more active users
       const queueState = await this.getQueueState();
+      logger.debug('Checking queue state in moveToActive:', {
+        queueLength: queueState.queue.length,
+        activeUsers: Object.keys(activeState.activeUsers).length
+      });
+
       const nextEntry = queueState.queue.shift();
       if (!nextEntry) {
+        logger.debug('No jobs in queue');
         return null;
       }
+
+      logger.debug('Found next job in queue:', {
+        jobId: nextEntry.uploadId,
+        userId: nextEntry.userId,
+        queuedAt: new Date(nextEntry.queuedAt).toISOString()
+      });
 
       // Only process jobs with sync: prefix - these are ready to be synced
       if (!nextEntry.uploadId.startsWith('sync:')) {
@@ -176,6 +205,8 @@ export class QueueService {
         await uploadObject(QUEUE_FILE, JSON.stringify(queueState));
         return null;
       }
+
+      logger.debug('Moving job to active state:', { jobId: nextEntry.uploadId });
 
       // Update both states since we have a valid job to process
       activeState.activeUsers[nextEntry.userId] = {
