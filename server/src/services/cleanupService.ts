@@ -167,15 +167,42 @@ export class CleanupService {
   }
 
   /**
-   * Check if user has any active jobs
+   * Check if user has any active jobs, including chunked uploads
    */
   private static async checkUserJobs(userId: string): Promise<boolean> {
     const userJobs = await jobStateService.listJobsByUser(userId);
-    return userJobs.some(job => this.ACTIVE_STATES.includes(job.state));
+    
+    // Group jobs by parent upload to check chunked uploads
+    const jobsByUpload: { [key: string]: JobMetadata[] } = {};
+    for (const job of userJobs) {
+      if (job.parentUploadId) {
+        jobsByUpload[job.parentUploadId] = jobsByUpload[job.parentUploadId] || [];
+        jobsByUpload[job.parentUploadId].push(job);
+      }
+    }
+
+    // Check non-chunked jobs
+    const hasActiveRegularJobs = userJobs
+      .filter(job => !job.isChunk)
+      .some(job => this.ACTIVE_STATES.includes(job.state));
+
+    if (hasActiveRegularJobs) {
+      return true;
+    }
+
+    // Check chunked uploads
+    for (const uploadId of Object.keys(jobsByUpload)) {
+      const uploadStatus = await jobStateService.getChunkedUploadStatus(uploadId);
+      if (!uploadStatus.isComplete) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
-   * Clean up user's upload key in R2
+   * Clean up user's upload key in R2 after verifying all chunks are complete
    */
   private static async cleanupUserUploads(userId: string): Promise<void> {
     if (!await this.acquireLock('uploads')) {
@@ -183,6 +210,20 @@ export class CleanupService {
     }
 
     try {
+      const userJobs = await jobStateService.listJobsByUser(userId);
+      const uploadIds = new Set(userJobs
+        .filter(job => job.parentUploadId)
+        .map(job => job.parentUploadId));
+
+      // Verify all chunked uploads are complete
+      for (const uploadId of uploadIds) {
+        const status = await jobStateService.getChunkedUploadStatus(uploadId!);
+        if (!status.isComplete) {
+          logger.warn(`Skipping cleanup - incomplete chunks for upload ${uploadId}`);
+          return;
+        }
+      }
+
       const uploadKey = `${UPLOADS_PREFIX}${userId}.json`;
       await deleteObject(uploadKey);
       logger.info(`Cleaned up upload for user ${userId}`);

@@ -110,18 +110,23 @@ export class DevWorkerService {
           this.currentJobId = uploadId;
           logger.info('Processing job from queue', { jobId: uploadId, userId });
 
-          // Verify job exists before processing
-          const jobExists = await jobStateService.getJobState(uploadId);
-          if (!jobExists) {
+          // Verify job exists and get its state
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState) {
             logger.error('Job not found in job state service', { uploadId });
             throw new Error('Job not found - ensure job is created before processing');
           }
 
-          // Get current job state after job is active
-          const jobState = await jobStateService.getJobState(uploadId);
-          if (!jobState) {
-            logger.error('Job not found in job state service', { uploadId });
-            throw new Error('Job not found');
+          // For chunk jobs, verify parent upload still exists
+          if (jobState.isChunk && jobState.parentUploadId) {
+            const parentStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
+            if (parentStatus.isComplete) {
+              logger.info('Parent upload already complete, skipping chunk', {
+                jobId: uploadId,
+                parentUploadId: jobState.parentUploadId
+              });
+              continue;
+            }
           }
 
           // If job isn't parsed yet, skip processing but keep in active state
@@ -137,6 +142,30 @@ export class DevWorkerService {
             // Process the file - let it handle state transitions
             await processFile(uploadId);
             logger.info('Job processed successfully');
+
+            // For chunk jobs, check if all chunks are complete
+            const jobState = await jobStateService.getJobState(uploadId);
+            if (jobState?.isChunk && jobState.parentUploadId) {
+              const uploadStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
+              logger.info('Chunk status updated', {
+                jobId: uploadId,
+                parentUploadId: jobState.parentUploadId,
+                uploadStatus
+              });
+
+              if (uploadStatus.isComplete) {
+                if (uploadStatus.allSuccessful) {
+                  logger.info('All chunks completed successfully', {
+                    parentUploadId: jobState.parentUploadId
+                  });
+                } else {
+                  logger.warn('Chunked upload completed with failures', {
+                    parentUploadId: jobState.parentUploadId,
+                    failedChunks: uploadStatus.failedChunks
+                  });
+                }
+              }
+            }
           } catch (error: any) {
             // Handle job processing error
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -146,15 +175,38 @@ export class DevWorkerService {
               errorDetails: errorMessage
             });
             
-            logger.error('Job processing failed', { uploadId, error });
+            const jobState = await jobStateService.getJobState(uploadId);
+            if (jobState?.isChunk && jobState.parentUploadId) {
+              logger.error('Chunk processing failed', {
+                jobId: uploadId,
+                parentUploadId: jobState.parentUploadId,
+                error
+              });
+            } else {
+              logger.error('Job processing failed', { uploadId, error });
+            }
             throw error;
 
           } finally {
             try {
               // Remove job from queue and check if we should remove from active users
               await queueService.removeFromQueue(uploadId);
-              await queueService.removeFromActive(userId);
-              logger.debug('Cleaned up job after processing', { userId, uploadId });
+              
+              // For chunk jobs, only remove from active users if all chunks are done
+              const jobState = await jobStateService.getJobState(uploadId);
+              if (jobState?.isChunk && jobState.parentUploadId) {
+                const uploadStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
+                if (uploadStatus.isComplete) {
+                  await queueService.removeFromActive(userId);
+                  logger.debug('Removed user from active after all chunks complete', {
+                    userId,
+                    parentUploadId: jobState.parentUploadId
+                  });
+                }
+              } else {
+                await queueService.removeFromActive(userId);
+                logger.debug('Cleaned up job after processing', { userId, uploadId });
+              }
             } catch (cleanupError) {
               logger.error('Error removing job from active queue', {
                 userId,

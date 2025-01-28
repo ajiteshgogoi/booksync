@@ -20,6 +20,9 @@ export interface JobMetadata extends JobStatus {
   databaseId: string;
   createdAt: number;
   updatedAt: number;
+  isChunk?: boolean;
+  parentUploadId?: string;
+  totalChunks?: number;
 }
 
 export class JobStateService {
@@ -212,6 +215,65 @@ export class JobStateService {
   // Utility method to check if a job is in a terminal state
   isTerminalState(state: JobStatus['state']): boolean {
     return state === 'completed' || state === 'failed';
+  }
+
+  // Get all chunk jobs for a parent upload
+  async getChunkJobs(parentUploadId: string): Promise<JobMetadata[]> {
+    try {
+      const jobs = await this.listAllJobs();
+      return jobs.filter(job => job.parentUploadId === parentUploadId);
+    } catch (error) {
+      logger.error('Error getting chunk jobs:', { parentUploadId, error });
+      return [];
+    }
+  }
+
+  // Check if all chunks of an upload are in terminal state
+  async areAllChunksComplete(parentUploadId: string): Promise<boolean> {
+    try {
+      const chunkJobs = await this.getChunkJobs(parentUploadId);
+      if (chunkJobs.length === 0) {
+        return false;
+      }
+
+      return chunkJobs.every(job => this.isTerminalState(job.state));
+    } catch (error) {
+      logger.error('Error checking chunk completion:', { parentUploadId, error });
+      return false;
+    }
+  }
+
+  // Get overall status of chunked upload
+  async getChunkedUploadStatus(parentUploadId: string): Promise<{
+    isComplete: boolean;
+    totalChunks: number;
+    completedChunks: number;
+    failedChunks: number;
+    allSuccessful: boolean;
+  }> {
+    try {
+      const chunkJobs = await this.getChunkJobs(parentUploadId);
+      const completedChunks = chunkJobs.filter(job => job.state === 'completed').length;
+      const failedChunks = chunkJobs.filter(job => job.state === 'failed').length;
+      const totalChunks = chunkJobs.length;
+
+      return {
+        isComplete: completedChunks + failedChunks === totalChunks,
+        totalChunks,
+        completedChunks,
+        failedChunks,
+        allSuccessful: completedChunks === totalChunks
+      };
+    } catch (error) {
+      logger.error('Error getting chunked upload status:', { parentUploadId, error });
+      return {
+        isComplete: false,
+        totalChunks: 0,
+        completedChunks: 0,
+        failedChunks: 0,
+        allSuccessful: false
+      };
+    }
   }
 }
 

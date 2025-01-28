@@ -138,9 +138,16 @@ export class QueueService {
       const queueState = await this.getQueueState();
       const activeState = await this.getActiveUsersState();
 
+      // Get job state to check chunk metadata
+      const jobState = await jobStateService.getJobState(uploadId);
+      if (!jobState) {
+        logger.error('Job state not found when adding to queue', { uploadId });
+        return false;
+      }
+
       // For chunk jobs, only allow if they belong to an existing upload
-      if (this.isChunkJob(uploadId)) {
-        const baseJobId = this.getBaseJobId(uploadId);
+      if (jobState.isChunk && jobState.parentUploadId) {
+        const baseJobId = jobState.parentUploadId;
         const hasParentJob = activeState.activeUsers[userId]?.uploadId === baseJobId ||
                            queueState.queue.some(entry => entry.uploadId === baseJobId);
         
@@ -148,7 +155,17 @@ export class QueueService {
           logger.debug('Chunk job rejected - no parent job found', {
             userId,
             jobId: uploadId,
-            baseJobId
+            parentUploadId: baseJobId
+          });
+          return false;
+        }
+
+        // Check if this chunk belongs to a completed upload
+        const uploadStatus = await jobStateService.getChunkedUploadStatus(baseJobId);
+        if (uploadStatus.isComplete) {
+          logger.debug('Chunk rejected - parent upload already complete', {
+            jobId: uploadId,
+            parentUploadId: baseJobId
           });
           return false;
         }
