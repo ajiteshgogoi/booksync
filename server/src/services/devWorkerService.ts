@@ -140,12 +140,11 @@ export class DevWorkerService {
           }
 
           if (!jobState || jobState.state !== 'parsed') {
-            logger.error('Job not ready for processing after retries - must be in parsed state', {
+            logger.debug('Job not in parsed state, will try again next poll', {
               uploadId,
-              currentState: jobState?.state,
-              attempts: retryCount
+              currentState: jobState?.state
             });
-            throw new Error('Job not in correct state for processing');
+            continue;
           }
 
           // Update job state to processing

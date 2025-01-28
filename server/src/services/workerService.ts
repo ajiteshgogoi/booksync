@@ -87,35 +87,20 @@ export class WorkerService {
             throw new Error('Job not found - ensure job is created before processing');
           }
 
-          // Get current job state and verify it's 'parsed' before processing
-          // Add retries to handle potential race conditions with R2 storage
-          let jobState = null;
-          let retryCount = 0;
-          
-          while (retryCount < MAX_RETRIES) {
-            jobState = await jobStateService.getJobState(uploadId);
-            
-            if (jobState?.state === 'parsed') {
-              break;
-            }
-            
-            logger.debug('Job not in parsed state, retrying...', {
-              uploadId,
-              currentState: jobState?.state,
-              retry: retryCount + 1
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            retryCount++;
+          // Get current job state after job is active
+          const jobState = await jobStateService.getJobState(uploadId);
+          if (!jobState) {
+            logger.error('Job not found in job state service', { uploadId });
+            throw new Error('Job not found');
           }
 
-          if (!jobState || jobState.state !== 'parsed') {
-            logger.error('Job not ready for processing after retries - must be in parsed state', {
+          // If job isn't parsed yet, skip processing but keep in active state
+          if (jobState.state !== 'parsed') {
+            logger.debug('Job not in parsed state yet, will try again next poll', {
               uploadId,
-              currentState: jobState?.state,
-              attempts: retryCount
+              currentState: jobState.state
             });
-            throw new Error('Job not in correct state for processing');
+            continue;
           }
 
           // Update job state to processing
