@@ -131,77 +131,139 @@ export async function getObjectInfo(key: string): Promise<R2ObjectInfo | null> {
   }
 }
 
-export async function downloadObject(key: string): Promise<Buffer> {
-  try {
-    const command = new GetObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-    });
+export async function downloadObject(key: string, retries = 3): Promise<Buffer> {
+  let lastError: Error | undefined;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+      });
 
-    const response = await s3Client.send(command);
-    
-    if (!response.Body) {
-      throw new Error('No file content received from R2');
+      const response = await s3Client.send(command);
+      
+      if (!response.Body) {
+        throw new Error('No file content received from R2');
+      }
+
+      // Convert the readable stream to a buffer with timeout
+      const chunks: Buffer[] = [];
+      const stream = response.Body as Readable;
+      
+      const timeoutMs = 5000; // 5 second timeout
+      const result = await Promise.race([
+        new Promise<Buffer>((resolve, reject) => {
+          stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+          stream.on('error', reject);
+          stream.on('end', () => resolve(Buffer.concat(chunks)));
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Download timeout')), timeoutMs)
+        )
+      ]);
+
+      return result;
+    } catch (error) {
+      lastError = error as Error;
+      const isNotFound = (error as any)?.name === 'NoSuchKey';
+      
+      if (isNotFound || attempt === retries) {
+        logger.error('Error downloading object from R2:', {
+          key,
+          error,
+          attempt,
+          isNotFound
+        });
+        throw error;
+      }
+      
+      // Wait with exponential backoff before retrying
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000))
+      );
     }
+  }
+  
+  throw lastError;
+}
 
-    // Convert the readable stream to a buffer
-    const chunks: Buffer[] = [];
-    const stream = response.Body as Readable;
-    
-    return new Promise((resolve, reject) => {
-      stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      stream.on('error', (err) => reject(err));
-      stream.on('end', () => resolve(Buffer.concat(chunks)));
-    });
-  } catch (error) {
-    logger.error('Error downloading object from R2:', error);
-    throw error;
+export async function deleteObject(key: string, retries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const command = new DeleteObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+      });
+
+      await s3Client.send(command);
+      logger.debug('Successfully deleted object from R2', { key });
+      return;
+    } catch (error) {
+      const isNotFound = (error as any)?.name === 'NotFound';
+      if (isNotFound) {
+        logger.debug('Object already deleted from R2', { key });
+        return;
+      }
+      
+      if (attempt === retries) {
+        logger.error('Error deleting object from R2:', { key, error, attempt });
+        throw error;
+      }
+      
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000))
+      );
+    }
   }
 }
 
-export async function deleteObject(key: string): Promise<void> {
-  try {
-    const command = new DeleteObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-    });
+export async function listObjects(prefix: string, retries = 3): Promise<Array<{ key: string | undefined }>> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const command = new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: prefix
+      });
 
-    await s3Client.send(command);
-    logger.debug('Successfully deleted object from R2', { key });
-  } catch (error) {
-    logger.error('Error deleting object from R2:', error);
-    throw error;
+      const response = await s3Client.send(command);
+      return (response.Contents || []).map(obj => ({ key: obj.Key }));
+    } catch (error) {
+      if (attempt === retries) {
+        logger.error('Error listing objects from R2:', { prefix, error, attempt });
+        throw error;
+      }
+      
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000))
+      );
+    }
   }
+  return [];
 }
 
-export async function listObjects(prefix: string): Promise<Array<{ key: string | undefined }>> {
-  try {
-    const command = new ListObjectsV2Command({
-      Bucket: R2_BUCKET_NAME,
-      Prefix: prefix
-    });
+export async function uploadObject(key: string, data: Buffer | string, retries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        Body: data,
+        ContentType: 'application/json', // Changed to JSON since we're storing JSON data
+      });
 
-    const response = await s3Client.send(command);
-    return (response.Contents || []).map(obj => ({ key: obj.Key }));
-  } catch (error) {
-    logger.error('Error listing objects from R2:', error);
-    throw error;
-  }
-}
-
-export async function uploadObject(key: string, data: Buffer | string): Promise<void> {
-  try {
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      Body: data,
-      ContentType: 'text/plain', // Set appropriate content type
-    });
-
-    await s3Client.send(command);
-    logger.debug('Successfully uploaded object to R2', { key });
-  } catch (error) {
-    logger.error('Error uploading object to R2:', error);
-    throw error;
+      await s3Client.send(command);
+      logger.debug('Successfully uploaded object to R2', { key });
+      return;
+    } catch (error) {
+      if (attempt === retries) {
+        logger.error('Error uploading object to R2:', { key, error, attempt });
+        throw error;
+      }
+      
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000))
+      );
+    }
   }
 }

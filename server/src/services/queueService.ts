@@ -71,19 +71,51 @@ export class QueueService {
     };
 
     try {
+      // Try to create lock file
       await uploadObject(lockFile, JSON.stringify(lock));
+      logger.debug('Acquired new lock', { resource, workerId: this.workerId });
       return true;
     } catch (error) {
-      // If file already exists, check if lock is expired
+      // Check if existing lock is stale
       try {
         const existingLock = JSON.parse(await downloadObject(lockFile).then(b => b.toString())) as Lock;
-        if (existingLock.expiresAt < now) {
-          // Lock is expired, try to acquire it
+        
+        // Validate lock structure
+        if (!existingLock.lockedBy || !existingLock.acquiredAt || !existingLock.expiresAt) {
+          logger.warn('Invalid lock format, treating as expired', { existingLock });
+          await this.releaseLock(resource);
           await uploadObject(lockFile, JSON.stringify(lock));
           return true;
         }
+
+        if (existingLock.expiresAt < now) {
+          logger.debug('Found expired lock, acquiring', {
+            resource,
+            expiredLockOwner: existingLock.lockedBy,
+            expiredAt: new Date(existingLock.expiresAt).toISOString()
+          });
+          await uploadObject(lockFile, JSON.stringify(lock));
+          return true;
+        }
+
+        logger.debug('Lock already held', {
+          resource,
+          lockedBy: existingLock.lockedBy,
+          expiresAt: new Date(existingLock.expiresAt).toISOString()
+        });
       } catch (error) {
-        logger.error('Error checking existing lock:', error);
+        // If error reading lock, assume it's corrupted and try to acquire
+        if ((error as any)?.name === 'NoSuchKey') {
+          // Race condition where lock was deleted after our create attempt failed
+          try {
+            await uploadObject(lockFile, JSON.stringify(lock));
+            return true;
+          } catch (error) {
+            logger.error('Failed to acquire lock after NoSuchKey', { resource, error });
+          }
+        } else {
+          logger.error('Error checking existing lock:', { resource, error });
+        }
       }
       return false;
     }
@@ -92,43 +124,111 @@ export class QueueService {
   private async releaseLock(resource: string): Promise<void> {
     const lockFile = `${LOCK_FILE_PREFIX}${resource}-lock.json`;
     try {
-      // Properly delete the lock file instead of uploading empty content
-      await deleteObject(lockFile);
+      // Verify we still own the lock before releasing
+      const existingLock = JSON.parse(await downloadObject(lockFile).then(b => b.toString())) as Lock;
+      if (existingLock.lockedBy === this.workerId) {
+        await deleteObject(lockFile);
+        logger.debug('Released lock', { resource, workerId: this.workerId });
+      } else {
+        logger.warn('Attempted to release lock owned by different worker', {
+          resource,
+          ourWorkerId: this.workerId,
+          lockOwner: existingLock.lockedBy
+        });
+      }
     } catch (error) {
       // Ignore NotFound errors when trying to delete the lock
       if ((error as any)?.name !== 'NotFound') {
-        logger.error('Error releasing lock:', error);
+        logger.error('Error releasing lock:', { resource, error });
       }
     }
   }
 
   async getQueueState(): Promise<QueueState> {
-    try {
-      const data = await downloadObject(QUEUE_FILE);
-      const state = JSON.parse(data.toString()) as QueueState;
-      logger.debug('Got queue state:', {
-        queueLength: state.queue.length,
-        jobs: state.queue.map((entry: QueueEntry) => ({
-          jobId: entry.uploadId,
-          userId: entry.userId,
-          queuedAt: new Date(entry.queuedAt).toISOString()
-        }))
-      });
-      return state;
-    } catch (error) {
-      logger.debug('Queue file not found, returning empty queue');
-      return { queue: [] };
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        const data = await downloadObject(QUEUE_FILE);
+        const state = JSON.parse(data.toString()) as QueueState;
+        
+        // Validate and sanitize state
+        if (!state.queue || !Array.isArray(state.queue)) {
+          logger.warn('Invalid queue state format, resetting', { state });
+          return { queue: [] };
+        }
+
+        // Remove any invalid entries
+        state.queue = state.queue.filter(entry => {
+          const isValid = entry && entry.uploadId && entry.userId && entry.queuedAt;
+          if (!isValid) {
+            logger.warn('Found invalid queue entry, removing', { entry });
+          }
+          return isValid;
+        });
+
+        logger.debug('Got queue state:', {
+          queueLength: state.queue.length,
+          jobs: state.queue.map(entry => ({
+            jobId: entry.uploadId,
+            userId: entry.userId,
+            queuedAt: new Date(entry.queuedAt).toISOString()
+          }))
+        });
+        
+        return state;
+      } catch (error) {
+        attempts++;
+        if ((error as any)?.name === 'NoSuchKey' || attempts === maxAttempts) {
+          logger.debug('Queue file not found or max attempts reached, returning empty queue');
+          return { queue: [] };
+        }
+        logger.warn('Error getting queue state (attempt ' + attempts + ')', { error });
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts - 1)));
+      }
     }
+    return { queue: [] };
   }
 
   private async getActiveUsersState(): Promise<ActiveUsersState> {
-    try {
-      const data = await downloadObject(ACTIVE_USERS_FILE);
-      return JSON.parse(data.toString());
-    } catch (error) {
-      // If file doesn't exist, return empty state
-      return { activeUsers: {}, queueLength: 0 };
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        const data = await downloadObject(ACTIVE_USERS_FILE);
+        const state = JSON.parse(data.toString()) as ActiveUsersState;
+        
+        // Validate and sanitize state
+        if (!state.activeUsers || typeof state.activeUsers !== 'object') {
+          logger.warn('Invalid active users state format, resetting', { state });
+          return { activeUsers: {}, queueLength: 0 };
+        }
+
+        // Remove any invalid entries
+        Object.entries(state.activeUsers).forEach(([userId, data]) => {
+          if (!data || !data.uploadId || !data.startedAt) {
+            logger.warn('Found invalid active user entry, removing', { userId, data });
+            delete state.activeUsers[userId];
+          }
+        });
+
+        return {
+          activeUsers: state.activeUsers,
+          queueLength: typeof state.queueLength === 'number' ? state.queueLength : 0
+        };
+      } catch (error) {
+        attempts++;
+        if ((error as any)?.name === 'NoSuchKey' || attempts === maxAttempts) {
+          logger.debug('Active users file not found or max attempts reached, returning empty state');
+          return { activeUsers: {}, queueLength: 0 };
+        }
+        logger.warn('Error getting active users state (attempt ' + attempts + ')', { error });
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempts - 1)));
+      }
     }
+    return { activeUsers: {}, queueLength: 0 };
   }
 
   async addToQueue(uploadId: string, userId: string): Promise<boolean> {
