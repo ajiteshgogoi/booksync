@@ -55,14 +55,20 @@ export async function queueSyncJob(
       databaseId: databaseId,
       uploadId: uploadId
     });
+// Initialize upload tracking
+await startUpload(userId, uploadId, 0); // we'll update total count after parsing
 
-    // Initialize upload tracking
-    await startUpload(userId, uploadId, 0); // we'll update total count after parsing
+// Mark user as active immediately after starting upload
+await queueService.addToActiveUsers(userId, baseJobId);
+logger.debug('Marked user active for upload', {
+  userId,
+  uploadId: baseJobId
+});
 
-    // Get Notion client to check for existing highlights
-    const notionClient = await getClient();
+// Get Notion client to check for existing highlights
+const notionClient = await getClient();
 
-    // Group highlights by book title
+// Group highlights by book title
     const bookMap = new Map<string, Highlight[]>();
     for (const highlight of highlights) {
       if (!bookMap.has(highlight.bookTitle)) {
@@ -181,9 +187,6 @@ export async function queueSyncJob(
         highlightCount: chunk.length
       });
     }
-
-    // Mark user as active after all jobs are queued
-    await queueService.addToActiveUsers(userId, uploadId); // Track the upload, not individual jobs
 
     return baseJobId;
   } catch (error) {

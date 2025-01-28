@@ -178,22 +178,44 @@ export class QueueService {
           return false;
         }
       } else {
-        // For new uploads, block if user has ANY active upload or queued job
-        if (activeState.activeUsers[userId]) {
-          logger.debug('User already has active upload', {
-            userId,
-            activeUpload: activeState.activeUsers[userId].uploadId,
-            activeState
-          });
-          return false;
-        }
-  
-        // Only check for existing uploads if this is not a chunk
-        if (!jobState.isChunk) {
-          if (queueState.queue.some(entry => entry.userId === userId)) {
+        // For chunks, allow if they belong to an active upload
+        if (jobState.isChunk && jobState.parentUploadId) {
+          const baseUploadId = this.getBaseJobId(jobState.parentUploadId);
+          const activeBaseId = activeState.activeUsers[userId]?.uploadId;
+          
+          // Allow if chunk belongs to active upload
+          if (activeBaseId && this.getBaseJobId(activeBaseId) === baseUploadId) {
+            logger.debug('Allowing chunk for active upload', {
+              userId,
+              chunkId: uploadId,
+              parentUploadId: baseUploadId
+            });
+          } else {
+            logger.debug('Rejecting chunk - no matching active upload', {
+              userId,
+              chunkId: uploadId,
+              parentUploadId: baseUploadId,
+              activeUploadId: activeBaseId
+            });
+            return false;
+          }
+        } else {
+          // For new uploads, block if user has ANY active upload
+          if (activeState.activeUsers[userId]) {
+            logger.debug('User already has active upload', {
+              userId,
+              activeUpload: activeState.activeUsers[userId].uploadId,
+              activeState
+            });
+            return false;
+          }
+
+          // Only check queue for non-chunk uploads
+          const hasExistingUpload = queueState.queue.some(e => e.userId === userId);
+          if (hasExistingUpload) {
             logger.debug('User already has upload in queue', {
               userId,
-              queueState
+              queueLength: queueState.queue.length
             });
             return false;
           }

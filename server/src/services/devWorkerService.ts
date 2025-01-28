@@ -117,7 +117,7 @@ export class DevWorkerService {
             throw new Error('Job not found - ensure job is created before processing');
           }
 
-          // For chunk jobs, verify parent upload still exists
+          // For chunk jobs, handle parent upload tracking
           if (jobState.isChunk && jobState.parentUploadId) {
             const parentStatus = await jobStateService.getChunkedUploadStatus(jobState.parentUploadId);
             if (parentStatus.isComplete) {
@@ -127,6 +127,13 @@ export class DevWorkerService {
               });
               continue;
             }
+
+            // Mark user as active with parent upload ID for first chunk
+            await queueService.addToActiveUsers(userId, jobState.parentUploadId);
+            logger.debug('Marked user active for chunked upload', {
+              userId,
+              parentUploadId: jobState.parentUploadId
+            });
           }
 
           // Remove failed jobs from queue only
