@@ -135,27 +135,28 @@ jobs:
               }
               
               if (jobs.length > 0) {
-                console.log('Starting worker to process jobs...');
-                await workerService.start();
-                
-                // Verify final states
-                for (const job of jobs) {
-                  const finalState = await jobStateService.getJobState(job.jobId);
-                  if (!finalState || (finalState.state !== 'completed' && finalState.state !== 'failed')) {
-                    throw new Error(\`Job \${job.jobId} did not reach final state. Current state: \${finalState?.state}\`);
-                  }
-                  console.log(\`Job \${job.jobId} reached final state: \${finalState.state}\`);
-                }
-                
-                console.log('Worker completed successfully');
-              } else {
-                console.log('No jobs to process');
-              }
-              
-              // Run cleanup service
-              console.log('Running cleanup...');
-              await CleanupService.cleanup();
-              console.log('Cleanup completed');
+               console.log('Starting worker to process jobs...');
+               await workerService.start();
+               
+               // Verify final states before cleanup
+               console.log('Verifying job states...');
+               for (const job of jobs) {
+                 const finalState = await jobStateService.getJobState(job.jobId);
+                 if (!finalState || (finalState.state !== 'completed' && finalState.state !== 'failed')) {
+                   throw new Error(\`Job \${job.jobId} did not reach final state. Current state: \${finalState?.state}\`);
+                 }
+                 console.log(\`Job \${job.jobId} reached final state: \${finalState.state}\`);
+               }
+               
+               console.log('Worker completed successfully');
+               
+               // Run cleanup service only after verification
+               console.log('Running cleanup...');
+               await CleanupService.cleanup();
+               console.log('Cleanup completed');
+             } else {
+               console.log('No jobs to process');
+             }
               
               process.exit(0);
             } catch (error) {
