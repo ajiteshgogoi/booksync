@@ -48,7 +48,7 @@ export class WorkerService {
       logger.info('Worker stopped while processing job', { jobId: this.currentJobId });
     }
 
-    // Ensure we wait for any ongoing operations to complete
+    // Ensure we wait for any ongoing operations to complete //
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
