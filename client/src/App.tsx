@@ -200,7 +200,7 @@ function App() {
         {!isAuthenticated ? (
           <div className="bg-[#fffaf0] rounded-lg shadow-lg p-6 text-center border border-[#e0d6c2]">
             <h2 className="text-2xl font-bold text-gray-900">Connect to Notion</h2>
-            <p className="mt-2 text-gray-600">First, copy the <a href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a" target="_blank" rel="noopener noreferrer" className="text-[#8b7355] underline hover:text-blue-600 hover:underline">Kindle Highlights Template</a> to your Notion workspace.</p>
+            <p className="mt-2 text-gray-600">First, duplicate the <a href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a" target="_blank" rel="noopener noreferrer" className="text-[#8b7355] underline hover:text-blue-600 hover:underline">Kindle Highlights Template</a> to your Notion workspace.</p>
             <p className="text-gray-600">Then connect to Notion and allow access.</p>
               <button
                 onClick={() => window.location.href = `${apiBase}/auth/notion`}
@@ -354,7 +354,7 @@ function App() {
               Close
             </button>
             <p className="mt-3 text-xs text-[#5a463a] font-serif text-center">
-              Note: Make sure you have copied the{' '}
+              Note: Make sure you have duplicated the{' '}
               <a
                 href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a"
                 target="_blank"
