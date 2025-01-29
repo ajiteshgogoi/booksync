@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import BookIcon from '../public/book.svg';
 import './App.css';
 import { uploadFileToR2, syncWithFileKey } from './services/uploadService';
+import { injectSpeedInsights } from '@vercel/speed-insights';
+
+// Initialize Speed Insights
+injectSpeedInsights();
 
 type SyncStatus = 'idle' | 'parsing' | 'queued' | 'error' | 'starting' | 'validating';
 
