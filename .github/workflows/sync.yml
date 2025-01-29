@@ -1,10 +1,10 @@
 name: Sync Highlights
 
 on:
-  # Process parsed files every hour, but only if jobs exist in queue
+  # Process parsed files every 5 minutes, but only if jobs exist in queue
   # This reduces R2 operations by skipping worker runs when queue is empty
   schedule:
-    - cron: '0 * * * *'
+    - cron: '*/5 * * * *'
   # Also process immediately after parsing completes
   workflow_run:
     workflows: ["Parse Highlights"]
