@@ -8,6 +8,13 @@ const POLL_INTERVAL = 1000; // 1 second between polls
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
 
+// Maximum number of jobs to process per worker cycle
+// This prevents hitting GitHub Actions step limits:
+// - Each 1000-highlight chunk needs ~20-25 steps (batches of 50 + overhead)
+// - Setting to 35 allows processing ~35,000 highlights while staying under the 1000 step limit
+// - Leaves room for retries and additional overhead operations
+const MAX_JOBS_PER_CYCLE = 35;
+
 export class WorkerService {
   private isRunning: boolean = false;
   private shouldContinue: boolean = false;
@@ -49,9 +56,12 @@ export class WorkerService {
     try {
       logger.info('Starting worker cycle');
       
+      // Track number of jobs processed to stay under GitHub Actions limits
+      let jobsProcessed = 0;
+      
       // Poll for available jobs from the queue (reduced from 10 to 5 to optimize R2 operations)
       let pollCount = 0;
-      while (pollCount < 5) {
+      while (pollCount < 5 && jobsProcessed < MAX_JOBS_PER_CYCLE) {
         if (!this.isRunning) {
           logger.info('Worker cycle stopped before completion');
           return;
@@ -214,7 +224,13 @@ export class WorkerService {
                 error: cleanupError
               });
             }
-            break;
+            // Reset poll counter and increment processed jobs counter
+            pollCount = 0;
+            jobsProcessed++;
+            
+            if (jobsProcessed >= MAX_JOBS_PER_CYCLE) {
+              logger.info(`Reached max jobs per cycle limit (${MAX_JOBS_PER_CYCLE}), will exit after cleanup`);
+            }
           }
 
         } catch (error) {
