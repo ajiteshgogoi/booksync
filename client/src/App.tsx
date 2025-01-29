@@ -353,6 +353,18 @@ function App() {
             >
               Close
             </button>
+            <p className="mt-3 text-xs text-[#5a463a] font-serif text-center">
+              Note: Make sure you have copied the{' '}
+              <a
+                href="https://ajiteshgogoi.notion.site/182089fab37880bebf22e98f12c1ba1b?v=182089fab3788167a0e8000c719a4d5a"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#8b7355] hover:text-blue-600 underline"
+              >
+                Kindle Highlight Template
+              </a>
+              {' '}to your Notion workspace and given access to BookSync.
+            </p>
           </div>
         </div>
       )}
