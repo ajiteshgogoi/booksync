@@ -349,7 +349,7 @@ function App() {
             <ol className="list-decimal list-inside text-sm text-[#5a463a] font-serif space-y-1 mb-3">
               <li>Connect Kindle via USB.</li>
               <li>Open Kindle drive.</li>
-              <li>Find 'My Clippings.txt' in the root directory.</li>
+              <li>Find 'My Clippings.txt' in the documents folder.</li>
             </ol>
             <button
               onClick={() => setShowClippingsModal(false)}
