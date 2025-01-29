@@ -11,6 +11,9 @@ build/
 dist/
 out/
 
+# Documentation
+DOCUMENTATION.md
+
 # Misc
 .DS_Store
 .env
