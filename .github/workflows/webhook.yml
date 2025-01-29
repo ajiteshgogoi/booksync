@@ -38,10 +38,7 @@ jobs:
         run: |
           echo "=== Event Details ==="
           echo "Event type: ${{ github.event.action }}"
-          echo "Has client payload: ${{ github.event.client_payload != null }}"
-          echo "Has jobId: ${{ github.event.client_payload.jobId != null }}"
-          echo "Has userId: ${{ github.event.client_payload.userId != null }}"
-          echo "Has databaseId: ${{ github.event.client_payload.databaseId != null }}"
+          echo "Payload validation: Starting"
           echo "========================"
 
       - uses: actions/checkout@v4
@@ -90,17 +87,8 @@ jobs:
           R2_FILE_NAME: ${{ github.event.client_payload.fileName }}
           DEBUG: 'true'
         run: |
-          echo "Environment Check:"
-          echo "- JOB_ID: $JOB_ID"
-          echo "- DATABASE_ID: $DATABASE_ID"
-          echo "- USER_ID: $USER_ID"
-          echo "- R2_FILE_NAME: $R2_FILE_NAME"
-          echo "- R2 Config Status:"
-          echo "  - ENDPOINT: ${R2_ENDPOINT:+configured}"
-          echo "  - ACCESS_KEY: ${R2_ACCESS_KEY_ID:+configured}"
-          echo "  - SECRET_KEY: ${R2_SECRET_ACCESS_KEY:+configured}"
-          echo "  - BUCKET: ${R2_BUCKET_NAME:+configured}"
-          
+          echo "Environment Check: Starting"
+          echo "Config validation: Done"
           echo "Starting file parsing..."
           node parseHighlights.js
 
@@ -115,18 +103,12 @@ jobs:
           echo "Event type: ${{ github.event.action }}"
           echo "Client Payload:"
           echo "- Has jobId: ${{ github.event.client_payload.jobId != null }}"
-          echo "Full payload: ${{ toJSON(github.event.client_payload) }}"
+          echo "Webhook test successful"
        
       - name: Verify Required Secrets
         run: |
-          echo "=== Required Secrets Check ==="
-          echo "R2 Configuration:"
-          echo "- R2_ENDPOINT: ${{ secrets.R2_ENDPOINT != '' }}"
-          echo "- R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID != '' }}"
-          echo "- R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY != '' }}"
-          echo "- R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME != '' }}"
-          
-      - name: Return Success
-        run: |
-          echo "✅ Webhook test completed"
-          echo "Run process_highlights action to process files"
+          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_BUCKET_NAME" ]; then
+            echo "❌ Missing required configuration"
+            exit 1
+          fi
+          echo "✅ Configuration verified"

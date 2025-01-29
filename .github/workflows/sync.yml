@@ -39,7 +39,7 @@ env:
 
 jobs:
   check_queue:
-    if: github.repository == 'ajiteshgogoi/booksync'
+    if: github.repository == 'ajiteshgogoi/booksync' && (github.event_name != 'workflow_dispatch' || github.actor == 'ajiteshgogoi')
     runs-on: ubuntu-latest
     outputs:
       has_jobs: ${{ steps.check.outputs.has_jobs }}
@@ -86,7 +86,7 @@ jobs:
 
   sync:
     needs: check_queue
-    if: github.repository == 'ajiteshgogoi/booksync' && needs.check_queue.outputs.has_jobs == 'true'
+    if: github.repository == 'ajiteshgogoi/booksync' && needs.check_queue.outputs.has_jobs == 'true' && (github.event_name != 'workflow_dispatch' || github.actor == 'ajiteshgogoi')
     runs-on: ubuntu-latest
     timeout-minutes: 300  # 5 hour timeout
 
