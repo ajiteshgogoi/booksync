@@ -39,11 +39,6 @@ BookSync is a streamlined tool that automatically syncs your Kindle highlights t
 - Processing: GitHub Actions for background jobs
 - API Integration: Notion API
 
-## Rate Limits
-
-- Maximum 2 'My Clippings.txt' uploads per hour
-- Configurable batch processing to prevent API overload
-
 ## Support
 
 For bugs or feedback, please contact ajiteshgogoi@gmail.com.
