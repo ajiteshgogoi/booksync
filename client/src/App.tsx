@@ -379,7 +379,7 @@ function App() {
         <div id="kofi-widget-container"></div>
       </div>
 
-      <div className="flex flex-col items-center mb-8">
+      <div className="flex flex-col items-center mb-8 max-w-4xl w-full mx-auto px-4">
         <a
           href="https://touchbase.site/"
           target="_blank"
