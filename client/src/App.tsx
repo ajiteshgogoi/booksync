@@ -381,7 +381,7 @@ function App() {
 
       <div className="flex flex-col items-center mb-8 max-w-4xl w-full mx-auto px-4">
         <a
-          href="https://touchbase.site/"
+          href="https://touchbase.site/?utm_source=booksync&utm_medium=link&utm_campaign=apps"
           target="_blank"
           rel="noopener noreferrer"
           className="bg-[#F0F9FF] text-[#0EA5E9] font-medium py-1 px-2 rounded-md transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#F0F9FF] hover:-translate-y-0.5 hover:bg-[#E0F2FE] text-sm text-center"
@@ -393,7 +393,7 @@ function App() {
       <footer className="mt-8 py-4 relative z-20">
         <div className="max-w-4xl mx-auto px-4 flex flex-col items-center gap-2">
             <a 
-              href="https://ko-fi.com/gogoi" 
+              href="https://ko-fi.com/gogoi?utm_source=booksync&utm_medium=link&utm_campaign=apps"
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-[#4a6cf7] text-white hover:text-white px-3 py-1.5 text-sm rounded-md transition-all font-serif hover:-translate-y-0.5 hover:shadow-lg [text-shadow:0_1px_1px_rgba(0,0,0,0.3)]"
