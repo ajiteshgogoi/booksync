@@ -17,10 +17,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: server
+        run: |
+          # Only install the Redis package we need
+          npm install @upstash/redis
+
       - name: Test Redis connection
-        env:
-          REDIS_URL: ${{ secrets.REDIS_URL }}
+        working-directory: server
         run: |
           if [ -z "$REDIS_URL" ]; then
             echo "❌ Missing Redis URL"
@@ -28,12 +38,27 @@ jobs:
           fi
           
           echo "Testing Redis connection..."
-          # Simple curl to the Redis URL to keep it active
-          curl -I "$REDIS_URL"
+          node -e "
+          const { Redis } = require('@upstash/redis');
           
-          if [ $? -eq 0 ]; then
-            echo "✅ Redis connection successful"
-          else
-            echo "❌ Redis connection failed"
-            exit 1
-          fi
+          async function testConnection() {
+            try {
+              const redis = new Redis({
+                url: process.env.REDIS_URL
+              });
+              
+              // Test connection with a simple ping
+              const result = await redis.ping();
+              console.log('Connection test result:', result);
+              console.log('✅ Redis connection successful');
+              process.exit(0);
+            } catch (error) {
+              console.error('❌ Redis connection failed:', error);
+              process.exit(1);
+            }
+          }
+          
+          testConnection();
+          "
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
