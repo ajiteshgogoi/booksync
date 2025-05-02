@@ -11,8 +11,7 @@ permissions:
 
 env:
   NODE_ENV: production
-  UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-  UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+  REDIS_URL: ${{ secrets.REDIS_URL }}
 
 jobs:
   keepalive:
@@ -38,23 +37,25 @@ jobs:
         working-directory: server
         run: npm run build
 
-      - name: Test Upstash connection
+      - name: Test Redis connection
         working-directory: server
         run: |
-          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
-            echo "❌ Missing Upstash credentials"
+          if [ -z "$REDIS_URL" ]; then
+            echo "❌ Missing Redis URL"
             exit 1
           fi
           
-          echo "Testing Upstash connection..."
+          echo "Testing Redis connection..."
+          # Modify the environment variable name to match what the code expects
+          export UPSTASH_REDIS_REST_URL="$REDIS_URL"
           node --experimental-vm-modules -e "
           (async () => {
             try {
               const { testConnection } = await import('./build/src/utils/upstashConnectionTest.js');
               await testConnection();
-              console.log('✅ Upstash connection successful');
+              console.log('✅ Redis connection successful');
             } catch (error) {
-              console.error('❌ Upstash connection failed:', error);
+              console.error('❌ Redis connection failed:', error);
               process.exit(1);
             }
           })();
