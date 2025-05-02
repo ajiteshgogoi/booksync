@@ -53,18 +53,4 @@ jobs:
           fi
           
           echo "Testing Redis connection..."
-          node --experimental-vm-modules -e "
-          (async () => {
-            try {
-              console.log('Loading upstashConnectionTest...');
-              const { testConnection } = await import('./build/src/utils/upstashConnectionTest.js');
-              console.log('Testing connection...');
-              await testConnection();
-              console.log('✅ Redis connection successful');
-              process.exit(0);
-            } catch (error) {
-              console.error('❌ Redis connection failed:', error);
-              process.exit(1);
-            }
-          })();
-          "
+          node --experimental-vm-modules build/src/utils/upstashConnectionTest.js
