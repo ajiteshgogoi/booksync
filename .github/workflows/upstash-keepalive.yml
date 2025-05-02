@@ -17,7 +17,8 @@ jobs:
 
     env:
       NODE_ENV: production
-      UPSTASH_REDIS_REST_URL: ${{ secrets.REDIS_URL }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -46,8 +47,8 @@ jobs:
       - name: Test Redis connection
         working-directory: server
         run: |
-          if [ -z "$UPSTASH_REDIS_REST_URL" ]; then
-            echo "❌ Missing Redis URL"
+          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
+            echo "❌ Missing required Redis credentials"
             exit 1
           fi
           
