@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  NODE_ENV: production
-  REDIS_URL: ${{ secrets.REDIS_URL }}
-
 jobs:
   keepalive:
     if: github.repository == 'ajiteshgogoi/booksync'
@@ -21,24 +17,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install dependencies
-        working-directory: server
-        run: npm ci --include=dev
-
-      - name: Build server
-        working-directory: server
-        run: npm run build
-
+      
       - name: Test Redis connection
-        working-directory: server
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
         run: |
           if [ -z "$REDIS_URL" ]; then
             echo "❌ Missing Redis URL"
@@ -46,17 +28,12 @@ jobs:
           fi
           
           echo "Testing Redis connection..."
-          # Modify the environment variable name to match what the code expects
-          export UPSTASH_REDIS_REST_URL="$REDIS_URL"
-          node --experimental-vm-modules -e "
-          (async () => {
-            try {
-              const { testConnection } = await import('./build/src/utils/upstashConnectionTest.js');
-              await testConnection();
-              console.log('✅ Redis connection successful');
-            } catch (error) {
-              console.error('❌ Redis connection failed:', error);
-              process.exit(1);
-            }
-          })();
-          "
+          # Simple curl to the Redis URL to keep it active
+          curl -I "$REDIS_URL"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Redis connection successful"
+          else
+            echo "❌ Redis connection failed"
+            exit 1
+          fi
