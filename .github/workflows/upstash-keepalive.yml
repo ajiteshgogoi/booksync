@@ -1,0 +1,61 @@
+name: Upstash Keepalive
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+
+env:
+  NODE_ENV: production
+  UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+  UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+
+jobs:
+  keepalive:
+    if: github.repository == 'ajiteshgogoi/booksync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm ci --include=dev
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Test Upstash connection
+        working-directory: server
+        run: |
+          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
+            echo "❌ Missing Upstash credentials"
+            exit 1
+          fi
+          
+          echo "Testing Upstash connection..."
+          node --experimental-vm-modules -e "
+          (async () => {
+            try {
+              const { testConnection } = await import('./build/src/utils/upstashConnectionTest.js');
+              await testConnection();
+              console.log('✅ Upstash connection successful');
+            } catch (error) {
+              console.error('❌ Upstash connection failed:', error);
+              process.exit(1);
+            }
+          })();
+          "
