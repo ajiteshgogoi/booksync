@@ -12,9 +12,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 async function testConnection() {
     console.log('Starting Upstash connection test...');
     
-    // Debug environment variables
+    // Debug environment variables (safely)
     console.log('Environment variables:');
-    console.log('UPSTASH_REDIS_REST_URL:', process.env.UPSTASH_REDIS_REST_URL);
+    console.log('UPSTASH_REDIS_REST_URL:', process.env.UPSTASH_REDIS_REST_URL ? '***[redacted]***' : '[missing]');
     console.log('UPSTASH_REDIS_REST_TOKEN:', process.env.UPSTASH_REDIS_REST_TOKEN ? '[present]' : '[missing]');
 
     try {
@@ -35,22 +35,37 @@ async function testConnection() {
         
         console.log('Getting test value...');
         const retrieved = await redis.get(testKey);
-        console.log('Retrieved value:', retrieved);
+        // Don't log the actual value as it contains timestamp
+        console.log('Retrieved value matches:', retrieved === testValue);
         
         if (retrieved === testValue) {
             console.log('✓ Get operation successful');
             console.log('\n✅ Connection test passed successfully!');
         } else {
-            console.log('❌ Get operation failed: retrieved value does not match');
+            console.log('❌ Get operation failed: values do not match');
         }
         
         // Cleanup
         await redis.del(testKey);
         
     } catch (error) {
-        console.error('\n❌ Connection test failed:', error);
+        // Safely log error without exposing URLs
+        console.error('\n❌ Connection test failed');
+        if (error instanceof Error) {
+            // Remove any URLs from error message
+            const safeMessage = error.message.replace(/(https?:\/\/[^\s]*)/g, '***[redacted]***');
+            console.error('Error:', safeMessage);
+        }
+        process.exit(1);
     }
 }
 
 console.log('Test script started');
-testConnection().catch(console.error);
+testConnection().catch(error => {
+    // Safely log error without exposing URLs
+    if (error instanceof Error) {
+        const safeMessage = error.message.replace(/(https?:\/\/[^\s]*)/g, '***[redacted]***');
+        console.error('Fatal error:', safeMessage);
+    }
+    process.exit(1);
+});

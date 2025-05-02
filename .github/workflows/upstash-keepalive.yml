@@ -14,7 +14,8 @@ jobs:
     if: github.repository == 'ajiteshgogoi/booksync'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
+    
+    # Don't show token in workflow logs
     env:
       NODE_ENV: production
       UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
@@ -51,6 +52,9 @@ jobs:
             echo "❌ Missing required Redis credentials"
             exit 1
           fi
+          
+          # Add mask for any Redis URLs that might appear in logs
+          echo "::add-mask::$UPSTASH_REDIS_REST_URL"
           
           echo "Testing Redis connection..."
           node --experimental-vm-modules build/src/utils/upstashConnectionTest.js
