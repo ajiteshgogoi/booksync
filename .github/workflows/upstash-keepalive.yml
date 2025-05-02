@@ -16,6 +16,26 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Debug Redis URL
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+        run: |
+          echo "Redis URL format check:"
+          # Mask the actual values but show format
+          echo "REDIS_URL starts with: ${REDIS_URL:0:10}..."
+          
+          # Try to identify if it's Upstash format
+          if [[ "$REDIS_URL" == *"upstash"* ]]; then
+            echo "Appears to be an Upstash URL"
+          fi
+          
+          # Check URL structure
+          if [[ "$REDIS_URL" == "https://"* ]]; then
+            echo "URL uses HTTPS protocol"
+          elif [[ "$REDIS_URL" == "redis://"* ]]; then
+            echo "URL uses Redis protocol"
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -26,8 +46,7 @@ jobs:
       - name: Install dependencies
         working-directory: server
         run: |
-          # Only install the Redis package we need
-          npm install @upstash/redis
+          npm install @upstash/redis dotenv
 
       - name: Test Redis connection
         working-directory: server
@@ -43,8 +62,11 @@ jobs:
           
           async function testConnection() {
             try {
+              console.log('Attempting connection with REST config...');
+              
+              // First try using it as a direct REST URL
               const redis = new Redis({
-                url: process.env.REDIS_URL
+                url: process.env.REDIS_URL,
               });
               
               // Test connection with a simple ping
@@ -53,8 +75,32 @@ jobs:
               console.log('✅ Redis connection successful');
               process.exit(0);
             } catch (error) {
-              console.error('❌ Redis connection failed:', error);
-              process.exit(1);
+              console.error('First attempt failed, checking URL format...');
+              
+              try {
+                // If URL is in redis:// format, try to convert to Upstash REST format
+                const url = process.env.REDIS_URL;
+                if (url.startsWith('redis://')) {
+                  const [host, token] = url.split('@')[1].split(':');
+                  const restUrl = \`https://\${host}\`;
+                  
+                  console.log('Trying with converted REST format...');
+                  const redis = new Redis({
+                    url: restUrl,
+                    token: token
+                  });
+                  
+                  const result = await redis.ping();
+                  console.log('Connection test result:', result);
+                  console.log('✅ Redis connection successful');
+                  process.exit(0);
+                }
+              } catch (innerError) {
+                console.error('Both connection attempts failed');
+                console.error('Original error:', error);
+                console.error('Format conversion error:', innerError);
+                process.exit(1);
+              }
             }
           }
           
