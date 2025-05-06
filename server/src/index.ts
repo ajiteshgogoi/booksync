@@ -497,8 +497,15 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response)
   }
 });
 
-app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
+app.post(`${apiBasePath}/auth/disconnect`, rateLimiter.check, async (req: Request, res: Response) => {
   try {
+    // Get client IP for logging/potential future use (rate limiting is handled by middleware)
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    const clientIp = Array.isArray(xForwardedFor)
+      ? xForwardedFor[0]
+      : (xForwardedFor || req.socket.remoteAddress);
+    console.log(`Disconnect request from IP: ${clientIp}`);
+
     // Get user info from token
     const token = await getOAuthToken();
     if (token) {
