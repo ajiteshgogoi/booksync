@@ -57,7 +57,8 @@ class RateLimiter {
           this.store.delete(ip);
           cleanedCount++;
           console.log(
-            `[RateLimiter] Cleaned record for ${maskIP(ip)}:`,
+            '[RateLimiter] Cleaned record for %s:',
+            maskIP(ip),
             JSON.stringify({
               event: 'cleanup',
               lastUpdated: new Date(typedRecord.lastUpdated).toISOString(),
@@ -101,7 +102,8 @@ class RateLimiter {
         record.lastUpdated = now;
         this.store.set(ip, record);
         console.log(
-          `[RateLimiter] Reset window for ${maskIP(ip)}:`,
+          '[RateLimiter] Reset window for %s:',
+          maskIP(ip),
           JSON.stringify({
             event: 'window_reset',
             newCount: record.count,
@@ -119,7 +121,8 @@ class RateLimiter {
 
       // Enhanced logging with rate limit decision details
       console.log(
-        `[RateLimiter] Check for ${maskIP(ip)}:`,
+        '[RateLimiter] Check for %s:',
+        maskIP(ip),
         JSON.stringify({
           decision: allowed ? 'allowed' : 'blocked',
           currentCount: record.count,
@@ -161,7 +164,8 @@ class RateLimiter {
         record.count = 1;
         record.startTime = now;
         console.log(
-          `[RateLimiter] New window started for ${maskIP(ip)}:`,
+          '[RateLimiter] New window started for %s:',
+          maskIP(ip),
           JSON.stringify({
             event: 'window_reset',
             newCount: record.count,
@@ -180,7 +184,8 @@ class RateLimiter {
       const remainingUploads = this.limit - record.count;
       const windowEndTime = new Date(record.startTime + this.windowMs);
       console.log(
-        `[RateLimiter] Increment for ${maskIP(ip)}:`,
+        '[RateLimiter] Increment for %s:',
+        maskIP(ip),
         JSON.stringify({
           event: 'increment',
           currentCount: record.count,
