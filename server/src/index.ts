@@ -224,7 +224,7 @@ app.get(`${apiBasePath}/user/current`, async (req: Request, res: Response) => {
   }
 });
 
-// Health check endpoint
+// Health check endpoint 
 app.get(`${apiBasePath}/health`, (req: Request, res: Response) => {
   const config = {
     status: 'ok',
