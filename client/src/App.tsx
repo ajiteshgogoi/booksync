@@ -379,7 +379,15 @@ function App() {
         <div id="kofi-widget-container"></div>
       </div>
 
-      <div className="flex flex-col items-center mb-8 max-w-4xl w-full mx-auto px-4">
+      <div className="flex flex-col items-center mb-8 max-w-4xl w-full mx-auto px-4 gap-4">
+        <a
+          href="https://youtu.be/aIdDb1jx4Qk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-[#FEF3E0] text-[#F59E0B] font-medium py-1 px-2 rounded-md transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FEF3E0] hover:-translate-y-0.5 hover:bg-[#FCE7CB] text-sm text-center"
+        >
+          📺 Click for video tutorial
+        </a>
         <a
           href="https://touchbase.site/?utm_source=booksync&utm_medium=link&utm_campaign=apps"
           target="_blank"
