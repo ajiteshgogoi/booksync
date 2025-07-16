@@ -121,7 +121,10 @@ async function processBatch(
         continue;
       }
       
-      const metadataMatch = lines[1].match(/^- Your (?:Highlight|Note) (?:at|on page \d+)?\s*(?:\|?\s*(?:location(?:s)? (\d+(?:-\d+)?)|page \d+)?)?\s*(?:\|?\s*Added on (.+))?$/);
+      // Match both English and Spanish metadata formats
+      const metadataMatch = lines[1].match(
+        /^- (?:Your|Tu) (?:Highlight|Note|resaltado|nota) (?:at|on page|en la página) \d+\s*\|\s*(?:location|posición) (\d+(?:-\d+)?)\s*\|\s*(?:Added|Añadido el) (.+)$/
+      );
       if (!metadataMatch) {
         console.log('Skipping entry: invalid metadata format', { line: lines[1] });
         continue;
@@ -129,7 +132,38 @@ async function processBatch(
 
       const location = metadataMatch[1];
       const dateStr = metadataMatch[2];
-      const date = new Date(dateStr);
+      // Parse date string with support for Spanish format
+      let date: Date;
+      try {
+        // Try parsing as English format first
+        date = new Date(dateStr);
+        
+        // If that fails (returns Invalid Date), try Spanish format
+        if (isNaN(date.getTime())) {
+          // Spanish format: "sábado, 7 de junio de 2025 16:04:58"
+          // Convert to English format: "June 7, 2025 16:04:58"
+          const spanishMonths: { [key: string]: string } = {
+            'enero': 'January', 'febrero': 'February', 'marzo': 'March',
+            'abril': 'April', 'mayo': 'May', 'junio': 'June',
+            'julio': 'July', 'agosto': 'August', 'septiembre': 'September',
+            'octubre': 'October', 'noviembre': 'November', 'diciembre': 'December'
+          };
+          
+          // Remove day of week and convert month name
+          const dateComponents = dateStr.split(', ')[1];
+          let [day, , month, , year, time] = dateComponents.split(' ');
+          
+          // Convert Spanish month to English
+          month = spanishMonths[month.toLowerCase()] || month;
+          
+          // Reconstruct date string in English format
+          const englishDateStr = `${month} ${day}, ${year} ${time}`;
+          date = new Date(englishDateStr);
+        }
+      } catch (error) {
+        console.error('Error parsing date:', { dateStr, error });
+        continue;
+      }
 
       if (isNaN(date.getTime())) {
         console.log('Skipping entry: invalid date', { dateStr });
