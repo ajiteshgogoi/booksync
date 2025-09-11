@@ -512,7 +512,7 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
       }
     }
     
-    // Clear Notion auth
+    // Clear Notion auth 
     await clearAuth();
     
     res.status(200).json({ success: true });
