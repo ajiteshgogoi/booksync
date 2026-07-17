@@ -206,7 +206,9 @@ app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => 
 // Get current user ID endpoint
 app.get(`${apiBasePath}/user/current`, async (req: Request, res: Response) => {
   try {
-    const token = await getOAuthToken();
+    // Scope to the user who connected in THIS browser via the session cookie.
+    const cookieUserId = req.cookies?.notion_user_id;
+    const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -349,13 +351,17 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 // Auth check endpoint
 app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
-    const token = await getOAuthToken();
+    // Scope the check to the user who actually connected in THIS browser.
+    // Without the cookie (or if it doesn't match a stored token), the user is
+    // not considered "logged in" — preventing cross-browser false "connected".
+    const cookieUserId = req.cookies?.notion_user_id;
+    const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({ authenticated: false });
     }
 
     // Verify the Notion client works
-    const client = await getClient();
+    const client = await getClient(cookieUserId);
     if (client) {
       return res.status(200).json({ authenticated: true });
     }
@@ -462,6 +468,15 @@ await upstashService.saveUserState(userId, {
   databaseId: '' // Will be set later when user selects database
 });
 
+// Set a per-browser session cookie carrying the userId so the auth-check
+// endpoint can scope "logged in" to the user who actually connected.
+res.cookie('notion_user_id', userId, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 1000 * 60 * 60 * 24 * 365 // 1 year
+});
+
 // Just redirect with success status
 res.redirect(`${process.env.CLIENT_URL}?auth=success`);
   } catch (error) {
@@ -514,6 +529,13 @@ app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) =
     
     // Clear Notion auth 
     await clearAuth();
+
+    // Clear the per-browser session cookie so this browser no longer shows "connected"
+    res.clearCookie('notion_user_id', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
     
     res.status(200).json({ success: true });
   } catch (error) {
