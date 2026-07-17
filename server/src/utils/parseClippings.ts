@@ -122,11 +122,11 @@ async function processBatch(
       }
       
       // Match both English and Spanish metadata formats.
-      // Supports: "at N | location N | Added", "on page N | location N | Added",
+      // Supports: "at location N | Added", "on page N | location N | Added",
       // "on page N | Location N | Added" (capitalized), "on Location N | Added" (no page),
       // and Spanish "en la página N | posición N | Añadido el". Case-insensitive.
       const metadataMatch = lines[1].match(
-        /^- (?:Your|Tu) (?:Highlight|Note|resaltado|nota)\s+(?:on\s+Location|on\s+page\s+\d+\s*\|\s*Location|on\s+page\s+\d+|at|en\s+la\s+página\s+\d+\s*\|\s*(?:posición)?)\s+(\d+(?:-\d+)?)\s*\|\s*(?:Added|Añadido el)\s+(.+)$/i
+        /^- (?:Your|Tu) (?:Highlight|Note|resaltado|nota)\s+(?:at\s+(?:location\s+)?|on\s+Location\s+|on\s+page\s+\d+\s*\|\s*(?:Location\s+|location\s+)?|en\s+la\s+página\s+\d+\s*\|\s*(?:posición\s+)?)(\d+(?:-\d+)?)\s*\|\s*(?:Added|Añadido el)\s+(.+)$/i
       );
       if (!metadataMatch) {
         console.log('Skipping entry: invalid metadata format', { line: lines[1] });
