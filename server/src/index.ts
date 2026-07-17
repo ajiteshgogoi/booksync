@@ -207,7 +207,13 @@ app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => 
 app.get(`${apiBasePath}/user/current`, async (req: Request, res: Response) => {
   try {
     // Scope to the user who connected in THIS browser via the session cookie.
+    // No cookie means this browser never connected — return 401 instead of
+    // falling back to the global first token in the bucket.
     const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -352,9 +358,14 @@ app.post(`${apiBasePath}/parse`, upload.single('file'), async (req: Request, res
 app.get(`${apiBasePath}/auth/check`, async (req: Request, res: Response) => {
   try {
     // Scope the check to the user who actually connected in THIS browser.
-    // Without the cookie (or if it doesn't match a stored token), the user is
-    // not considered "logged in" — preventing cross-browser false "connected".
+    // If there is no session cookie, this browser never connected — return
+    // false immediately. This prevents the global "first token in bucket"
+    // fallback from making every browser appear "logged in".
     const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({ authenticated: false });
+    }
+
     const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({ authenticated: false });
