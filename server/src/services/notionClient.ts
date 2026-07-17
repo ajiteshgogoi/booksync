@@ -59,7 +59,7 @@ export async function getOAuthToken(userId?: string): Promise<string | null> {
   }
 }
 
-async function deleteOAuthToken(workspaceId: string): Promise<void> {
+export async function deleteOAuthToken(workspaceId: string): Promise<void> {
   const tokenKey = `${TOKEN_PREFIX}${workspaceId}.json`;
   await deleteObject(tokenKey);
 }

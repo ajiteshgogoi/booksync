@@ -174,7 +174,16 @@ function generateState() {
 // Sync validation endpoint
 app.post(`${apiBasePath}/validate-sync`, async (req: Request, res: Response) => {
   try {
-    const token = await getOAuthToken();
+    // Scope to the user who connected in THIS browser via the session cookie.
+    const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({
+        valid: false,
+        error: 'Authentication required'
+      });
+    }
+
+    const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({
         valid: false,
@@ -498,6 +507,17 @@ res.redirect(`${process.env.CLIENT_URL}?auth=success`);
 
 app.post(`${apiBasePath}/auth/refresh`, async (req: Request, res: Response) => {
   try {
+    // Scope the refresh to the user who connected in THIS browser.
+    const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const token = await getOAuthToken(cookieUserId);
+    if (!token) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     await refreshToken();
     res.status(200).json({ status: 'Token refreshed' });
   } catch (error) {
@@ -525,21 +545,31 @@ app.get(`${apiBasePath}/sync/status/:jobId`, async (req: Request, res: Response)
 
 app.post(`${apiBasePath}/auth/disconnect`, async (req: Request, res: Response) => {
   try {
-    // Get user info from token
-    const token = await getOAuthToken();
+    // Scope disconnect to the user who connected in THIS browser.
+    const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const token = await getOAuthToken(cookieUserId);
     if (token) {
       const tokenData = JSON.parse(token);
       const userId = tokenData.owner?.user?.id;
-      
+      const workspaceId = tokenData.workspace_id;
+
       if (userId) {
         // Clear user state from Upstash
         const { upstashService } = await import('./services/upstashService.js');
         await upstashService.deleteUserState(userId);
       }
+
+      // Delete only THIS user's token file (keyed by their workspace), not the
+      // global first token in the bucket.
+      if (workspaceId) {
+        const { deleteOAuthToken } = await import('./services/notionClient.js');
+        await deleteOAuthToken(workspaceId);
+      }
     }
-    
-    // Clear Notion auth 
-    await clearAuth();
 
     // Clear the per-browser session cookie so this browser no longer shows "connected"
     res.clearCookie('notion_user_id', {
@@ -600,8 +630,18 @@ app.post(`${apiBasePath}/sync`, async (req: Request, res: Response) => {
 
     const fileContent = Buffer.concat(chunks).toString('utf-8');
 
-    // Get user ID from Notion token
-    const token = await getOAuthToken();
+    // Get user ID from the token belonging to the user who connected in THIS
+    // browser (via the session cookie). This ensures the job is stamped with
+    // the correct userId so the background worker syncs to the right Notion DB.
+    const cookieUserId = req.cookies?.notion_user_id;
+    if (!cookieUserId) {
+      return res.status(401).json({
+        error: 'Authentication required',
+        message: 'Please reconnect to Notion'
+      });
+    }
+
+    const token = await getOAuthToken(cookieUserId);
     if (!token) {
       return res.status(401).json({
         error: 'Authentication required',
