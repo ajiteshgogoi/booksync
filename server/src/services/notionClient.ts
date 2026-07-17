@@ -21,12 +21,32 @@ async function storeOAuthToken(
   }));
 }
 
-export async function getOAuthToken(): Promise<string | null> {
+export async function getOAuthToken(userId?: string): Promise<string | null> {
   try {
     const objects = await listObjects(TOKEN_PREFIX);
     if (!objects || objects.length === 0) return null;
-    
-    // Get the first token file
+
+    // If a userId is provided, find that user's token file specifically to
+    // prevent cross-account syncing when multiple tokens exist in the bucket.
+    if (userId) {
+      for (const obj of objects) {
+        if (!obj.key) continue;
+        try {
+          const tokenData = await downloadObject(obj.key);
+          const parsed = JSON.parse(tokenData.toString());
+          if (parsed.userId === userId) {
+            return JSON.stringify(parsed.tokenData);
+          }
+        } catch {
+          // Skip unreadable token files
+          continue;
+        }
+      }
+      console.warn('No OAuth token found for userId:', userId);
+      return null;
+    }
+
+    // Backward-compatible fallback: get the first token file
     if (!objects[0].key) {
       return null;
     }
@@ -229,10 +249,10 @@ export async function setOAuthToken(tokenData: NotionToken): Promise<void> {
   }
 }
 
-export async function getClient(): Promise<Client> {
+export async function getClient(userId?: string): Promise<Client> {
   try {
     if (!_client) {
-      const tokenData = await getOAuthToken();
+      const tokenData = await getOAuthToken(userId);
       if (!tokenData) {
         throw new Error('No OAuth token available');
       }
@@ -435,9 +455,9 @@ function splitAtSentences(text: string, maxLength: number): string[] {
   return chunks;
 }
 
-export async function updateNotionDatabase(highlights: Highlight[], onProgress?: () => void): Promise<void> {
+export async function updateNotionDatabase(highlights: Highlight[], onProgress?: () => void, userId?: string): Promise<void> {
   try {
-    const client = await getClient();
+    const client = await getClient(userId);
     
     // Ensure we have found the Kindle Highlights database
     if (!_databaseId) {

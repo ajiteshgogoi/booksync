@@ -260,7 +260,7 @@ export async function processSyncJob(
           await updateNotionDatabase(batch.map(h => ({
             ...h,
             databaseId: state.databaseId
-          })));
+          })), undefined, state.userId);
 
           currentProcessed += batch.length;
           
