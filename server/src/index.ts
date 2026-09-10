@@ -724,7 +724,7 @@ if (!process.env.VERCEL) {
     console.log(`Server running on port ${port}`);
     
     if (process.env.NODE_ENV !== 'production') {
-      // Start worker for local development
+      // Start worker for local development 
       try {
         await startWorker();
       } catch (error) {
@@ -733,7 +733,7 @@ if (!process.env.VERCEL) {
     }
   });
 
-  // Handle shutdown
+  // Handle shutdown 
   const cleanup = async () => {
     console.log('Server shutting down...');
     server.close();
